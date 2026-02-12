@@ -1,0 +1,107 @@
+/* ═══════════════════════════════════════
+   AIdark — Global Styles
+   ═══════════════════════════════════════ */
+
+@import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&display=swap');
+
+/* ── Theme Variables ── */
+:root {
+  --bg-primary: #0c0b0a;
+  --bg-secondary: #111010;
+  --bg-surface: #131211;
+  --bg-elevated: #1a1816;
+  --bg-hover: #1e1b18;
+
+  --border-subtle: #1a1816;
+  --border-default: #2a2520;
+  --border-strong: #3d3328;
+
+  --text-primary: #d4c5b0;
+  --text-secondary: #8b7d6b;
+  --text-tertiary: #5a4a3a;
+  --text-muted: #3d3328;
+  --text-ghost: #2a2520;
+
+  --accent: #8b7355;
+  --accent-hover: #a0896a;
+  --danger: #a0513b;
+}
+
+/* ── Base ── */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'IBM Plex Mono', monospace;
+  background-color: var(--bg-primary);
+  color: var(--text-secondary);
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar {
+  width: 4px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-default);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--border-strong);
+}
+
+/* ── Focus ── */
+*:focus {
+  outline: none;
+}
+*:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+
+/* ── Animations ── */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 0.8; }
+}
+
+.animate-fade-up {
+  animation: fadeUp 0.3s ease both;
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.2s ease both;
+}
+
+.animate-pulse-soft {
+  animation: pulse 2s ease-in-out infinite;
+}
+
+/* ── Typography ── */
+.font-mono {
+  font-family: 'IBM Plex Mono', monospace;
+}
+
+/* ── Transitions ── */
+.transition-default {
+  transition: all 0.15s ease;
+}
