@@ -1,9 +1,3 @@
-// ═══════════════════════════════════════
-// AIdark — API Proxy (Vercel Serverless)
-// ═══════════════════════════════════════
-// Este endpoint protege tu VENICE_API_KEY
-// El frontend NUNCA ve la key real
-
 export const config = {
   runtime: 'edge',
 };
@@ -28,7 +22,6 @@ export default async function handler(req: Request) {
     const body = await req.json();
     const { messages, model, stream } = body;
 
-    // ── Validación básica ──
     if (!messages || !Array.isArray(messages)) {
       return new Response(
         JSON.stringify({ error: 'Messages array required' }),
@@ -36,8 +29,6 @@ export default async function handler(req: Request) {
       );
     }
 
-    // ── Llamada a Venice AI ──
-    // Docs: https://docs.venice.ai/api-reference/chat-completions
     const veniceResponse = await fetch('https://api.venice.ai/api/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -50,9 +41,10 @@ export default async function handler(req: Request) {
         stream: stream || false,
         temperature: 0.9,
         max_tokens: 4096,
-        // Venice-specific: disable content filtering
         venice_parameters: {
           include_venice_system_prompt: false,
+          enable_web_search: "off",
+          character_slug: "uncensored",
         },
       }),
     });
@@ -61,12 +53,11 @@ export default async function handler(req: Request) {
       const errorData = await veniceResponse.text();
       console.error('[AIdark API] Venice error:', errorData);
       return new Response(
-        JSON.stringify({ error: 'Error al procesar tu solicitud', details: errorData }),
+        JSON.stringify({ error: 'Error al procesar', details: errorData }),
         { status: veniceResponse.status, headers: { 'Content-Type': 'application/json' } }
       );
     }
 
-    // ── Streaming response ──
     if (stream) {
       return new Response(veniceResponse.body, {
         headers: {
@@ -77,22 +68,18 @@ export default async function handler(req: Request) {
       });
     }
 
-    // ── Normal response ──
     const data = await veniceResponse.json();
     const content = data.choices?.[0]?.message?.content || 'Sin respuesta';
 
     return new Response(
-      JSON.stringify({
-        content,
-        usage: data.usage,
-      }),
+      JSON.stringify({ content, usage: data.usage }),
       { headers: { 'Content-Type': 'application/json' } }
     );
 
   } catch (error) {
     console.error('[AIdark API] Error:', error);
     return new Response(
-      JSON.stringify({ error: 'Error interno del servidor' }),
+      JSON.stringify({ error: 'Error interno' }),
       { status: 500, headers: { 'Content-Type': 'application/json' } }
     );
   }
