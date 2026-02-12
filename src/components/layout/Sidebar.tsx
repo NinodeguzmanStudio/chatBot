@@ -1,16 +1,15 @@
 // ═══════════════════════════════════════
-// AIdark — Sidebar Component
+// AIdark — Sidebar v3
 // ═══════════════════════════════════════
 
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
-  PanelLeft, Plus, MessageSquare, FolderOpen,
-  ChevronDown, Trash2, Crown, Settings, Lock,
-  BookOpen, FlaskConical, Skull
+  PanelLeft, Plus, FolderOpen, ChevronDown,
+  Crown, Settings, Lock, BookOpen, FlaskConical,
+  Skull, MoreVertical, Pencil, Trash2, X
 } from 'lucide-react';
-import { useChatStore, useAuthStore } from '@/lib/store';
+import { useChatStore } from '@/lib/store';
 import { DEFAULT_PROJECTS } from '@/lib/constants';
-import { formatRelativeTime } from '@/lib/utils';
 
 const PROJECT_ICONS: Record<string, React.ReactNode> = {
   book: <BookOpen size={15} />,
@@ -18,228 +17,291 @@ const PROJECT_ICONS: Record<string, React.ReactNode> = {
   skull: <Skull size={15} />,
 };
 
+// ── Chat Context Menu ──
+const ChatMenu: React.FC<{
+  chatId: string;
+  onRename: (id: string) => void;
+  onDelete: (id: string) => void;
+}> = ({ chatId, onRename, onDelete }) => {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const h = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    if (open) document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, [open]);
+
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <button
+        onClick={(e) => { e.stopPropagation(); setOpen(!open); }}
+        className="chat-menu-btn"
+        style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          width: 24, height: 24, background: 'none', border: 'none',
+          color: 'var(--txt-mut)', cursor: 'pointer', borderRadius: 4,
+          opacity: 0, transition: 'all 0.15s',
+        }}
+        onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-hover)')}
+        onMouseLeave={e => (e.currentTarget.style.background = 'none')}
+      >
+        <MoreVertical size={16} />
+      </button>
+      {open && (
+        <div style={{
+          position: 'absolute', right: 0, top: '100%', marginTop: 4,
+          width: 150, background: 'var(--bg-el)', border: '1px solid var(--border-def)',
+          borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+          overflow: 'hidden', zIndex: 50, animation: 'fadeIn 0.12s ease',
+        }}>
+          <button
+            onClick={(e) => { e.stopPropagation(); onRename(chatId); setOpen(false); }}
+            className="transition-default"
+            style={{
+              width: '100%', padding: '10px 14px',
+              display: 'flex', alignItems: 'center', gap: 8,
+              background: 'none', border: 'none', borderBottom: '1px solid var(--border-sub)',
+              color: 'var(--txt-sec)', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit',
+            }}
+            onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-hover)')}
+            onMouseLeave={e => (e.currentTarget.style.background = 'none')}
+          >
+            <Pencil size={12} /> Renombrar
+          </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); onDelete(chatId); setOpen(false); }}
+            className="transition-default"
+            style={{
+              width: '100%', padding: '10px 14px',
+              display: 'flex', alignItems: 'center', gap: 8,
+              background: 'none', border: 'none',
+              color: 'var(--danger)', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit',
+            }}
+            onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-hover)')}
+            onMouseLeave={e => (e.currentTarget.style.background = 'none')}
+          >
+            <Trash2 size={12} /> Eliminar
+          </button>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ── Main Sidebar ──
 interface SidebarProps {
   onOpenPricing: () => void;
+  onOpenSettings: () => void;
+  onOpenPrivacy: () => void;
+  isMobile?: boolean;
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({ onOpenPricing }) => {
+export const Sidebar: React.FC<SidebarProps> = ({ onOpenPricing, onOpenSettings, onOpenPrivacy, isMobile }) => {
   const {
     sessions, activeSessionId, sidebarOpen,
-    setSidebarOpen, createSession, deleteSession, setActiveSession,
+    setSidebarOpen, createSession, deleteSession, renameSession, setActiveSession,
   } = useChatStore();
-  const { messagesUsed } = useAuthStore();
   const [projectsExpanded, setProjectsExpanded] = useState(true);
 
   const handleNewChat = () => {
     createSession();
+    if (isMobile) setSidebarOpen(false);
   };
 
-  if (!sidebarOpen) return null;
+  const handleRename = (id: string) => {
+    const name = prompt('Nuevo nombre:');
+    if (name) renameSession(id, name);
+  };
+
+  const handleDelete = (id: string) => {
+    deleteSession(id);
+  };
+
+  const handleSelectChat = (id: string) => {
+    setActiveSession(id);
+    if (isMobile) setSidebarOpen(false);
+  };
 
   return (
-    <aside
-      className="flex flex-col flex-shrink-0 h-screen"
-      style={{
-        width: 260, minWidth: 260,
-        background: 'var(--bg-secondary)',
-        borderRight: '1px solid var(--border-subtle)',
-      }}
-    >
-      {/* ── Header ── */}
-      <div className="flex items-center justify-between" style={{ padding: '14px 14px 10px' }}>
+    <>
+      {/* Header */}
+      <div style={{ padding: '14px 14px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <button
           onClick={() => setSidebarOpen(false)}
-          className="flex items-center justify-center rounded-md transition-default"
-          style={{ width: 32, height: 32, color: 'var(--text-tertiary)' }}
+          className="transition-default"
+          style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            width: 32, height: 32, background: 'none', border: 'none',
+            color: 'var(--txt-ter)', cursor: 'pointer', borderRadius: 6,
+          }}
           onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-hover)')}
-          onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+          onMouseLeave={e => (e.currentTarget.style.background = 'none')}
         >
-          <PanelLeft size={18} />
+          {isMobile ? <X size={18} /> : <PanelLeft size={18} />}
         </button>
         <button
           onClick={handleNewChat}
-          className="flex items-center justify-center rounded-md transition-default"
-          style={{ width: 32, height: 32, color: 'var(--text-tertiary)' }}
+          className="transition-default"
+          style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            width: 32, height: 32, background: 'none', border: 'none',
+            color: 'var(--txt-ter)', cursor: 'pointer', borderRadius: 6,
+          }}
           onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-hover)')}
-          onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+          onMouseLeave={e => (e.currentTarget.style.background = 'none')}
           title="Nuevo chat"
         >
           <Plus size={16} />
         </button>
       </div>
 
-      {/* ── Scrollable content ── */}
-      <div className="flex-1 overflow-y-auto" style={{ padding: '4px 8px' }}>
-
-        {/* Recientes */}
+      {/* Scrollable */}
+      <div style={{ flex: 1, overflowY: 'auto', padding: '4px 8px' }}>
+        {/* Chats — no label */}
         <div style={{ marginBottom: 8 }}>
-          <p
-            className="font-mono"
-            style={{
-              fontSize: 11, fontWeight: 600,
-              color: 'var(--text-tertiary)',
-              padding: '8px 10px 6px',
-              letterSpacing: '0.5px',
-            }}
-          >
-            Recientes
-          </p>
-
           {sessions.length === 0 && (
-            <p
-              style={{
-                fontSize: 12, color: 'var(--text-muted)',
-                padding: '8px 10px',
-              }}
-            >
-              Sin chats recientes
+            <p style={{ fontSize: 12, color: 'var(--txt-mut)', padding: '16px 10px', textAlign: 'center' }}>
+              Sin chats aún
             </p>
           )}
-
           {sessions.map((session) => (
             <div
               key={session.id}
-              onClick={() => setActiveSession(session.id)}
-              className="flex items-center justify-between rounded-md cursor-pointer transition-default group"
+              onClick={() => handleSelectChat(session.id)}
+              className="chat-item"
               style={{
                 padding: '9px 10px',
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                 background: activeSessionId === session.id ? 'var(--bg-hover)' : 'transparent',
+                borderRadius: 6, cursor: 'pointer', transition: 'background 0.15s',
               }}
               onMouseEnter={e => {
                 if (activeSessionId !== session.id)
-                  e.currentTarget.style.background = 'var(--bg-elevated)';
+                  e.currentTarget.style.background = 'var(--bg-el)';
               }}
               onMouseLeave={e => {
                 if (activeSessionId !== session.id)
                   e.currentTarget.style.background = 'transparent';
               }}
             >
-              <span
-                className="truncate"
-                style={{
-                  fontSize: 13,
-                  color: activeSessionId === session.id ? 'var(--text-primary)' : 'var(--text-secondary)',
-                  maxWidth: 170,
-                }}
-              >
+              <span style={{
+                fontSize: 13,
+                color: activeSessionId === session.id ? 'var(--txt-pri)' : 'var(--txt-sec)',
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 180,
+              }}>
                 {session.title}
               </span>
-
-              <div className="flex items-center gap-1">
-                <span style={{ fontSize: 10, color: 'var(--text-muted)', flexShrink: 0 }}>
-                  {formatRelativeTime(session.updated_at)}
-                </span>
-                <button
-                  onClick={(e) => { e.stopPropagation(); deleteSession(session.id); }}
-                  className="opacity-0 group-hover:opacity-100 transition-default"
-                  style={{ color: 'var(--text-muted)', padding: 2 }}
-                >
-                  <Trash2 size={12} />
-                </button>
-              </div>
+              <ChatMenu chatId={session.id} onRename={handleRename} onDelete={handleDelete} />
             </div>
           ))}
         </div>
 
         {/* Proyectos */}
-        <div style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: 4 }}>
+        <div style={{ borderTop: '1px solid var(--border-sub)', paddingTop: 4 }}>
           <button
             onClick={() => setProjectsExpanded(!projectsExpanded)}
-            className="flex items-center justify-between w-full"
-            style={{ padding: '8px 10px' }}
+            style={{
+              width: '100%', padding: '8px 10px',
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit',
+            }}
           >
-            <span
-              style={{
-                fontSize: 11, fontWeight: 600,
-                color: 'var(--text-tertiary)',
-                letterSpacing: '0.5px',
-              }}
-            >
+            <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--txt-ter)', letterSpacing: 0.5 }}>
               Proyectos
             </span>
-            <span
-              className="transition-default"
-              style={{
-                color: 'var(--text-muted)',
-                transform: projectsExpanded ? 'rotate(0deg)' : 'rotate(-90deg)',
-                display: 'flex',
-              }}
-            >
+            <span style={{
+              color: 'var(--txt-mut)',
+              transform: projectsExpanded ? 'rotate(0)' : 'rotate(-90deg)',
+              transition: 'transform 0.2s', display: 'flex',
+            }}>
               <ChevronDown size={14} />
             </span>
           </button>
-
-          {projectsExpanded && DEFAULT_PROJECTS.map((project) => (
-            <button
-              key={project.id}
-              className="flex items-center gap-2.5 w-full rounded-md transition-default"
-              style={{ padding: '9px 10px', textAlign: 'left' }}
-              onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-elevated)')}
-              onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-            >
-              <span style={{ color: 'var(--text-tertiary)', flexShrink: 0, display: 'flex' }}>
-                {PROJECT_ICONS[project.icon] || <FolderOpen size={15} />}
-              </span>
-              <span
-                className="truncate"
-                style={{ fontSize: 13, color: 'var(--text-secondary)', flex: 1 }}
-              >
-                {project.name}
-              </span>
-              <span
-                style={{
-                  fontSize: 10, color: 'var(--text-muted)',
-                  background: 'var(--bg-elevated)',
-                  padding: '2px 6px', borderRadius: 10,
-                  flexShrink: 0,
-                }}
-              >
-                {project.chat_count}
-              </span>
-            </button>
-          ))}
+          {projectsExpanded && (
+            <div style={{ animation: 'fadeUp 0.2s ease' }}>
+              {DEFAULT_PROJECTS.map((project) => (
+                <button
+                  key={project.id}
+                  className="transition-default"
+                  style={{
+                    width: '100%', padding: '9px 10px',
+                    display: 'flex', alignItems: 'center', gap: 10,
+                    background: 'transparent', border: 'none', borderRadius: 6,
+                    cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
+                  }}
+                  onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-el)')}
+                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                >
+                  <span style={{ color: 'var(--txt-ter)', flexShrink: 0, display: 'flex' }}>
+                    {PROJECT_ICONS[project.icon] || <FolderOpen size={15} />}
+                  </span>
+                  <span style={{
+                    fontSize: 13, color: 'var(--txt-sec)', flex: 1,
+                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                  }}>
+                    {project.name}
+                  </span>
+                  <span style={{
+                    fontSize: 10, color: 'var(--txt-mut)', background: 'var(--bg-el)',
+                    padding: '2px 6px', borderRadius: 10, flexShrink: 0,
+                  }}>
+                    {project.chat_count}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
-      {/* ── Footer ── */}
-      <div style={{ padding: '12px 12px', borderTop: '1px solid var(--border-subtle)' }}>
-        <div className="flex gap-1" style={{ marginBottom: 12 }}>
+      {/* Footer */}
+      <div style={{ padding: '12px 12px', borderTop: '1px solid var(--border-sub)' }}>
+        <div style={{ display: 'flex', gap: 4, marginBottom: 12 }}>
           <button
-            className="flex-1 flex items-center justify-center gap-1.5 transition-default"
+            onClick={onOpenSettings}
+            className="transition-default"
             style={{
-              padding: 8, fontSize: 11, color: 'var(--text-muted)',
-              letterSpacing: '0.5px', textTransform: 'uppercase',
+              flex: 1, padding: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
+              background: 'none', border: 'none', color: 'var(--txt-mut)', fontSize: 11,
+              cursor: 'pointer', fontFamily: 'inherit', letterSpacing: 0.5, textTransform: 'uppercase',
             }}
+            onMouseEnter={e => (e.currentTarget.style.color = 'var(--txt-sec)')}
+            onMouseLeave={e => (e.currentTarget.style.color = 'var(--txt-mut)')}
           >
-            <Settings size={13} /> Ajustes
+            <Settings size={14} /> Ajustes
           </button>
           <button
-            className="flex-1 flex items-center justify-center gap-1.5 transition-default"
+            onClick={onOpenPrivacy}
+            className="transition-default"
             style={{
-              padding: 8, fontSize: 11, color: 'var(--text-muted)',
-              letterSpacing: '0.5px', textTransform: 'uppercase',
+              flex: 1, padding: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
+              background: 'none', border: 'none', color: 'var(--txt-mut)', fontSize: 11,
+              cursor: 'pointer', fontFamily: 'inherit', letterSpacing: 0.5, textTransform: 'uppercase',
             }}
+            onMouseEnter={e => (e.currentTarget.style.color = 'var(--txt-sec)')}
+            onMouseLeave={e => (e.currentTarget.style.color = 'var(--txt-mut)')}
           >
-            <Lock size={13} /> Privacidad
+            <Lock size={14} /> Privacidad
           </button>
         </div>
-
         <button
           onClick={onOpenPricing}
-          className="flex items-center justify-center gap-2 w-full rounded-lg transition-default"
+          className="transition-default"
           style={{
-            padding: '10px 14px',
-            background: 'var(--bg-elevated)',
-            border: '1px solid var(--border-default)',
-            color: 'var(--text-primary)',
-            fontSize: 12, fontWeight: 500,
+            width: '100%', padding: '11px 14px',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+            background: 'var(--bg-el)', border: '1px solid var(--border-def)', borderRadius: 8,
+            color: 'var(--txt-pri)', fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit',
           }}
-          onMouseEnter={e => (e.currentTarget.style.borderColor = 'var(--border-strong)')}
-          onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--border-default)')}
+          onMouseEnter={e => (e.currentTarget.style.borderColor = 'var(--border-str)')}
+          onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--border-def)')}
         >
           <Crown size={14} /> Upgrade a Premium
         </button>
       </div>
-    </aside>
+    </>
   );
 };
