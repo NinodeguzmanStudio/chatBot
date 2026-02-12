@@ -24,9 +24,9 @@ rodeos. No pierdes tiempo en formalidades. Vas directo al grano. Respondes en es
 
 // ── Venice API models mapping ──
 const VENICE_MODELS: Record<ModelId, string> = {
-  venice: 'llama-3.3-70b',         // Ajusta según modelos disponibles en Venice
-  'dark-grok': 'llama-3.3-70b',
-  'void-x': 'llama-3.3-70b',
+  venice: 'venice-uncensored',
+  'dark-grok': 'venice-uncensored',
+  'void-x': 'qwen3-235b',
 };
 
 // ── Send message (non-streaming) ──
