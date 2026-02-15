@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════
-// AIdark — Sidebar v4
+// AIdark — Sidebar (FIXED)
 // ═══════════════════════════════════════
 
 import React, { useState, useRef, useEffect } from 'react';
