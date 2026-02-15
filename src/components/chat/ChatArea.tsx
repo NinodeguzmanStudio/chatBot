@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════
-// AIdark — Chat Area (FIXED + STREAMING)
+// AIdark — Chat Area (FIXED + STREAMING + PARTICLES)
 // ═══════════════════════════════════════
 
 import React, { useRef, useEffect, useState } from 'react';
@@ -11,6 +11,7 @@ import { APP_CONFIG, AI_CHARACTERS } from '@/lib/constants';
 import { MessageBubble } from './MessageBubble';
 import { ModelSelector } from './ModelSelector';
 import { CharacterSelector } from './CharacterSelector';
+import { TypingParticles } from './TypingParticles';
 import { useIsMobile } from '@/hooks/useIsMobile';
 import type { Message } from '@/types';
 
@@ -26,6 +27,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
   const { canSendMessage, incrementMessages, getRemainingMessages } = useAuthStore();
   const [input, setInput] = useState('');
   const [streamingContent, setStreamingContent] = useState('');
+  const [keystrokeCount, setKeystrokeCount] = useState(0);
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const isMobile = useIsMobile();
@@ -74,7 +76,6 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
     incrementMessages();
 
     try {
-      // Try streaming first
       let fullResponse = '';
       await sendMessageStream(
         [...messages, userMsg],
@@ -85,7 +86,6 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
           setStreamingContent(fullResponse);
         },
         () => {
-          // On done - add the complete message
           addMessage(sessionId!, {
             id: generateId(), role: 'assistant', content: fullResponse,
             timestamp: Date.now(), model: selectedModel, character: selectedCharacter,
@@ -95,7 +95,6 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
         }
       );
     } catch (error) {
-      // Fallback to non-streaming
       try {
         const response = await sendMessage([...messages, userMsg], selectedModel, selectedCharacter);
         addMessage(sessionId!, {
@@ -116,7 +115,10 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
 
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const val = e.target.value;
-    if (val.length <= charLimit) setInput(val);
+    if (val.length <= charLimit) {
+      setInput(val);
+      setKeystrokeCount((k) => k + 1);
+    }
   };
 
   return (
@@ -132,7 +134,6 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
             flex: 1, display: 'flex', flexDirection: 'column',
             alignItems: 'center', justifyContent: 'center', padding: 20,
           }}>
-            {/* Logo */}
             <div style={{ marginBottom: 6, animation: 'fadeIn 0.8s ease' }}>
               <span style={{
                 fontSize: isMobile ? 36 : 44, fontWeight: 500,
@@ -165,7 +166,6 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
             {messages.map((msg, idx) => (
               <MessageBubble key={msg.id} message={msg} index={idx} />
             ))}
-            {/* Streaming message */}
             {isTyping && streamingContent && (
               <MessageBubble
                 message={{
@@ -179,7 +179,6 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
                 index={messages.length}
               />
             )}
-            {/* Typing indicator (before streaming starts) */}
             {isTyping && !streamingContent && (
               <div style={{ paddingLeft: isMobile ? 0 : 32, marginBottom: 24 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '14px 0' }}>
@@ -209,16 +208,22 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
         display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0,
       }}>
         <div style={{ maxWidth: writerMode ? 900 : 720, width: '100%' }}>
+          {/* Input container — particles live here */}
           <div style={{
             background: 'var(--bg-surface)',
             border: '1px solid var(--border-sub)',
             borderRadius: isMobile ? 12 : 14,
             padding: isMobile ? '10px 12px 8px' : '12px 16px 8px',
             transition: 'border-color 0.2s',
+            position: 'relative',
+            overflow: 'hidden',
           }}
           onFocus={e => e.currentTarget.style.borderColor = 'var(--border-def)'}
           onBlur={e => e.currentTarget.style.borderColor = 'var(--border-sub)'}
           >
+            {/* Particle canvas overlay */}
+            <TypingParticles trigger={keystrokeCount} />
+
             <textarea
               ref={textareaRef}
               value={input}
@@ -233,18 +238,18 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
                 minHeight: 24, maxHeight: 160,
                 overflowY: 'auto', overflowX: 'hidden',
                 wordWrap: 'break-word', whiteSpace: 'pre-wrap',
+                position: 'relative', zIndex: 2,
               }}
             />
 
             {/* Controls */}
             <div style={{
               display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              marginTop: 8, gap: 6,
+              marginTop: 8, gap: 6, position: 'relative', zIndex: 2,
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                 <ModelSelector />
                 <CharacterSelector />
-                {/* Writer mode toggle */}
                 {!isMobile && messages.length > 0 && (
                   <button onClick={() => setWriterMode(!writerMode)} style={{
                     display: 'flex', alignItems: 'center', gap: 4,
@@ -260,14 +265,12 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
               </div>
 
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                {/* Char counter */}
                 <span style={{
                   fontSize: 10,
                   color: input.length > charLimit * 0.9 ? 'var(--danger)' : 'var(--txt-mut)',
                 }}>
                   {input.length}/{charLimit}
                 </span>
-                {/* Send */}
                 <button onClick={handleSend} disabled={!input.trim() || isTyping} style={{
                   width: 34, height: 34, display: 'flex', alignItems: 'center', justifyContent: 'center',
                   background: input.trim() ? 'var(--border-str)' : 'var(--bg-el)',
