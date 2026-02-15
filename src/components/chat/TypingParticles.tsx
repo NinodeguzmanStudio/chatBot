@@ -1,8 +1,8 @@
 // ═══════════════════════════════════════
-// AIdark — Typing Particles Effect
+// AIdark — Typing Particles v2
 // ═══════════════════════════════════════
-// Subtle ambient particles on keystrokes
-// Warm tones matching app aesthetic
+// HUD-style ambient particles on keystrokes
+// Warm predator tones matching app aesthetic
 
 import React, { useRef, useEffect, useCallback } from 'react';
 
@@ -14,48 +14,67 @@ interface Particle {
   life: number;
   maxLife: number;
   size: number;
+  type: 'glyph' | 'dot' | 'line';
   char: string;
   color: string;
+  rotation: number;
+  rotSpeed: number;
 }
 
-const CHARS = ['⬡', '◇', '⊡', '△', '⬢', '◈', '⟐', '⊞', '⟡', '⬘', '·', '∘', '⊕'];
+// HUD glyphs — angular, geometric, tactical feel
+const GLYPHS = ['◇', '△', '▽', '⬡', '⊕', '⊗', '⟐', '⬢', '⏣', '⏢', '⌬', '⟁'];
+const DOT_CHARS = ['·', '∘', '•', '⊙'];
+
 const COLORS = [
-  'rgba(139,115,85,',   // accent gold
-  'rgba(160,81,59,',    // danger warm
-  'rgba(90,74,58,',     // tertiary
-  'rgba(61,51,40,',     // muted
-  'rgba(160,137,106,',  // accent-hover
+  'rgba(139,115,85,',    // accent gold
+  'rgba(160,81,59,',     // warm ember
+  'rgba(160,137,106,',   // light gold
+  'rgba(120,95,65,',     // deep amber
+  'rgba(180,100,50,',    // orange hint
 ];
 
-export const TypingParticles: React.FC<{ active: boolean }> = ({ active }) => {
+export const TypingParticles: React.FC<{ trigger: number }> = ({ trigger }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const particlesRef = useRef<Particle[]>([]);
   const animFrameRef = useRef<number>(0);
-  const lastSpawnRef = useRef<number>(0);
+  const isRunning = useRef(false);
 
-  const spawnParticle = useCallback((canvasWidth: number, canvasHeight: number) => {
-    const now = Date.now();
-    if (now - lastSpawnRef.current < 60) return; // throttle
-    lastSpawnRef.current = now;
+  const spawnBurst = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || canvas.width === 0) return;
 
-    const count = 1 + Math.floor(Math.random() * 2);
+    const w = canvas.width;
+    const h = canvas.height;
+    // Spawn 2-4 particles per keystroke
+    const count = 2 + Math.floor(Math.random() * 3);
+
     for (let i = 0; i < count; i++) {
+      const isGlyph = Math.random() > 0.4;
+      const isDot = !isGlyph && Math.random() > 0.5;
+      const type = isGlyph ? 'glyph' : isDot ? 'dot' : 'line';
+
       const particle: Particle = {
-        x: 20 + Math.random() * (canvasWidth - 40),
-        y: canvasHeight - 8 - Math.random() * 10,
-        vx: (Math.random() - 0.5) * 0.8,
-        vy: -(0.4 + Math.random() * 0.8),
-        life: 1,
-        maxLife: 300 + Math.random() * 200, // 300-500ms
-        size: 8 + Math.random() * 6,
-        char: CHARS[Math.floor(Math.random() * CHARS.length)],
+        // Spawn from random position along the bottom half
+        x: 10 + Math.random() * (w - 20),
+        y: h * 0.5 + Math.random() * (h * 0.4),
+        vx: (Math.random() - 0.5) * 1.2,
+        vy: -(0.6 + Math.random() * 1.4),
+        life: 1.0,
+        maxLife: 350 + Math.random() * 250, // 350-600ms
+        size: type === 'glyph' ? (10 + Math.random() * 8) : (type === 'dot' ? (4 + Math.random() * 4) : 1),
+        type,
+        char: type === 'glyph'
+          ? GLYPHS[Math.floor(Math.random() * GLYPHS.length)]
+          : DOT_CHARS[Math.floor(Math.random() * DOT_CHARS.length)],
         color: COLORS[Math.floor(Math.random() * COLORS.length)],
+        rotation: Math.random() * Math.PI * 2,
+        rotSpeed: (Math.random() - 0.5) * 0.08,
       };
       particlesRef.current.push(particle);
     }
   }, []);
 
-  const animate = useCallback(() => {
+  const render = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
@@ -63,27 +82,66 @@ export const TypingParticles: React.FC<{ active: boolean }> = ({ active }) => {
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    const deltaMs = 16; // ~60fps
+    if (particlesRef.current.length === 0) {
+      isRunning.current = false;
+      return;
+    }
+
+    const dt = 16;
     particlesRef.current = particlesRef.current.filter((p) => {
-      p.life -= deltaMs / p.maxLife;
+      p.life -= dt / p.maxLife;
       if (p.life <= 0) return false;
 
       p.x += p.vx;
       p.y += p.vy;
-      p.vy -= 0.01; // slight float up acceleration
+      p.vy -= 0.008;
+      p.rotation += p.rotSpeed;
 
-      const opacity = Math.min(p.life, 0.3) * (p.life > 0.7 ? (1 - p.life) / 0.3 : 1);
-      ctx.font = `${p.size}px 'IBM Plex Mono', monospace`;
-      ctx.fillStyle = `${p.color}${opacity.toFixed(2)})`;
-      ctx.textAlign = 'center';
-      ctx.fillText(p.char, p.x, p.y);
+      // Fade: quick in, slow out
+      const fadeIn = p.life > 0.85 ? (1 - p.life) / 0.15 : 1;
+      const fadeOut = p.life < 0.3 ? p.life / 0.3 : 1;
+      const opacity = fadeIn * fadeOut * 0.30; // max 30%
 
+      if (opacity <= 0.005) return true;
+
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.rotation);
+      ctx.globalAlpha = opacity;
+
+      if (p.type === 'line') {
+        // Small tactical line segment
+        const len = 6 + Math.random() * 8;
+        ctx.strokeStyle = `${p.color}1)`;
+        ctx.lineWidth = 0.8;
+        ctx.beginPath();
+        ctx.moveTo(-len / 2, 0);
+        ctx.lineTo(len / 2, 0);
+        ctx.stroke();
+      } else {
+        ctx.font = `${p.size}px 'IBM Plex Mono', monospace`;
+        ctx.fillStyle = `${p.color}1)`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(p.char, 0, 0);
+      }
+
+      ctx.restore();
       return true;
     });
 
-    animFrameRef.current = requestAnimationFrame(animate);
+    animFrameRef.current = requestAnimationFrame(render);
   }, []);
 
+  // Start animation loop when particles exist
+  const startLoop = useCallback(() => {
+    if (!isRunning.current) {
+      isRunning.current = true;
+      animFrameRef.current = requestAnimationFrame(render);
+    }
+  }, [render]);
+
+  // Resize canvas
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -100,20 +158,20 @@ export const TypingParticles: React.FC<{ active: boolean }> = ({ active }) => {
     const observer = new ResizeObserver(resize);
     if (canvas.parentElement) observer.observe(canvas.parentElement);
 
-    animFrameRef.current = requestAnimationFrame(animate);
-
     return () => {
       cancelAnimationFrame(animFrameRef.current);
+      isRunning.current = false;
       observer.disconnect();
     };
-  }, [animate]);
+  }, []);
 
-  // Spawn particles when active (typing)
+  // Spawn on every trigger change (every keystroke)
   useEffect(() => {
-    if (active && canvasRef.current) {
-      spawnParticle(canvasRef.current.width, canvasRef.current.height);
+    if (trigger > 0) {
+      spawnBurst();
+      startLoop();
     }
-  }, [active, spawnParticle]);
+  }, [trigger, spawnBurst, startLoop]);
 
   return (
     <canvas
@@ -123,6 +181,7 @@ export const TypingParticles: React.FC<{ active: boolean }> = ({ active }) => {
         inset: 0,
         pointerEvents: 'none',
         zIndex: 1,
+        borderRadius: 'inherit',
       }}
     />
   );
