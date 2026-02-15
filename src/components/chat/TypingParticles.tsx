@@ -1,8 +1,6 @@
 // ═══════════════════════════════════════
-// AIdark — Typing Particles Effect
+// AIdark — Typing Particles Effect (DEBUG VERSION)
 // ═══════════════════════════════════════
-// Runas Yautja estáticas que pulsan al teclear
-// Efecto decorativo ambiental, sin movimiento, sin distracción
 
 import React, { useRef, useEffect, useCallback } from 'react';
 
@@ -17,7 +15,6 @@ interface Rune {
   pulseDuration: number;
 }
 
-// Alfabeto Yautja auténtico (Predator)
 const YAUTJA_CHARS = [
   '⍙','⍫','⍬','⍭','⍮','⍯','⍰','⍱','⍲','⍳','⍴','⍵',
   '⍶','⍷','⍸','⍹','⍺','⍻','⍼','⍽','⍾','⍿','⎀','⎁',
@@ -26,34 +23,41 @@ const YAUTJA_CHARS = [
   '✕','✖','✗','✘','✠','✡','✢','✣','✤','✥','✦','✧'
 ];
 
-// Colores de la app (armonía existente)
 const COLORS = [
-  '139,115,85',   // dorado tenue
-  '160,81,59',    // terracota
-  '90,74,58',     // marrón oscuro
-  '160,137,106',  // arena
+  '139,115,85',
+  '160,81,59',
+  '90,74,58',
+  '160,137,106',
 ];
 
 const GRID_COLS = 8;
 const GRID_ROWS = 12;
-const BASE_OPACITY = 0.04;  // 4% - casi invisible
-const PEAK_OPACITY = 0.22;  // 22% - brillo sutil
+const BASE_OPACITY = 0.04;
+const PEAK_OPACITY = 0.22;
 
 export const TypingParticles: React.FC<{ trigger: number }> = ({ trigger }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const runesRef = useRef<Rune[]>([]);
   const animFrameRef = useRef<number>(0);
   const lastPulseRef = useRef<number>(0);
+  const pulseCountRef = useRef<number>(0);
 
-  // Inicializar grid de runas estáticas
+  console.log('[TypingParticles] Component mounted, trigger:', trigger);
+
   const initRunes = useCallback((width: number, height: number) => {
+    console.log('[TypingParticles] initRunes called with:', width, height);
+    
+    if (width === 0 || height === 0) {
+      console.error('[TypingParticles] ERROR: Zero dimensions!');
+      return;
+    }
+
     const cellW = width / GRID_COLS;
     const cellH = height / GRID_ROWS;
     const runes: Rune[] = [];
 
     for (let row = 0; row < GRID_ROWS; row++) {
       for (let col = 0; col < GRID_COLS; col++) {
-        // Offset aleatorio dentro de la celda para organicidad
         const offsetX = (Math.random() - 0.5) * (cellW * 0.6);
         const offsetY = (Math.random() - 0.5) * (cellH * 0.6);
         
@@ -65,34 +69,52 @@ export const TypingParticles: React.FC<{ trigger: number }> = ({ trigger }) => {
           baseOpacity: BASE_OPACITY,
           pulsePhase: 'dormant',
           pulseStartTime: 0,
-          pulseDuration: 400 + Math.random() * 200, // 400-600ms
+          pulseDuration: 400 + Math.random() * 200,
         });
       }
     }
 
     runesRef.current = runes;
+    console.log('[TypingParticles] Created', runes.length, 'runes');
   }, []);
 
-  // Disparar pulso en runa aleatoria
   const pulseRandomRune = useCallback(() => {
     const now = Date.now();
-    if (now - lastPulseRef.current < 80) return; // throttle suave
+    if (now - lastPulseRef.current < 80) return;
     lastPulseRef.current = now;
+    pulseCountRef.current++;
 
     const dormantRunes = runesRef.current.filter(r => r.pulsePhase === 'dormant');
-    if (dormantRunes.length === 0) return;
+    console.log('[TypingParticles] Pulse triggered! Dormant runes:', dormantRunes.length);
+    
+    if (dormantRunes.length === 0) {
+      console.log('[TypingParticles] No dormant runes available');
+      return;
+    }
 
     const target = dormantRunes[Math.floor(Math.random() * dormantRunes.length)];
     target.pulsePhase = 'inhale';
     target.pulseStartTime = now;
+    console.log('[TypingParticles] Pulsed rune at:', target.x, target.y, 'char:', target.char);
   }, []);
 
-  // Animación de pulso
   const animate = useCallback(() => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    if (!canvas) {
+      console.error('[TypingParticles] No canvas ref!');
+      return;
+    }
+    
     const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+    if (!ctx) {
+      console.error('[TypingParticles] No 2d context!');
+      return;
+    }
+
+    // Solo loggear cada 60 frames para no saturar
+    if (Math.random() < 0.016) {
+      console.log('[TypingParticles] Animating, runes:', runesRef.current.length, 'active pulses:', runesRef.current.filter(r => r.pulsePhase !== 'dormant').length);
+    }
 
     const now = Date.now();
     ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -100,7 +122,6 @@ export const TypingParticles: React.FC<{ trigger: number }> = ({ trigger }) => {
     runesRef.current.forEach((rune) => {
       let currentOpacity = rune.baseOpacity;
 
-      // Máquina de estados del pulso
       if (rune.pulsePhase !== 'dormant') {
         const elapsed = now - rune.pulseStartTime;
         const progress = elapsed / rune.pulseDuration;
@@ -108,14 +129,12 @@ export const TypingParticles: React.FC<{ trigger: number }> = ({ trigger }) => {
         if (progress >= 1) {
           rune.pulsePhase = 'dormant';
         } else {
-          // Curva de respiración: ease-in-out suave
-          const breathe = Math.sin(progress * Math.PI); // 0 → 1 → 0
+          const breathe = Math.sin(progress * Math.PI);
           const pulseBoost = (PEAK_OPACITY - BASE_OPACITY) * breathe;
           currentOpacity = BASE_OPACITY + pulseBoost;
         }
       }
 
-      // Dibujar runa estática
       ctx.font = `300 14px 'IBM Plex Mono', monospace`;
       ctx.fillStyle = `rgba(${rune.color},${currentOpacity.toFixed(3)})`;
       ctx.textAlign = 'center';
@@ -126,34 +145,49 @@ export const TypingParticles: React.FC<{ trigger: number }> = ({ trigger }) => {
     animFrameRef.current = requestAnimationFrame(animate);
   }, []);
 
-  // Setup inicial
   useEffect(() => {
+    console.log('[TypingParticles] Setup effect running');
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    if (!canvas) {
+      console.error('[TypingParticles] Canvas ref is null on mount!');
+      return;
+    }
 
     const resize = () => {
       const parent = canvas.parentElement;
+      console.log('[TypingParticles] Resize called, parent:', parent);
+      
       if (parent) {
-        canvas.width = parent.offsetWidth;
-        canvas.height = parent.offsetHeight;
+        const rect = parent.getBoundingClientRect();
+        console.log('[TypingParticles] Parent dimensions:', rect.width, rect.height);
+        
+        canvas.width = rect.width;
+        canvas.height = rect.height;
         initRunes(canvas.width, canvas.height);
       }
     };
 
     resize();
-    const observer = new ResizeObserver(resize);
-    if (canvas.parentElement) observer.observe(canvas.parentElement);
+    
+    let observer: ResizeObserver | null = null;
+    if (canvas.parentElement) {
+      observer = new ResizeObserver(resize);
+      observer.observe(canvas.parentElement);
+      console.log('[TypingParticles] ResizeObserver attached');
+    }
 
     animFrameRef.current = requestAnimationFrame(animate);
+    console.log('[TypingParticles] Animation started');
 
     return () => {
+      console.log('[TypingParticles] Cleanup');
       cancelAnimationFrame(animFrameRef.current);
-      observer.disconnect();
+      if (observer) observer.disconnect();
     };
   }, [initRunes, animate]);
 
-  // Trigger de tecla
   useEffect(() => {
+    console.log('[TypingParticles] Trigger effect:', trigger);
     if (trigger > 0) {
       pulseRandomRune();
     }
@@ -166,7 +200,8 @@ export const TypingParticles: React.FC<{ trigger: number }> = ({ trigger }) => {
         position: 'absolute',
         inset: 0,
         pointerEvents: 'none',
-        zIndex: 0, // Detrás de todo
+        zIndex: 0,
+        border: '1px solid red', // DEBUG: Ver si el canvas existe
       }}
     />
   );
