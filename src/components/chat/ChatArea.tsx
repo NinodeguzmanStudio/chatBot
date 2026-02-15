@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════
-// AIdark — Chat Area (FIXED + STREAMING + PARTICLES)
+// AIdark — Chat Area (FULL CANVAS + YAUTJA RUNES)
 // ═══════════════════════════════════════
 
 import React, { useRef, useEffect, useState } from 'react';
@@ -122,17 +122,33 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, height: '100%' }}>
+    <div style={{ 
+      display: 'flex', 
+      flexDirection: 'column', 
+      flex: 1, 
+      height: '100%',
+      position: 'relative', // Contenedor relativo para el canvas
+    }}>
+      {/* Canvas de runas Yautja - FULL AREA */}
+      <TypingParticles trigger={keystrokeCount} />
+
       {/* Messages */}
       <div ref={scrollRef} style={{
-        flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column',
+        flex: 1, 
+        overflowY: 'auto', 
+        display: 'flex', 
+        flexDirection: 'column',
         padding: writerMode ? '0' : undefined,
+        position: 'relative',
+        zIndex: 1, // Sobre el canvas
       }}>
         {messages.length === 0 && !streamingContent ? (
           /* ── Empty State ── */
           <div style={{
             flex: 1, display: 'flex', flexDirection: 'column',
             alignItems: 'center', justifyContent: 'center', padding: 20,
+            position: 'relative',
+            zIndex: 1,
           }}>
             <div style={{ marginBottom: 6, animation: 'fadeIn 0.8s ease' }}>
               <span style={{
@@ -162,6 +178,8 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
           <div style={{
             maxWidth: writerMode ? 900 : 720, width: '100%', margin: '0 auto',
             padding: isMobile ? '16px 14px' : '24px 20px', flex: 1,
+            position: 'relative',
+            zIndex: 1,
           }}>
             {messages.map((msg, idx) => (
               <MessageBubble key={msg.id} message={msg} index={idx} />
@@ -206,9 +224,11 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
           ? (isMobile ? '0 12px 24px' : '0 20px 40px')
           : (isMobile ? '0 12px 14px' : '0 20px 20px'),
         display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0,
+        position: 'relative',
+        zIndex: 1, // Sobre el canvas
       }}>
         <div style={{ maxWidth: writerMode ? 900 : 720, width: '100%' }}>
-          {/* Input container — particles live here */}
+          {/* Input container */}
           <div style={{
             background: 'var(--bg-surface)',
             border: '1px solid var(--border-sub)',
@@ -217,13 +237,11 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
             transition: 'border-color 0.2s',
             position: 'relative',
             overflow: 'hidden',
+            zIndex: 2,
           }}
           onFocus={e => e.currentTarget.style.borderColor = 'var(--border-def)'}
           onBlur={e => e.currentTarget.style.borderColor = 'var(--border-sub)'}
           >
-            {/* Particle canvas overlay */}
-            <TypingParticles trigger={keystrokeCount} />
-
             <textarea
               ref={textareaRef}
               value={input}
