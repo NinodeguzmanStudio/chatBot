@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════
-// AIdark — Typing Particles Effect (DEBUG VERSION)
+// AIdark — Typing Particles Effect
 // ═══════════════════════════════════════
 
 import React, { useRef, useEffect, useCallback } from 'react';
@@ -9,10 +9,9 @@ interface Rune {
   y: number;
   char: string;
   color: string;
-  baseOpacity: number;
-  pulsePhase: 'dormant' | 'inhale' | 'peak' | 'exhale';
   pulseStartTime: number;
   pulseDuration: number;
+  isPulsing: boolean;
 }
 
 const YAUTJA_CHARS = [
@@ -25,173 +24,129 @@ const YAUTJA_CHARS = [
 
 const COLORS = [
   '139,115,85',
-  '160,81,59',
+  '160,81,59', 
   '90,74,58',
   '160,137,106',
 ];
 
-const GRID_COLS = 8;
-const GRID_ROWS = 12;
 const BASE_OPACITY = 0.04;
-const PEAK_OPACITY = 0.22;
+const PEAK_OPACITY = 0.25;
 
 export const TypingParticles: React.FC<{ trigger: number }> = ({ trigger }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const runesRef = useRef<Rune[]>([]);
-  const animFrameRef = useRef<number>(0);
+  const frameRef = useRef<number>(0);
   const lastPulseRef = useRef<number>(0);
-  const pulseCountRef = useRef<number>(0);
+  const dimsRef = useRef<{ w: number; h: number }>({ w: 0, h: 0 });
 
-  console.log('[TypingParticles] Component mounted, trigger:', trigger);
-
-  const initRunes = useCallback((width: number, height: number) => {
-    console.log('[TypingParticles] initRunes called with:', width, height);
+  const initRunes = useCallback((w: number, h: number) => {
+    if (!w || !h) return;
+    dimsRef.current = { w, h };
     
-    if (width === 0 || height === 0) {
-      console.error('[TypingParticles] ERROR: Zero dimensions!');
-      return;
-    }
-
-    const cellW = width / GRID_COLS;
-    const cellH = height / GRID_ROWS;
+    const cols = Math.floor(w / 80);
+    const rows = Math.floor(h / 60);
     const runes: Rune[] = [];
 
-    for (let row = 0; row < GRID_ROWS; row++) {
-      for (let col = 0; col < GRID_COLS; col++) {
-        const offsetX = (Math.random() - 0.5) * (cellW * 0.6);
-        const offsetY = (Math.random() - 0.5) * (cellH * 0.6);
-        
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
         runes.push({
-          x: col * cellW + cellW/2 + offsetX,
-          y: row * cellH + cellH/2 + offsetY,
+          x: (c + 0.5) * (w / cols) + (Math.random() - 0.5) * 20,
+          y: (r + 0.5) * (h / rows) + (Math.random() - 0.5) * 20,
           char: YAUTJA_CHARS[Math.floor(Math.random() * YAUTJA_CHARS.length)],
           color: COLORS[Math.floor(Math.random() * COLORS.length)],
-          baseOpacity: BASE_OPACITY,
-          pulsePhase: 'dormant',
           pulseStartTime: 0,
-          pulseDuration: 400 + Math.random() * 200,
+          pulseDuration: 500,
+          isPulsing: false,
         });
       }
     }
-
     runesRef.current = runes;
-    console.log('[TypingParticles] Created', runes.length, 'runes');
   }, []);
 
-  const pulseRandomRune = useCallback(() => {
+  const pulse = useCallback(() => {
     const now = Date.now();
-    if (now - lastPulseRef.current < 80) return;
+    if (now - lastPulseRef.current < 60) return;
     lastPulseRef.current = now;
-    pulseCountRef.current++;
 
-    const dormantRunes = runesRef.current.filter(r => r.pulsePhase === 'dormant');
-    console.log('[TypingParticles] Pulse triggered! Dormant runes:', dormantRunes.length);
+    const available = runesRef.current.filter(r => !r.isPulsing);
+    if (!available.length) return;
     
-    if (dormantRunes.length === 0) {
-      console.log('[TypingParticles] No dormant runes available');
-      return;
-    }
-
-    const target = dormantRunes[Math.floor(Math.random() * dormantRunes.length)];
-    target.pulsePhase = 'inhale';
-    target.pulseStartTime = now;
-    console.log('[TypingParticles] Pulsed rune at:', target.x, target.y, 'char:', target.char);
-  }, []);
-
-  const animate = useCallback(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) {
-      console.error('[TypingParticles] No canvas ref!');
-      return;
-    }
-    
-    const ctx = canvas.getContext('2d');
-    if (!ctx) {
-      console.error('[TypingParticles] No 2d context!');
-      return;
-    }
-
-    // Solo loggear cada 60 frames para no saturar
-    if (Math.random() < 0.016) {
-      console.log('[TypingParticles] Animating, runes:', runesRef.current.length, 'active pulses:', runesRef.current.filter(r => r.pulsePhase !== 'dormant').length);
-    }
-
-    const now = Date.now();
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-    runesRef.current.forEach((rune) => {
-      let currentOpacity = rune.baseOpacity;
-
-      if (rune.pulsePhase !== 'dormant') {
-        const elapsed = now - rune.pulseStartTime;
-        const progress = elapsed / rune.pulseDuration;
-
-        if (progress >= 1) {
-          rune.pulsePhase = 'dormant';
-        } else {
-          const breathe = Math.sin(progress * Math.PI);
-          const pulseBoost = (PEAK_OPACITY - BASE_OPACITY) * breathe;
-          currentOpacity = BASE_OPACITY + pulseBoost;
-        }
-      }
-
-      ctx.font = `300 14px 'IBM Plex Mono', monospace`;
-      ctx.fillStyle = `rgba(${rune.color},${currentOpacity.toFixed(3)})`;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(rune.char, rune.x, rune.y);
-    });
-
-    animFrameRef.current = requestAnimationFrame(animate);
+    const rune = available[Math.floor(Math.random() * available.length)];
+    rune.isPulsing = true;
+    rune.pulseStartTime = now;
   }, []);
 
   useEffect(() => {
-    console.log('[TypingParticles] Setup effect running');
     const canvas = canvasRef.current;
-    if (!canvas) {
-      console.error('[TypingParticles] Canvas ref is null on mount!');
-      return;
-    }
+    if (!canvas) return;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
 
     const resize = () => {
       const parent = canvas.parentElement;
-      console.log('[TypingParticles] Resize called, parent:', parent);
+      if (!parent) return;
       
-      if (parent) {
-        const rect = parent.getBoundingClientRect();
-        console.log('[TypingParticles] Parent dimensions:', rect.width, rect.height);
-        
-        canvas.width = rect.width;
-        canvas.height = rect.height;
-        initRunes(canvas.width, canvas.height);
-      }
+      const rect = parent.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      
+      canvas.width = rect.width * dpr;
+      canvas.height = rect.height * dpr;
+      canvas.style.width = `${rect.width}px`;
+      canvas.style.height = `${rect.height}px`;
+      
+      ctx.scale(dpr, dpr);
+      initRunes(rect.width, rect.height);
     };
 
     resize();
-    
-    let observer: ResizeObserver | null = null;
-    if (canvas.parentElement) {
-      observer = new ResizeObserver(resize);
-      observer.observe(canvas.parentElement);
-      console.log('[TypingParticles] ResizeObserver attached');
-    }
+    window.addEventListener('resize', resize);
 
-    animFrameRef.current = requestAnimationFrame(animate);
-    console.log('[TypingParticles] Animation started');
+    const animate = () => {
+      const { w, h } = dimsRef.current;
+      if (!w || !h) {
+        frameRef.current = requestAnimationFrame(animate);
+        return;
+      }
+
+      ctx.clearRect(0, 0, w, h);
+      const now = Date.now();
+
+      runesRef.current.forEach(r => {
+        if (r.isPulsing) {
+          const elapsed = now - r.pulseStartTime;
+          if (elapsed >= r.pulseDuration) {
+            r.isPulsing = false;
+          }
+        }
+
+        const progress = r.isPulsing 
+          ? (now - r.pulseStartTime) / r.pulseDuration 
+          : 0;
+        
+        const breathe = r.isPulsing ? Math.sin(progress * Math.PI) : 0;
+        const opacity = BASE_OPACITY + (PEAK_OPACITY - BASE_OPACITY) * breathe;
+
+        ctx.font = '300 16px monospace';
+        ctx.fillStyle = `rgba(${r.color},${opacity.toFixed(3)})`;
+        ctx.textAlign = 'center';
+        ctx.fillText(r.char, r.x, r.y);
+      });
+
+      frameRef.current = requestAnimationFrame(animate);
+    };
+
+    frameRef.current = requestAnimationFrame(animate);
 
     return () => {
-      console.log('[TypingParticles] Cleanup');
-      cancelAnimationFrame(animFrameRef.current);
-      if (observer) observer.disconnect();
+      cancelAnimationFrame(frameRef.current);
+      window.removeEventListener('resize', resize);
     };
-  }, [initRunes, animate]);
+  }, [initRunes]);
 
   useEffect(() => {
-    console.log('[TypingParticles] Trigger effect:', trigger);
-    if (trigger > 0) {
-      pulseRandomRune();
-    }
-  }, [trigger, pulseRandomRune]);
+    if (trigger > 0) pulse();
+  }, [trigger, pulse]);
 
   return (
     <canvas
@@ -201,7 +156,6 @@ export const TypingParticles: React.FC<{ trigger: number }> = ({ trigger }) => {
         inset: 0,
         pointerEvents: 'none',
         zIndex: 0,
-        border: '1px solid red', // DEBUG: Ver si el canvas existe
       }}
     />
   );
