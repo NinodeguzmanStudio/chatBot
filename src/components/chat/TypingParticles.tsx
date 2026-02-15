@@ -1,147 +1,132 @@
 // ═══════════════════════════════════════
-// AIdark — Typing Particles v2
+// AIdark — Typing Particles Effect
 // ═══════════════════════════════════════
-// HUD-style ambient particles on keystrokes
-// Warm predator tones matching app aesthetic
+// Runas Yautja estáticas que pulsan al teclear
+// Efecto decorativo ambiental, sin movimiento, sin distracción
 
 import React, { useRef, useEffect, useCallback } from 'react';
 
-interface Particle {
+interface Rune {
   x: number;
   y: number;
-  vx: number;
-  vy: number;
-  life: number;
-  maxLife: number;
-  size: number;
-  type: 'glyph' | 'dot' | 'line';
   char: string;
   color: string;
-  rotation: number;
-  rotSpeed: number;
+  baseOpacity: number;
+  pulsePhase: 'dormant' | 'inhale' | 'peak' | 'exhale';
+  pulseStartTime: number;
+  pulseDuration: number;
 }
 
-// HUD glyphs — angular, geometric, tactical feel
-const GLYPHS = ['◇', '△', '▽', '⬡', '⊕', '⊗', '⟐', '⬢', '⏣', '⏢', '⌬', '⟁'];
-const DOT_CHARS = ['·', '∘', '•', '⊙'];
-
-const COLORS = [
-  'rgba(139,115,85,',    // accent gold
-  'rgba(160,81,59,',     // warm ember
-  'rgba(160,137,106,',   // light gold
-  'rgba(120,95,65,',     // deep amber
-  'rgba(180,100,50,',    // orange hint
+// Alfabeto Yautja auténtico (Predator)
+const YAUTJA_CHARS = [
+  '⍙','⍫','⍬','⍭','⍮','⍯','⍰','⍱','⍲','⍳','⍴','⍵',
+  '⍶','⍷','⍸','⍹','⍺','⍻','⍼','⍽','⍾','⍿','⎀','⎁',
+  '⎂','⎃','◬','◭','◮','◸','◹','◺','◿','⧖','⧗','⧓',
+  '⧔','⧕','⧊','⧋','⧌','⧍','⬟','⬠','⬡','⬢','⬣','⬤',
+  '✕','✖','✗','✘','✠','✡','✢','✣','✤','✥','✦','✧'
 ];
+
+// Colores de la app (armonía existente)
+const COLORS = [
+  '139,115,85',   // dorado tenue
+  '160,81,59',    // terracota
+  '90,74,58',     // marrón oscuro
+  '160,137,106',  // arena
+];
+
+const GRID_COLS = 8;
+const GRID_ROWS = 12;
+const BASE_OPACITY = 0.04;  // 4% - casi invisible
+const PEAK_OPACITY = 0.22;  // 22% - brillo sutil
 
 export const TypingParticles: React.FC<{ trigger: number }> = ({ trigger }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const particlesRef = useRef<Particle[]>([]);
+  const runesRef = useRef<Rune[]>([]);
   const animFrameRef = useRef<number>(0);
-  const isRunning = useRef(false);
+  const lastPulseRef = useRef<number>(0);
 
-  const spawnBurst = useCallback(() => {
-    const canvas = canvasRef.current;
-    if (!canvas || canvas.width === 0) return;
+  // Inicializar grid de runas estáticas
+  const initRunes = useCallback((width: number, height: number) => {
+    const cellW = width / GRID_COLS;
+    const cellH = height / GRID_ROWS;
+    const runes: Rune[] = [];
 
-    const w = canvas.width;
-    const h = canvas.height;
-    // Spawn 2-4 particles per keystroke
-    const count = 2 + Math.floor(Math.random() * 3);
-
-    for (let i = 0; i < count; i++) {
-      const isGlyph = Math.random() > 0.4;
-      const isDot = !isGlyph && Math.random() > 0.5;
-      const type = isGlyph ? 'glyph' : isDot ? 'dot' : 'line';
-
-      const particle: Particle = {
-        // Spawn from random position along the bottom half
-        x: 10 + Math.random() * (w - 20),
-        y: h * 0.5 + Math.random() * (h * 0.4),
-        vx: (Math.random() - 0.5) * 1.2,
-        vy: -(0.6 + Math.random() * 1.4),
-        life: 1.0,
-        maxLife: 350 + Math.random() * 250, // 350-600ms
-        size: type === 'glyph' ? (10 + Math.random() * 8) : (type === 'dot' ? (4 + Math.random() * 4) : 1),
-        type,
-        char: type === 'glyph'
-          ? GLYPHS[Math.floor(Math.random() * GLYPHS.length)]
-          : DOT_CHARS[Math.floor(Math.random() * DOT_CHARS.length)],
-        color: COLORS[Math.floor(Math.random() * COLORS.length)],
-        rotation: Math.random() * Math.PI * 2,
-        rotSpeed: (Math.random() - 0.5) * 0.08,
-      };
-      particlesRef.current.push(particle);
+    for (let row = 0; row < GRID_ROWS; row++) {
+      for (let col = 0; col < GRID_COLS; col++) {
+        // Offset aleatorio dentro de la celda para organicidad
+        const offsetX = (Math.random() - 0.5) * (cellW * 0.6);
+        const offsetY = (Math.random() - 0.5) * (cellH * 0.6);
+        
+        runes.push({
+          x: col * cellW + cellW/2 + offsetX,
+          y: row * cellH + cellH/2 + offsetY,
+          char: YAUTJA_CHARS[Math.floor(Math.random() * YAUTJA_CHARS.length)],
+          color: COLORS[Math.floor(Math.random() * COLORS.length)],
+          baseOpacity: BASE_OPACITY,
+          pulsePhase: 'dormant',
+          pulseStartTime: 0,
+          pulseDuration: 400 + Math.random() * 200, // 400-600ms
+        });
+      }
     }
+
+    runesRef.current = runes;
   }, []);
 
-  const render = useCallback(() => {
+  // Disparar pulso en runa aleatoria
+  const pulseRandomRune = useCallback(() => {
+    const now = Date.now();
+    if (now - lastPulseRef.current < 80) return; // throttle suave
+    lastPulseRef.current = now;
+
+    const dormantRunes = runesRef.current.filter(r => r.pulsePhase === 'dormant');
+    if (dormantRunes.length === 0) return;
+
+    const target = dormantRunes[Math.floor(Math.random() * dormantRunes.length)];
+    target.pulsePhase = 'inhale';
+    target.pulseStartTime = now;
+  }, []);
+
+  // Animación de pulso
+  const animate = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
+    const now = Date.now();
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    if (particlesRef.current.length === 0) {
-      isRunning.current = false;
-      return;
-    }
+    runesRef.current.forEach((rune) => {
+      let currentOpacity = rune.baseOpacity;
 
-    const dt = 16;
-    particlesRef.current = particlesRef.current.filter((p) => {
-      p.life -= dt / p.maxLife;
-      if (p.life <= 0) return false;
+      // Máquina de estados del pulso
+      if (rune.pulsePhase !== 'dormant') {
+        const elapsed = now - rune.pulseStartTime;
+        const progress = elapsed / rune.pulseDuration;
 
-      p.x += p.vx;
-      p.y += p.vy;
-      p.vy -= 0.008;
-      p.rotation += p.rotSpeed;
-
-      // Fade: quick in, slow out
-      const fadeIn = p.life > 0.85 ? (1 - p.life) / 0.15 : 1;
-      const fadeOut = p.life < 0.3 ? p.life / 0.3 : 1;
-      const opacity = fadeIn * fadeOut * 0.30; // max 30%
-
-      if (opacity <= 0.005) return true;
-
-      ctx.save();
-      ctx.translate(p.x, p.y);
-      ctx.rotate(p.rotation);
-      ctx.globalAlpha = opacity;
-
-      if (p.type === 'line') {
-        // Small tactical line segment
-        const len = 6 + Math.random() * 8;
-        ctx.strokeStyle = `${p.color}1)`;
-        ctx.lineWidth = 0.8;
-        ctx.beginPath();
-        ctx.moveTo(-len / 2, 0);
-        ctx.lineTo(len / 2, 0);
-        ctx.stroke();
-      } else {
-        ctx.font = `${p.size}px 'IBM Plex Mono', monospace`;
-        ctx.fillStyle = `${p.color}1)`;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(p.char, 0, 0);
+        if (progress >= 1) {
+          rune.pulsePhase = 'dormant';
+        } else {
+          // Curva de respiración: ease-in-out suave
+          const breathe = Math.sin(progress * Math.PI); // 0 → 1 → 0
+          const pulseBoost = (PEAK_OPACITY - BASE_OPACITY) * breathe;
+          currentOpacity = BASE_OPACITY + pulseBoost;
+        }
       }
 
-      ctx.restore();
-      return true;
+      // Dibujar runa estática
+      ctx.font = `300 14px 'IBM Plex Mono', monospace`;
+      ctx.fillStyle = `rgba(${rune.color},${currentOpacity.toFixed(3)})`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(rune.char, rune.x, rune.y);
     });
 
-    animFrameRef.current = requestAnimationFrame(render);
+    animFrameRef.current = requestAnimationFrame(animate);
   }, []);
 
-  // Start animation loop when particles exist
-  const startLoop = useCallback(() => {
-    if (!isRunning.current) {
-      isRunning.current = true;
-      animFrameRef.current = requestAnimationFrame(render);
-    }
-  }, [render]);
-
-  // Resize canvas
+  // Setup inicial
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -151,6 +136,7 @@ export const TypingParticles: React.FC<{ trigger: number }> = ({ trigger }) => {
       if (parent) {
         canvas.width = parent.offsetWidth;
         canvas.height = parent.offsetHeight;
+        initRunes(canvas.width, canvas.height);
       }
     };
 
@@ -158,20 +144,20 @@ export const TypingParticles: React.FC<{ trigger: number }> = ({ trigger }) => {
     const observer = new ResizeObserver(resize);
     if (canvas.parentElement) observer.observe(canvas.parentElement);
 
+    animFrameRef.current = requestAnimationFrame(animate);
+
     return () => {
       cancelAnimationFrame(animFrameRef.current);
-      isRunning.current = false;
       observer.disconnect();
     };
-  }, []);
+  }, [initRunes, animate]);
 
-  // Spawn on every trigger change (every keystroke)
+  // Trigger de tecla
   useEffect(() => {
     if (trigger > 0) {
-      spawnBurst();
-      startLoop();
+      pulseRandomRune();
     }
-  }, [trigger, spawnBurst, startLoop]);
+  }, [trigger, pulseRandomRune]);
 
   return (
     <canvas
@@ -180,8 +166,7 @@ export const TypingParticles: React.FC<{ trigger: number }> = ({ trigger }) => {
         position: 'absolute',
         inset: 0,
         pointerEvents: 'none',
-        zIndex: 1,
-        borderRadius: 'inherit',
+        zIndex: 0, // Detrás de todo
       }}
     />
   );
