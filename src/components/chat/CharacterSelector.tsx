@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════
-// AIdark — Character Selector v4
+// AIdark — Character Selector (FIXED)
 // ═══════════════════════════════════════
 
 import React, { useState, useRef, useEffect } from 'react';
