@@ -7,7 +7,7 @@ import { Send, Maximize2, Minimize2 } from 'lucide-react';
 import { useChatStore, useAuthStore } from '@/lib/store';
 import { sendMessageStream, sendMessage } from '@/services/venice';
 import { generateId } from '@/lib/utils';
-import { APP_CONFIG, AI_CHARACTERS, PROMPT_GALLERY } from '@/lib/constants';
+import { APP_CONFIG, AI_CHARACTERS } from '@/lib/constants';
 import { MessageBubble } from './MessageBubble';
 import { ModelSelector } from './ModelSelector';
 import { CharacterSelector } from './CharacterSelector';
@@ -114,11 +114,6 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
     }
   };
 
-  const handlePrompt = (prompt: string) => {
-    setInput(prompt);
-    textareaRef.current?.focus();
-  };
-
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const val = e.target.value;
     if (val.length <= charLimit) setInput(val);
@@ -160,7 +155,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
             }}>
               Tus chats son privados y se eliminan automáticamente.
             </p>
-
+          </div>
         ) : (
           /* ── Messages ── */
           <div style={{
