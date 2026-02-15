@@ -5,6 +5,7 @@ export { MessageBubble } from './chat/MessageBubble';
 export { ModelSelector } from './chat/ModelSelector';
 export { CharacterSelector } from './chat/CharacterSelector';
 export { AgeGate } from './modals/AgeGate';
+export { AuthModal } from './modals/AuthModal';
 export { PricingModal } from './modals/PricingModal';
 export { SettingsModal } from './modals/SettingsModal';
 export { PrivacyModal } from './modals/PrivacyModal';
