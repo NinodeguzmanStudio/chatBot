@@ -1,17 +1,19 @@
 // ═══════════════════════════════════════
-// AIdark — Message Bubble v4
+// AIdark — Message Bubble (FIXED + Markdown)
 // ═══════════════════════════════════════
 
 import React, { useState } from 'react';
-import { Copy } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import { Copy, Check } from 'lucide-react';
 import { AI_CHARACTERS } from '@/lib/constants';
 import { formatTime } from '@/lib/utils';
+import { useIsMobile } from '@/hooks/useIsMobile';
 import type { Message } from '@/types';
 
 export const MessageBubble: React.FC<{ message: Message; index: number }> = ({ message, index }) => {
   const isUser = message.role === 'user';
   const [copied, setCopied] = useState(false);
-  const isMobile = window.innerWidth < 768;
+  const isMobile = useIsMobile();
   const character = AI_CHARACTERS.find((c) => c.id === (message.character || 'default')) || AI_CHARACTERS[0];
 
   const handleCopy = () => {
@@ -56,19 +58,30 @@ export const MessageBubble: React.FC<{ message: Message; index: number }> = ({ m
             border: 'none', color: copied ? '#6b8' : 'var(--txt-mut)',
             fontSize: 10, fontWeight: 500, cursor: 'pointer', transition: 'all 0.2s',
           }}>
-            <Copy size={11} /> {copied ? 'Copiado' : 'Copiar'}
+            {copied ? <Check size={11} /> : <Copy size={11} />}
+            {copied ? 'Copiado' : 'Copiar'}
           </button>
         )}
       </div>
       {/* Content */}
       <div style={{ paddingLeft: isMobile ? 0 : 34 }}>
-        <p style={{
-          fontSize: isMobile ? 13 : 14, lineHeight: 1.8,
-          color: isUser ? 'var(--txt-sec)' : 'var(--txt-pri)',
-          whiteSpace: 'pre-wrap', wordBreak: 'break-word',
-        }}>
-          {message.content}
-        </p>
+        {isUser ? (
+          <p style={{
+            fontSize: isMobile ? 13 : 14, lineHeight: 1.8,
+            color: 'var(--txt-sec)',
+            whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+          }}>
+            {message.content}
+          </p>
+        ) : (
+          <div className="markdown-content" style={{
+            fontSize: isMobile ? 13 : 14, lineHeight: 1.8,
+            color: 'var(--txt-pri)',
+            wordBreak: 'break-word',
+          }}>
+            <ReactMarkdown>{message.content}</ReactMarkdown>
+          </div>
+        )}
       </div>
     </div>
   );
