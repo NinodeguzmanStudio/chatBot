@@ -11,6 +11,7 @@ import { APP_CONFIG, AI_CHARACTERS, PROMPT_GALLERY } from '@/lib/constants';
 import { MessageBubble } from './MessageBubble';
 import { ModelSelector } from './ModelSelector';
 import { CharacterSelector } from './CharacterSelector';
+import { TypingParticles } from './TypingParticles';
 import { useIsMobile } from '@/hooks/useIsMobile';
 import type { Message } from '@/types';
 
@@ -26,6 +27,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
   const { canSendMessage, incrementMessages, getRemainingMessages } = useAuthStore();
   const [input, setInput] = useState('');
   const [streamingContent, setStreamingContent] = useState('');
+  const [particleKey, setParticleKey] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const isMobile = useIsMobile();
@@ -245,14 +247,17 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
             borderRadius: isMobile ? 12 : 14,
             padding: isMobile ? '10px 12px 8px' : '12px 16px 8px',
             transition: 'border-color 0.2s',
+            position: 'relative',
+            overflow: 'hidden',
           }}
           onFocus={e => e.currentTarget.style.borderColor = 'var(--border-def)'}
           onBlur={e => e.currentTarget.style.borderColor = 'var(--border-sub)'}
           >
+            <TypingParticles active={particleKey} />
             <textarea
               ref={textareaRef}
               value={input}
-              onChange={handleInputChange}
+              onChange={(e) => { handleInputChange(e); setParticleKey(k => !k); }}
               onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
               placeholder={`Escribe a ${character.name}...`}
               rows={1}
