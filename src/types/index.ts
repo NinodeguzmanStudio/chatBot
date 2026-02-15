@@ -1,9 +1,10 @@
 // ═══════════════════════════════════════
-// AIdark — Type Definitions
+// AIdark — Type Definitions (FIXED)
 // ═══════════════════════════════════════
 
 // ── Chat ──
 export type ModelId = 'venice' | 'dark-grok' | 'void-x';
+export type CharacterId = 'default' | 'dark-grok' | 'void-x' | 'seductora' | 'detective';
 
 export interface Model {
   id: ModelId;
@@ -12,12 +13,29 @@ export interface Model {
   primary: boolean;
 }
 
+export interface AICharacter {
+  id: CharacterId;
+  name: string;
+  avatar: string;
+  color: string;
+  role: string;
+  premium: boolean;
+  systemPrompt: string;
+}
+
+export interface PromptItem {
+  icon: string;
+  label: string;
+  prompt: string;
+}
+
 export interface Message {
   id: string;
   role: 'user' | 'assistant';
   content: string;
   timestamp: number;
   model?: ModelId;
+  character?: CharacterId;
 }
 
 export interface ChatSession {
