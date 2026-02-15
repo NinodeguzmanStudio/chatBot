@@ -44,7 +44,6 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
 
   useEffect(() => { textareaRef.current?.focus(); }, [activeSessionId]);
 
-  // Auto-resize textarea
   useEffect(() => {
     const el = textareaRef.current;
     if (el) {
@@ -127,12 +126,11 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
       flexDirection: 'column', 
       flex: 1, 
       height: '100%',
-      position: 'relative', // Contenedor relativo para el canvas
+      position: 'relative',
+      overflow: 'hidden',
     }}>
-      {/* Canvas de runas Yautja - FULL AREA */}
       <TypingParticles trigger={keystrokeCount} />
 
-      {/* Messages */}
       <div ref={scrollRef} style={{
         flex: 1, 
         overflowY: 'auto', 
@@ -140,10 +138,9 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
         flexDirection: 'column',
         padding: writerMode ? '0' : undefined,
         position: 'relative',
-        zIndex: 1, // Sobre el canvas
+        zIndex: 1,
       }}>
         {messages.length === 0 && !streamingContent ? (
-          /* ── Empty State ── */
           <div style={{
             flex: 1, display: 'flex', flexDirection: 'column',
             alignItems: 'center', justifyContent: 'center', padding: 20,
@@ -174,7 +171,6 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
             </p>
           </div>
         ) : (
-          /* ── Messages ── */
           <div style={{
             maxWidth: writerMode ? 900 : 720, width: '100%', margin: '0 auto',
             padding: isMobile ? '16px 14px' : '24px 20px', flex: 1,
@@ -218,17 +214,15 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
         )}
       </div>
 
-      {/* ── Input Area ── */}
       <div style={{
         padding: messages.length === 0
           ? (isMobile ? '0 12px 24px' : '0 20px 40px')
           : (isMobile ? '0 12px 14px' : '0 20px 20px'),
         display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0,
         position: 'relative',
-        zIndex: 1, // Sobre el canvas
+        zIndex: 1,
       }}>
         <div style={{ maxWidth: writerMode ? 900 : 720, width: '100%' }}>
-          {/* Input container */}
           <div style={{
             background: 'var(--bg-surface)',
             border: '1px solid var(--border-sub)',
@@ -260,7 +254,6 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
               }}
             />
 
-            {/* Controls */}
             <div style={{
               display: 'flex', alignItems: 'center', justifyContent: 'space-between',
               marginTop: 8, gap: 6, position: 'relative', zIndex: 2,
@@ -303,7 +296,6 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
             </div>
           </div>
 
-          {/* Bottom info */}
           <div style={{
             display: 'flex', justifyContent: 'space-between', alignItems: 'center',
             marginTop: 6, padding: '0 4px',
