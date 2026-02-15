@@ -1,28 +1,34 @@
 // ═══════════════════════════════════════
-// AIdark — Chat Area v4
+// AIdark — Chat Area (FIXED + STREAMING)
 // ═══════════════════════════════════════
 
 import React, { useRef, useEffect, useState } from 'react';
 import { Send, Maximize2, Minimize2 } from 'lucide-react';
 import { useChatStore, useAuthStore } from '@/lib/store';
-import { sendMessage } from '@/services/venice';
+import { sendMessageStream, sendMessage } from '@/services/venice';
 import { generateId } from '@/lib/utils';
 import { APP_CONFIG, AI_CHARACTERS, PROMPT_GALLERY } from '@/lib/constants';
 import { MessageBubble } from './MessageBubble';
 import { ModelSelector } from './ModelSelector';
 import { CharacterSelector } from './CharacterSelector';
+import { useIsMobile } from '@/hooks/useIsMobile';
 import type { Message } from '@/types';
 
-export const ChatArea: React.FC<{ onOpenPricing: () => void }> = ({ onOpenPricing }) => {
+interface ChatAreaProps {
+  onOpenPricing: () => void;
+}
+
+export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
   const {
     sessions, activeSessionId, selectedModel, selectedCharacter, isTyping,
     setIsTyping, addMessage, createSession, writerMode, setWriterMode,
   } = useChatStore();
   const { canSendMessage, incrementMessages, getRemainingMessages } = useAuthStore();
   const [input, setInput] = useState('');
+  const [streamingContent, setStreamingContent] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const isMobile = window.innerWidth < 768;
+  const isMobile = useIsMobile();
 
   const activeSession = sessions.find((s) => s.id === activeSessionId);
   const messages = activeSession?.messages || [];
@@ -32,7 +38,7 @@ export const ChatArea: React.FC<{ onOpenPricing: () => void }> = ({ onOpenPricin
 
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-  }, [messages, isTyping]);
+  }, [messages, isTyping, streamingContent]);
 
   useEffect(() => { textareaRef.current?.focus(); }, [activeSessionId]);
 
@@ -64,21 +70,46 @@ export const ChatArea: React.FC<{ onOpenPricing: () => void }> = ({ onOpenPricin
     addMessage(sessionId, userMsg);
     setInput('');
     setIsTyping(true);
+    setStreamingContent('');
     incrementMessages();
 
     try {
-      const response = await sendMessage([...messages, userMsg], selectedModel, selectedCharacter);
-      addMessage(sessionId, {
-        id: generateId(), role: 'assistant', content: response,
-        timestamp: Date.now(), model: selectedModel, character: selectedCharacter,
-      });
+      // Try streaming first
+      let fullResponse = '';
+      await sendMessageStream(
+        [...messages, userMsg],
+        selectedModel,
+        selectedCharacter,
+        (chunk) => {
+          fullResponse += chunk;
+          setStreamingContent(fullResponse);
+        },
+        () => {
+          // On done - add the complete message
+          addMessage(sessionId!, {
+            id: generateId(), role: 'assistant', content: fullResponse,
+            timestamp: Date.now(), model: selectedModel, character: selectedCharacter,
+          });
+          setStreamingContent('');
+          setIsTyping(false);
+        }
+      );
     } catch (error) {
-      addMessage(sessionId, {
-        id: generateId(), role: 'assistant',
-        content: 'Error de conexión. Intenta de nuevo.',
-        timestamp: Date.now(),
-      });
-    } finally {
+      // Fallback to non-streaming
+      try {
+        const response = await sendMessage([...messages, userMsg], selectedModel, selectedCharacter);
+        addMessage(sessionId!, {
+          id: generateId(), role: 'assistant', content: response,
+          timestamp: Date.now(), model: selectedModel, character: selectedCharacter,
+        });
+      } catch {
+        addMessage(sessionId!, {
+          id: generateId(), role: 'assistant',
+          content: '⚠️ Error de conexión. Intenta de nuevo.',
+          timestamp: Date.now(),
+        });
+      }
+      setStreamingContent('');
       setIsTyping(false);
     }
   };
@@ -100,7 +131,7 @@ export const ChatArea: React.FC<{ onOpenPricing: () => void }> = ({ onOpenPricin
         flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column',
         padding: writerMode ? '0' : undefined,
       }}>
-        {messages.length === 0 ? (
+        {messages.length === 0 && !streamingContent ? (
           /* ── Empty State ── */
           <div style={{
             flex: 1, display: 'flex', flexDirection: 'column',
@@ -164,7 +195,22 @@ export const ChatArea: React.FC<{ onOpenPricing: () => void }> = ({ onOpenPricin
             {messages.map((msg, idx) => (
               <MessageBubble key={msg.id} message={msg} index={idx} />
             ))}
-            {isTyping && (
+            {/* Streaming message */}
+            {isTyping && streamingContent && (
+              <MessageBubble
+                message={{
+                  id: 'streaming',
+                  role: 'assistant',
+                  content: streamingContent,
+                  timestamp: Date.now(),
+                  model: selectedModel,
+                  character: selectedCharacter,
+                }}
+                index={messages.length}
+              />
+            )}
+            {/* Typing indicator (before streaming starts) */}
+            {isTyping && !streamingContent && (
               <div style={{ paddingLeft: isMobile ? 0 : 32, marginBottom: 24 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '14px 0' }}>
                   <div style={{ display: 'flex', gap: 5 }}>
@@ -275,7 +321,7 @@ export const ChatArea: React.FC<{ onOpenPricing: () => void }> = ({ onOpenPricin
               Chats privados · +18
             </span>
             <span style={{ fontSize: 10, color: remaining <= 2 ? 'var(--danger)' : 'var(--txt-ghost)' }}>
-              {remaining} msgs restantes hoy
+              {remaining >= 999 ? '∞' : remaining} msgs restantes hoy
             </span>
           </div>
         </div>
