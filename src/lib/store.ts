@@ -161,7 +161,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     // Also increment in Supabase if authenticated
     const user = get().user;
     if (user) {
-      supabase.rpc('increment_message_count', { p_user_id: user.id }).catch(console.error);
+      supabase.rpc('increment_message_count', { p_user_id: user.id }).then(() => {}).catch(console.error);
     }
   },
 
