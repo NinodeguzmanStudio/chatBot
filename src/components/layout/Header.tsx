@@ -1,10 +1,12 @@
 // ═══════════════════════════════════════
-// AIdark — Header v4
+// AIdark — Header (FIXED)
 // ═══════════════════════════════════════
 
 import React from 'react';
-import { PanelLeft, Plus, Star, Menu } from 'lucide-react';
+import { PanelLeft, Plus, Star, Menu, LogOut } from 'lucide-react';
 import { useChatStore, useAuthStore } from '@/lib/store';
+import { supabase } from '@/lib/supabase';
+import { useIsMobile } from '@/hooks/useIsMobile';
 
 interface HeaderProps {
   onOpenPricing: () => void;
@@ -12,9 +14,14 @@ interface HeaderProps {
 
 export const Header: React.FC<HeaderProps> = ({ onOpenPricing }) => {
   const { sidebarOpen, setSidebarOpen, createSession } = useChatStore();
-  const { getRemainingMessages } = useAuthStore();
-  const isMobile = window.innerWidth < 768;
+  const { getRemainingMessages, user, setUser } = useAuthStore();
+  const isMobile = useIsMobile();
   const remaining = getRemainingMessages();
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    setUser(null);
+  };
 
   return (
     <div style={{
@@ -56,7 +63,7 @@ export const Header: React.FC<HeaderProps> = ({ onOpenPricing }) => {
             background: remaining <= 2 ? 'rgba(160,81,59,0.1)' : 'var(--bg-el)',
             color: remaining <= 2 ? 'var(--danger)' : 'var(--txt-mut)',
           }}>
-            {remaining}/5 hoy
+            {remaining >= 999 ? '∞' : `${remaining}/5`} hoy
           </span>
         )}
         <button onClick={onOpenPricing} style={{
@@ -71,6 +78,18 @@ export const Header: React.FC<HeaderProps> = ({ onOpenPricing }) => {
         >
           <Star size={12} /> {isMobile ? 'Pro' : 'Premium'}
         </button>
+        {user && (
+          <button onClick={handleLogout} title="Cerrar sesión" style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            width: 30, height: 30, background: 'none', border: 'none',
+            color: 'var(--txt-mut)', cursor: 'pointer', borderRadius: 6, transition: 'color 0.12s',
+          }}
+          onMouseEnter={e => e.currentTarget.style.color = 'var(--danger)'}
+          onMouseLeave={e => e.currentTarget.style.color = 'var(--txt-mut)'}
+          >
+            <LogOut size={14} />
+          </button>
+        )}
       </div>
     </div>
   );
