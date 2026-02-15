@@ -11,7 +11,6 @@ import { APP_CONFIG, AI_CHARACTERS, PROMPT_GALLERY } from '@/lib/constants';
 import { MessageBubble } from './MessageBubble';
 import { ModelSelector } from './ModelSelector';
 import { CharacterSelector } from './CharacterSelector';
-import { TypingParticles } from './TypingParticles';
 import { useIsMobile } from '@/hooks/useIsMobile';
 import type { Message } from '@/types';
 
@@ -27,7 +26,6 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
   const { canSendMessage, incrementMessages, getRemainingMessages } = useAuthStore();
   const [input, setInput] = useState('');
   const [streamingContent, setStreamingContent] = useState('');
-  const [particleKey, setParticleKey] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const isMobile = useIsMobile();
@@ -163,31 +161,6 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
               Tus chats son privados y se eliminan automáticamente.
             </p>
 
-            {/* Prompt Gallery */}
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: isMobile ? '1fr 1fr' : '1fr 1fr 1fr',
-              gap: 8, marginTop: 28, maxWidth: 520, width: '100%',
-              padding: '0 12px', animation: 'fadeUp 0.6s ease 0.3s both',
-            }}>
-              {PROMPT_GALLERY.map((p, i) => (
-                <button key={i} onClick={() => handlePrompt(p.prompt)} style={{
-                  padding: '12px 14px', background: 'var(--bg-surface)',
-                  border: '1px solid var(--border-sub)', borderRadius: 10,
-                  textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit',
-                  transition: 'all 0.15s',
-                }}
-                onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--border-str)'; e.currentTarget.style.background = 'var(--bg-el)'; }}
-                onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-sub)'; e.currentTarget.style.background = 'var(--bg-surface)'; }}
-                >
-                  <span style={{ fontSize: 16 }}>{p.icon}</span>
-                  <p style={{ fontSize: 12, color: 'var(--txt-sec)', marginTop: 6, lineHeight: 1.4 }}>
-                    {p.label}
-                  </p>
-                </button>
-              ))}
-            </div>
-          </div>
         ) : (
           /* ── Messages ── */
           <div style={{
@@ -247,17 +220,14 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
             borderRadius: isMobile ? 12 : 14,
             padding: isMobile ? '10px 12px 8px' : '12px 16px 8px',
             transition: 'border-color 0.2s',
-            position: 'relative',
-            overflow: 'hidden',
           }}
           onFocus={e => e.currentTarget.style.borderColor = 'var(--border-def)'}
           onBlur={e => e.currentTarget.style.borderColor = 'var(--border-sub)'}
           >
-            <TypingParticles active={particleKey} />
             <textarea
               ref={textareaRef}
               value={input}
-              onChange={(e) => { handleInputChange(e); setParticleKey(k => !k); }}
+              onChange={handleInputChange}
               onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
               placeholder={`Escribe a ${character.name}...`}
               rows={1}
