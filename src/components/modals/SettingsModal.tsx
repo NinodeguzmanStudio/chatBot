@@ -1,56 +1,85 @@
+// ═══════════════════════════════════════
+// AIdark — Settings Modal (FIXED)
+// ═══════════════════════════════════════
+
 import React from 'react';
-import { X, Sun, Moon } from 'lucide-react';
-import { useThemeStore, useChatStore } from '@/lib/store';
+import { X, Trash2 } from 'lucide-react';
+import { useChatStore, useAuthStore } from '@/lib/store';
+import { APP_CONFIG } from '@/lib/constants';
 
 export const SettingsModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ isOpen, onClose }) => {
-  const { theme, setTheme } = useThemeStore();
-  const { clearAllSessions } = useChatStore();
+  const { sessions, setSessions } = useChatStore();
+  const { user, resetMessages } = useAuthStore();
+
   if (!isOpen) return null;
+
+  const handleClearChats = () => {
+    if (confirm('¿Eliminar todos los chats? Esta acción no se puede deshacer.')) {
+      setSessions([]);
+    }
+  };
+
+  const handleResetMessages = () => {
+    if (confirm('¿Resetear el contador de mensajes?')) {
+      resetMessages();
+    }
+  };
 
   return (
     <div onClick={onClose} style={{
-      position: 'fixed', inset: 0, zIndex: 900, background: 'rgba(5,4,3,0.88)',
-      backdropFilter: 'blur(12px)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-      padding: 16, animation: 'fadeIn 0.2s ease',
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      zIndex: 200, padding: 20, animation: 'fadeIn 0.2s ease',
     }}>
       <div onClick={e => e.stopPropagation()} style={{
-        maxWidth: 380, width: '100%', background: 'var(--bg-surface)',
-        border: '1px solid var(--border-sub)', borderRadius: 12,
-        padding: '28px 24px', animation: 'slideUp 0.25s ease',
+        width: '100%', maxWidth: 400,
+        background: 'var(--bg-surface)', border: '1px solid var(--border-def)',
+        borderRadius: 14, padding: 24, animation: 'fadeUp 0.3s ease',
       }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-          <h2 style={{ fontSize: 17, fontWeight: 600, color: 'var(--txt-pri)' }}>Ajustes</h2>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--txt-ter)', cursor: 'pointer' }}><X size={18} /></button>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+          <h2 style={{ fontSize: 16, fontWeight: 500, color: 'var(--txt-pri)' }}>Ajustes</h2>
+          <button onClick={onClose} style={{
+            width: 30, height: 30, display: 'flex', alignItems: 'center', justifyContent: 'center',
+            background: 'none', border: 'none', color: 'var(--txt-mut)', cursor: 'pointer', borderRadius: 6,
+          }}><X size={16} /></button>
         </div>
 
-        <div style={{ marginBottom: 22 }}>
-          <p style={{ fontSize: 11, fontWeight: 600, color: 'var(--txt-ter)', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 12 }}>Tema</p>
-          <div style={{ display: 'flex', gap: 8 }}>
-            {[{ id: 'dark' as const, label: 'Oscuro', icon: <Moon size={15} /> }, { id: 'light' as const, label: 'Claro', icon: <Sun size={15} /> }].map(opt => (
-              <button key={opt.id} onClick={() => setTheme(opt.id)} style={{
-                flex: 1, padding: '11px 14px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
-                background: theme === opt.id ? 'var(--bg-hover)' : 'transparent',
-                border: `1px solid ${theme === opt.id ? 'var(--border-str)' : 'var(--border-sub)'}`,
-                borderRadius: 8, color: theme === opt.id ? 'var(--txt-pri)' : 'var(--txt-ter)',
-                fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.15s',
-              }}>{opt.icon} {opt.label}</button>
-            ))}
+        {/* Info */}
+        <div style={{ marginBottom: 20 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+            <span style={{ fontSize: 12, color: 'var(--txt-sec)' }}>Versión</span>
+            <span style={{ fontSize: 12, color: 'var(--txt-mut)' }}>{APP_CONFIG.version}</span>
           </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+            <span style={{ fontSize: 12, color: 'var(--txt-sec)' }}>Chats activos</span>
+            <span style={{ fontSize: 12, color: 'var(--txt-mut)' }}>{sessions.length}</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+            <span style={{ fontSize: 12, color: 'var(--txt-sec)' }}>Plan</span>
+            <span style={{ fontSize: 12, color: 'var(--accent)' }}>{user?.plan || 'free'}</span>
+          </div>
+          {user && (
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+              <span style={{ fontSize: 12, color: 'var(--txt-sec)' }}>Email</span>
+              <span style={{ fontSize: 12, color: 'var(--txt-mut)' }}>{user.email}</span>
+            </div>
+          )}
         </div>
 
-        <div style={{ borderTop: '1px solid var(--border-sub)', paddingTop: 18 }}>
-          <p style={{ fontSize: 11, fontWeight: 600, color: 'var(--txt-ter)', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 12 }}>Datos</p>
-          <p style={{ fontSize: 12, color: 'var(--txt-sec)', lineHeight: 1.7, marginBottom: 12 }}>
-            Chats almacenados localmente. No guardamos historial en servidores.
-          </p>
-          <button onClick={() => { clearAllSessions(); onClose(); }} style={{
-            width: '100%', padding: 10, background: 'transparent', border: '1px solid rgba(160,81,59,0.2)',
-            borderRadius: 7, color: 'var(--danger)', fontSize: 11, fontWeight: 500,
-            cursor: 'pointer', fontFamily: 'inherit', transition: 'background 0.12s',
+        {/* Actions */}
+        <div style={{ borderTop: '1px solid var(--border-sub)', paddingTop: 16 }}>
+          <button onClick={handleClearChats} style={{
+            width: '100%', padding: '10px 14px', marginBottom: 8,
+            display: 'flex', alignItems: 'center', gap: 8,
+            background: 'none', border: '1px solid var(--border-sub)', borderRadius: 8,
+            color: 'var(--danger)', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit',
+            transition: 'all 0.12s',
           }}
-          onMouseEnter={e => e.currentTarget.style.background = 'rgba(160,81,59,0.06)'}
-          onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-          >Borrar todos los chats</button>
+          onMouseEnter={e => e.currentTarget.style.background = 'rgba(160,81,59,0.05)'}
+          onMouseLeave={e => e.currentTarget.style.background = 'none'}
+          >
+            <Trash2 size={13} /> Eliminar todos los chats
+          </button>
         </div>
       </div>
     </div>
