@@ -166,12 +166,15 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   canSendMessage: () => {
+    // Dev mode: ?dev=1 in URL
+    if (window.location.search.includes('dev=1')) return true;
     const { user, messagesUsed } = get();
     if (user?.plan && user.plan !== 'free') return true;
     return messagesUsed < APP_CONFIG.freeMessageLimit;
   },
 
   getRemainingMessages: () => {
+    if (window.location.search.includes('dev=1')) return 999;
     const { user, messagesUsed } = get();
     if (user?.plan && user.plan !== 'free') return 999;
     return Math.max(0, APP_CONFIG.freeMessageLimit - messagesUsed);
