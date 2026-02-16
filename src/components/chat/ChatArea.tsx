@@ -53,6 +53,13 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
     }
   }, [input]);
 
+  // Particles on AI streaming too
+  useEffect(() => {
+    if (streamingContent) {
+      setKeystrokeCount((k) => k + 1);
+    }
+  }, [streamingContent]);
+
   const handleSend = async () => {
     if (!input.trim() || isTyping) return;
 
