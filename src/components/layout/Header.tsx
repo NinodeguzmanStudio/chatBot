@@ -7,6 +7,7 @@ import { PanelLeft, Plus, Star, Menu, LogOut } from 'lucide-react';
 import { useChatStore, useAuthStore } from '@/lib/store';
 import { supabase } from '@/lib/supabase';
 import { useIsMobile } from '@/hooks/useIsMobile';
+import { LanguageSelector } from '@/components/chat/LanguageSelector';
 
 interface HeaderProps {
   onOpenPricing: () => void;
@@ -66,6 +67,7 @@ export const Header: React.FC<HeaderProps> = ({ onOpenPricing }) => {
             {remaining >= 999 ? '∞' : `${remaining}/5`} hoy
           </span>
         )}
+        <LanguageSelector />
         <button onClick={onOpenPricing} style={{
           padding: isMobile ? '5px 10px' : '5px 12px',
           background: 'var(--bg-el)', border: '1px solid var(--border-sub)', borderRadius: 6,
