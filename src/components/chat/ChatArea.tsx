@@ -13,6 +13,7 @@ import { ModelSelector } from './ModelSelector';
 import { CharacterSelector } from './CharacterSelector';
 import { TypingParticles } from './TypingParticles';
 import { useIsMobile } from '@/hooks/useIsMobile';
+import { t } from '@/lib/i18n';
 import type { Message } from '@/types';
 
 interface ChatAreaProps {
@@ -103,7 +104,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
       } catch {
         addMessage(sessionId!, {
           id: generateId(), role: 'assistant',
-          content: '⚠️ Error de conexión. Intenta de nuevo.',
+          content: t('chat.error'),
           timestamp: Date.now(),
         });
       }
@@ -151,14 +152,14 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
               letterSpacing: 4, textTransform: 'uppercase',
               animation: 'fadeIn 1.2s ease',
             }}>
-              sin censura
+              {t('app.tagline')}
             </span>
             <p style={{
               fontSize: 13, color: 'var(--txt-mut)', marginTop: 14,
               textAlign: 'center', maxWidth: 300, lineHeight: 1.7,
               animation: 'fadeIn 1.6s ease',
             }}>
-              Tus chats son privados y se eliminan automáticamente.
+              {t('app.privacy')}
             </p>
           </div>
         ) : (
@@ -194,7 +195,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
                     ))}
                   </div>
                   <span style={{ fontSize: 12, color: 'var(--txt-ter)', fontWeight: 500 }}>
-                    {character.name} escribiendo...
+                    {character.name} {t('chat.typing')}
                   </span>
                 </div>
               </div>
@@ -227,7 +228,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
               value={input}
               onChange={handleInputChange}
               onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
-              placeholder={`Escribe a ${character.name}...`}
+              placeholder={`${t('chat.write_to')} ${character.name}...`}
               rows={1}
               style={{
                 width: '100%', background: 'transparent', border: 'none',
@@ -255,7 +256,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
                     fontSize: 11, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.15s',
                   }}>
                     {writerMode ? <Minimize2 size={11} /> : <Maximize2 size={11} />}
-                    {writerMode ? 'Normal' : 'Escritor'}
+                    {writerMode ? t('chat.normal') : t('chat.writer')}
                   </button>
                 )}
               </div>
@@ -286,10 +287,10 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
             marginTop: 6, padding: '0 4px',
           }}>
             <span style={{ fontSize: 10, color: 'var(--txt-ghost)' }}>
-              Chats privados · +18
+              {t('app.chats_private')}
             </span>
             <span style={{ fontSize: 10, color: remaining <= 2 ? 'var(--danger)' : 'var(--txt-ghost)' }}>
-              {remaining >= 999 ? '∞' : remaining} msgs restantes hoy
+              {remaining >= 999 ? t('app.unlimited') : remaining} {t('app.msgs_remaining')}
             </span>
           </div>
         </div>
