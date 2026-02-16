@@ -1,8 +1,8 @@
 // ═══════════════════════════════════════
-// AIdark — Yautja Typing Particles v4
+// AIdark — Yautja Particles v5
 // ═══════════════════════════════════════
-// True Predator-language glyphs
-// Structured column layout, not scattered
+// Predator bomb countdown style glyphs
+// Angular lines, bars, brackets, varied
 
 import React, { useRef, useEffect, useCallback } from 'react';
 
@@ -15,6 +15,7 @@ interface Particle {
   size: number;
   glyphIndex: number;
   color: number[];
+  rotation: number;
 }
 
 const COLORS: number[][] = [
@@ -25,245 +26,176 @@ const COLORS: number[][] = [
   [180, 110, 55],
 ];
 
-// ── True Yautja glyphs ──
-// All share: vertical stem + forked top branches + small tick marks
-// Variations: number of branches, angles, tick positions
 function drawGlyph(ctx: CanvasRenderingContext2D, idx: number, s: number) {
-  const h = s * 0.5;
-  ctx.lineWidth = Math.max(1.2, s * 0.065);
-  ctx.lineCap = 'round';
-  ctx.lineJoin = 'round';
+  const h = s * 0.45;
+  ctx.lineWidth = Math.max(1.3, s * 0.07);
+  ctx.lineCap = 'square';
+  ctx.lineJoin = 'miter';
 
-  // Every glyph starts with a vertical stem
   ctx.beginPath();
-  ctx.moveTo(0, h);
-  ctx.lineTo(0, -h * 0.25);
-  ctx.stroke();
+  switch (idx % 24) {
 
-  switch (idx % 20) {
-    case 0: // Two branches up-left and up-right, wide fork
-      ctx.beginPath();
-      ctx.moveTo(0, -h * 0.25); ctx.lineTo(-h * 0.55, -h);
-      ctx.moveTo(0, -h * 0.25); ctx.lineTo(h * 0.55, -h);
-      // Tick marks on branches
-      ctx.moveTo(-h * 0.35, -h * 0.7); ctx.lineTo(-h * 0.55, -h * 0.6);
-      ctx.moveTo(h * 0.35, -h * 0.7); ctx.lineTo(h * 0.55, -h * 0.6);
-      ctx.stroke();
+    // ── VERTICAL / HORIZONTAL BARS ──
+    case 0: // Three vertical bars
+      ctx.moveTo(-h * 0.4, -h); ctx.lineTo(-h * 0.4, h);
+      ctx.moveTo(0, -h * 0.7); ctx.lineTo(0, h * 0.7);
+      ctx.moveTo(h * 0.4, -h); ctx.lineTo(h * 0.4, h);
       break;
 
-    case 1: // Three prong — center tall, sides shorter
-      ctx.beginPath();
-      ctx.moveTo(0, -h * 0.25); ctx.lineTo(0, -h);
-      ctx.moveTo(0, -h * 0.25); ctx.lineTo(-h * 0.45, -h * 0.75);
-      ctx.moveTo(0, -h * 0.25); ctx.lineTo(h * 0.45, -h * 0.75);
-      // Small outward ticks at tips
-      ctx.moveTo(-h * 0.45, -h * 0.75); ctx.lineTo(-h * 0.6, -h * 0.65);
-      ctx.moveTo(h * 0.45, -h * 0.75); ctx.lineTo(h * 0.6, -h * 0.65);
-      ctx.stroke();
+    case 1: // Two horizontal bars with vertical cross
+      ctx.moveTo(-h, 0); ctx.lineTo(h, 0);
+      ctx.moveTo(-h * 0.6, -h * 0.5); ctx.lineTo(h * 0.6, -h * 0.5);
+      ctx.moveTo(0, -h); ctx.lineTo(0, h);
       break;
 
-    case 2: // Asymmetric — left branch high, right branch mid, tick on stem
-      ctx.beginPath();
-      ctx.moveTo(0, -h * 0.25); ctx.lineTo(-h * 0.5, -h);
-      ctx.moveTo(0, -h * 0.1); ctx.lineTo(h * 0.4, -h * 0.5);
-      ctx.moveTo(-h * 0.5, -h); ctx.lineTo(-h * 0.65, -h * 0.85);
-      // Tick on lower stem
-      ctx.moveTo(0, h * 0.4); ctx.lineTo(h * 0.15, h * 0.3);
-      ctx.stroke();
+    case 2: // Tally marks — four verticals + diagonal slash
+      ctx.moveTo(-h * 0.5, -h * 0.8); ctx.lineTo(-h * 0.5, h * 0.8);
+      ctx.moveTo(-h * 0.15, -h * 0.8); ctx.lineTo(-h * 0.15, h * 0.8);
+      ctx.moveTo(h * 0.15, -h * 0.8); ctx.lineTo(h * 0.15, h * 0.8);
+      ctx.moveTo(h * 0.5, -h * 0.8); ctx.lineTo(h * 0.5, h * 0.8);
+      ctx.moveTo(-h * 0.6, h * 0.5); ctx.lineTo(h * 0.6, -h * 0.5);
       break;
 
-    case 3: // Wide V fork with inner marks
-      ctx.beginPath();
-      ctx.moveTo(0, -h * 0.25); ctx.lineTo(-h * 0.6, -h * 0.9);
-      ctx.moveTo(0, -h * 0.25); ctx.lineTo(h * 0.6, -h * 0.9);
-      // Inner parallel lines
-      ctx.moveTo(-h * 0.15, -h * 0.45); ctx.lineTo(-h * 0.35, -h * 0.75);
-      ctx.moveTo(h * 0.15, -h * 0.45); ctx.lineTo(h * 0.35, -h * 0.75);
-      ctx.stroke();
+    case 3: // Hashtag / grid
+      ctx.moveTo(-h * 0.3, -h); ctx.lineTo(-h * 0.3, h);
+      ctx.moveTo(h * 0.3, -h); ctx.lineTo(h * 0.3, h);
+      ctx.moveTo(-h, -h * 0.3); ctx.lineTo(h, -h * 0.3);
+      ctx.moveTo(-h, h * 0.3); ctx.lineTo(h, h * 0.3);
       break;
 
-    case 4: // Four prong — two pairs
-      ctx.beginPath();
-      ctx.moveTo(0, -h * 0.25); ctx.lineTo(-h * 0.3, -h * 0.8);
-      ctx.moveTo(0, -h * 0.25); ctx.lineTo(h * 0.3, -h * 0.8);
-      ctx.moveTo(-h * 0.3, -h * 0.8); ctx.lineTo(-h * 0.5, -h);
-      ctx.moveTo(h * 0.3, -h * 0.8); ctx.lineTo(h * 0.5, -h);
-      // Small tips
-      ctx.moveTo(-h * 0.5, -h); ctx.lineTo(-h * 0.55, -h * 0.85);
-      ctx.moveTo(h * 0.5, -h); ctx.lineTo(h * 0.55, -h * 0.85);
-      ctx.stroke();
+    // ── ANGULAR BRACKETS ──
+    case 4: // Left angle bracket
+      ctx.moveTo(h * 0.4, -h); ctx.lineTo(-h * 0.4, 0); ctx.lineTo(h * 0.4, h);
       break;
 
-    case 5: // Tight fork with long outer ticks
-      ctx.beginPath();
-      ctx.moveTo(0, -h * 0.25); ctx.lineTo(-h * 0.25, -h * 0.85);
-      ctx.moveTo(0, -h * 0.25); ctx.lineTo(h * 0.25, -h * 0.85);
-      // Long outward ticks from tips
-      ctx.moveTo(-h * 0.25, -h * 0.85); ctx.lineTo(-h * 0.55, -h * 0.7);
-      ctx.moveTo(h * 0.25, -h * 0.85); ctx.lineTo(h * 0.55, -h * 0.7);
-      // Mid stem tick
-      ctx.moveTo(0, h * 0.1); ctx.lineTo(-h * 0.2, 0);
-      ctx.stroke();
+    case 5: // Right angle bracket
+      ctx.moveTo(-h * 0.4, -h); ctx.lineTo(h * 0.4, 0); ctx.lineTo(-h * 0.4, h);
       break;
 
-    case 6: // Crown — three equal branches, ticks at all tips
-      ctx.beginPath();
-      ctx.moveTo(0, -h * 0.25); ctx.lineTo(-h * 0.5, -h * 0.9);
-      ctx.moveTo(0, -h * 0.25); ctx.lineTo(0, -h * 0.95);
-      ctx.moveTo(0, -h * 0.25); ctx.lineTo(h * 0.5, -h * 0.9);
-      ctx.moveTo(-h * 0.5, -h * 0.9); ctx.lineTo(-h * 0.6, -h * 0.75);
-      ctx.moveTo(0, -h * 0.95); ctx.lineTo(h * 0.1, -h * 0.8);
-      ctx.moveTo(h * 0.5, -h * 0.9); ctx.lineTo(h * 0.6, -h * 0.75);
-      ctx.stroke();
+    case 6: // Double chevron up
+      ctx.moveTo(-h * 0.6, h * 0.2); ctx.lineTo(0, -h * 0.4); ctx.lineTo(h * 0.6, h * 0.2);
+      ctx.moveTo(-h * 0.6, h * 0.7); ctx.lineTo(0, h * 0.1); ctx.lineTo(h * 0.6, h * 0.7);
       break;
 
-    case 7: // Left heavy — two branches left, one right
-      ctx.beginPath();
-      ctx.moveTo(0, -h * 0.25); ctx.lineTo(-h * 0.35, -h * 0.7);
-      ctx.moveTo(-h * 0.35, -h * 0.7); ctx.lineTo(-h * 0.6, -h);
-      ctx.moveTo(-h * 0.35, -h * 0.7); ctx.lineTo(-h * 0.15, -h);
-      ctx.moveTo(0, -h * 0.25); ctx.lineTo(h * 0.4, -h * 0.8);
-      ctx.moveTo(h * 0.4, -h * 0.8); ctx.lineTo(h * 0.55, -h * 0.65);
-      ctx.stroke();
+    case 7: // Arrow pointing right
+      ctx.moveTo(-h, 0); ctx.lineTo(h * 0.5, 0);
+      ctx.moveTo(h * 0.2, -h * 0.4); ctx.lineTo(h * 0.7, 0); ctx.lineTo(h * 0.2, h * 0.4);
       break;
 
-    case 8: // Antenna — single tall with side whiskers
-      ctx.beginPath();
-      ctx.moveTo(0, -h * 0.25); ctx.lineTo(0, -h);
-      ctx.moveTo(0, -h * 0.6); ctx.lineTo(-h * 0.4, -h * 0.75);
-      ctx.moveTo(0, -h * 0.6); ctx.lineTo(h * 0.4, -h * 0.75);
-      ctx.moveTo(0, -h * 0.85); ctx.lineTo(-h * 0.25, -h);
-      ctx.moveTo(0, -h * 0.85); ctx.lineTo(h * 0.25, -h);
-      ctx.stroke();
+    // ── CROSSES / X SHAPES ──
+    case 8: // Simple X
+      ctx.moveTo(-h * 0.7, -h * 0.7); ctx.lineTo(h * 0.7, h * 0.7);
+      ctx.moveTo(h * 0.7, -h * 0.7); ctx.lineTo(-h * 0.7, h * 0.7);
       break;
 
-    case 9: // Narrow trident with dot
-      ctx.beginPath();
-      ctx.moveTo(0, -h * 0.3); ctx.lineTo(-h * 0.2, -h * 0.9);
-      ctx.moveTo(0, -h * 0.3); ctx.lineTo(0, -h * 0.95);
-      ctx.moveTo(0, -h * 0.3); ctx.lineTo(h * 0.2, -h * 0.9);
+    case 9: // Plus with dots
+      ctx.moveTo(0, -h * 0.8); ctx.lineTo(0, h * 0.8);
+      ctx.moveTo(-h * 0.8, 0); ctx.lineTo(h * 0.8, 0);
       ctx.stroke();
-      // Dot at base
       ctx.beginPath();
-      ctx.arc(0, h * 0.7, s * 0.04, 0, Math.PI * 2);
+      ctx.arc(-h * 0.5, -h * 0.5, s * 0.04, 0, Math.PI * 2);
+      ctx.arc(h * 0.5, -h * 0.5, s * 0.04, 0, Math.PI * 2);
+      ctx.arc(-h * 0.5, h * 0.5, s * 0.04, 0, Math.PI * 2);
+      ctx.arc(h * 0.5, h * 0.5, s * 0.04, 0, Math.PI * 2);
       ctx.fill();
       break;
 
-    case 10: // Y-split with horizontal tick
-      ctx.beginPath();
-      ctx.moveTo(0, -h * 0.2); ctx.lineTo(-h * 0.5, -h);
-      ctx.moveTo(0, -h * 0.2); ctx.lineTo(h * 0.5, -h);
-      // Horizontal tick across branches
-      ctx.moveTo(-h * 0.35, -h * 0.7); ctx.lineTo(h * 0.35, -h * 0.7);
-      ctx.moveTo(-h * 0.5, -h); ctx.lineTo(-h * 0.6, -h * 0.85);
-      ctx.moveTo(h * 0.5, -h); ctx.lineTo(h * 0.6, -h * 0.85);
-      ctx.stroke();
+    case 10: // Asterisk — six lines
+      for (let a = 0; a < 3; a++) {
+        const angle = (a * Math.PI) / 3;
+        ctx.moveTo(Math.cos(angle) * h * 0.8, Math.sin(angle) * h * 0.8);
+        ctx.lineTo(-Math.cos(angle) * h * 0.8, -Math.sin(angle) * h * 0.8);
+      }
       break;
 
-    case 11: // Uneven fork — left tall, right short with double tick
-      ctx.beginPath();
-      ctx.moveTo(0, -h * 0.25); ctx.lineTo(-h * 0.4, -h);
-      ctx.moveTo(0, -h * 0.15); ctx.lineTo(h * 0.35, -h * 0.55);
-      ctx.moveTo(-h * 0.4, -h); ctx.lineTo(-h * 0.55, -h * 0.85);
-      ctx.moveTo(h * 0.35, -h * 0.55); ctx.lineTo(h * 0.5, -h * 0.45);
-      // Double tick on stem
-      ctx.moveTo(-h * 0.1, h * 0.15); ctx.lineTo(-h * 0.25, h * 0.05);
-      ctx.moveTo(-h * 0.1, h * 0.35); ctx.lineTo(-h * 0.25, h * 0.25);
-      ctx.stroke();
+    // ── BOXES / GEOMETRIC ──
+    case 11: // Square
+      ctx.rect(-h * 0.5, -h * 0.5, h, h);
       break;
 
-    case 12: // Crab claw — wide split with inward hooks
-      ctx.beginPath();
-      ctx.moveTo(0, -h * 0.25); ctx.lineTo(-h * 0.6, -h * 0.85);
-      ctx.moveTo(0, -h * 0.25); ctx.lineTo(h * 0.6, -h * 0.85);
-      // Inward hooks at tips
-      ctx.moveTo(-h * 0.6, -h * 0.85); ctx.lineTo(-h * 0.45, -h);
-      ctx.moveTo(h * 0.6, -h * 0.85); ctx.lineTo(h * 0.45, -h);
-      ctx.stroke();
+    case 12: // Diamond
+      ctx.moveTo(0, -h * 0.8); ctx.lineTo(h * 0.5, 0);
+      ctx.lineTo(0, h * 0.8); ctx.lineTo(-h * 0.5, 0); ctx.closePath();
       break;
 
-    case 13: // Spine — center line with alternating small branches
-      ctx.beginPath();
-      ctx.moveTo(0, -h * 0.25); ctx.lineTo(0, -h);
-      ctx.moveTo(0, -h * 0.45); ctx.lineTo(-h * 0.3, -h * 0.55);
-      ctx.moveTo(0, -h * 0.65); ctx.lineTo(h * 0.3, -h * 0.75);
-      ctx.moveTo(0, -h * 0.85); ctx.lineTo(-h * 0.25, -h * 0.95);
-      ctx.stroke();
+    case 13: // Triangle up
+      ctx.moveTo(0, -h * 0.8); ctx.lineTo(h * 0.7, h * 0.6);
+      ctx.lineTo(-h * 0.7, h * 0.6); ctx.closePath();
       break;
 
-    case 14: // Double stem — parallel lines with shared top fork
-      ctx.beginPath();
-      ctx.moveTo(-h * 0.1, h); ctx.lineTo(-h * 0.1, -h * 0.3);
-      ctx.moveTo(h * 0.1, h); ctx.lineTo(h * 0.1, -h * 0.3);
-      ctx.moveTo(-h * 0.1, -h * 0.3); ctx.lineTo(-h * 0.45, -h * 0.9);
-      ctx.moveTo(h * 0.1, -h * 0.3); ctx.lineTo(h * 0.45, -h * 0.9);
-      ctx.moveTo(-h * 0.45, -h * 0.9); ctx.lineTo(-h * 0.55, -h * 0.75);
-      ctx.moveTo(h * 0.45, -h * 0.9); ctx.lineTo(h * 0.55, -h * 0.75);
-      ctx.stroke();
+    case 14: // Nested brackets [ ]
+      ctx.moveTo(-h * 0.2, -h * 0.8); ctx.lineTo(-h * 0.5, -h * 0.8);
+      ctx.lineTo(-h * 0.5, h * 0.8); ctx.lineTo(-h * 0.2, h * 0.8);
+      ctx.moveTo(h * 0.2, -h * 0.8); ctx.lineTo(h * 0.5, -h * 0.8);
+      ctx.lineTo(h * 0.5, h * 0.8); ctx.lineTo(h * 0.2, h * 0.8);
       break;
 
-    case 15: // Tuning fork — narrow parallel prongs
-      ctx.beginPath();
-      ctx.moveTo(0, -h * 0.3); ctx.lineTo(-h * 0.15, -h);
-      ctx.moveTo(0, -h * 0.3); ctx.lineTo(h * 0.15, -h);
-      // Outward flicks at tips
-      ctx.moveTo(-h * 0.15, -h); ctx.lineTo(-h * 0.35, -h * 0.9);
-      ctx.moveTo(h * 0.15, -h); ctx.lineTo(h * 0.35, -h * 0.9);
-      ctx.stroke();
+    // ── CIRCUIT / TECH PATTERNS ──
+    case 15: // L-shape with tick
+      ctx.moveTo(0, -h); ctx.lineTo(0, h * 0.3); ctx.lineTo(h * 0.7, h * 0.3);
+      ctx.moveTo(0, -h * 0.3); ctx.lineTo(-h * 0.4, -h * 0.3);
       break;
 
-    case 16: // Scorpion — fork with curled-back hooks
-      ctx.beginPath();
-      ctx.moveTo(0, -h * 0.2); ctx.lineTo(-h * 0.5, -h * 0.8);
-      ctx.moveTo(0, -h * 0.2); ctx.lineTo(h * 0.5, -h * 0.8);
-      // Hooks curving back down
-      ctx.moveTo(-h * 0.5, -h * 0.8); ctx.lineTo(-h * 0.6, -h * 0.55);
-      ctx.moveTo(h * 0.5, -h * 0.8); ctx.lineTo(h * 0.6, -h * 0.55);
-      // Center prong
-      ctx.moveTo(0, -h * 0.35); ctx.lineTo(0, -h * 0.75);
-      ctx.stroke();
+    case 16: // Zigzag horizontal
+      ctx.moveTo(-h, 0); ctx.lineTo(-h * 0.4, -h * 0.5);
+      ctx.lineTo(h * 0.1, h * 0.3); ctx.lineTo(h * 0.6, -h * 0.5); ctx.lineTo(h, 0);
       break;
 
-    case 17: // Feather — one branch with parallel tickmarks
-      ctx.beginPath();
-      ctx.moveTo(0, -h * 0.25); ctx.lineTo(-h * 0.15, -h);
-      ctx.moveTo(0, -h * 0.25); ctx.lineTo(h * 0.4, -h * 0.85);
-      ctx.moveTo(h * 0.4, -h * 0.85); ctx.lineTo(h * 0.55, -h * 0.7);
-      // Parallel ticks on left branch
-      ctx.moveTo(-h * 0.05, -h * 0.5); ctx.lineTo(-h * 0.2, -h * 0.45);
-      ctx.moveTo(-h * 0.08, -h * 0.65); ctx.lineTo(-h * 0.23, -h * 0.6);
-      ctx.moveTo(-h * 0.12, -h * 0.8); ctx.lineTo(-h * 0.27, -h * 0.75);
-      ctx.stroke();
+    case 17: // Two parallel diagonals
+      ctx.moveTo(-h * 0.7, -h); ctx.lineTo(-h * 0.2, h);
+      ctx.moveTo(h * 0.2, -h); ctx.lineTo(h * 0.7, h);
       break;
 
-    case 18: // Shield — fork with crossbar
-      ctx.beginPath();
-      ctx.moveTo(0, -h * 0.25); ctx.lineTo(-h * 0.45, -h * 0.95);
-      ctx.moveTo(0, -h * 0.25); ctx.lineTo(h * 0.45, -h * 0.95);
-      // Crossbar connecting branches
-      ctx.moveTo(-h * 0.3, -h * 0.7); ctx.lineTo(h * 0.3, -h * 0.7);
-      ctx.moveTo(-h * 0.45, -h * 0.95); ctx.lineTo(-h * 0.55, -h * 0.8);
-      ctx.moveTo(h * 0.45, -h * 0.95); ctx.lineTo(h * 0.55, -h * 0.8);
-      ctx.stroke();
+    case 18: // T-shape inverted
+      ctx.moveTo(-h * 0.6, -h * 0.6); ctx.lineTo(h * 0.6, -h * 0.6);
+      ctx.moveTo(0, -h * 0.6); ctx.lineTo(0, h * 0.8);
+      ctx.moveTo(-h * 0.3, h * 0.8); ctx.lineTo(h * 0.3, h * 0.8);
       break;
 
-    case 19: // Rune — complex: three branches with double ticks
-      ctx.beginPath();
-      ctx.moveTo(0, -h * 0.25); ctx.lineTo(-h * 0.4, -h * 0.9);
-      ctx.moveTo(0, -h * 0.25); ctx.lineTo(0, -h * 0.9);
-      ctx.moveTo(0, -h * 0.25); ctx.lineTo(h * 0.4, -h * 0.9);
-      // Double ticks
-      ctx.moveTo(-h * 0.4, -h * 0.9); ctx.lineTo(-h * 0.5, -h * 0.75);
-      ctx.moveTo(-h * 0.4, -h * 0.9); ctx.lineTo(-h * 0.3, -h);
-      ctx.moveTo(h * 0.4, -h * 0.9); ctx.lineTo(h * 0.5, -h * 0.75);
-      ctx.moveTo(h * 0.4, -h * 0.9); ctx.lineTo(h * 0.3, -h);
+    case 19: // Staircase
+      ctx.moveTo(-h * 0.7, h * 0.5); ctx.lineTo(-h * 0.7, 0);
+      ctx.lineTo(-h * 0.2, 0); ctx.lineTo(-h * 0.2, -h * 0.5);
+      ctx.lineTo(h * 0.3, -h * 0.5); ctx.lineTo(h * 0.3, -h);
+      ctx.lineTo(h * 0.7, -h);
+      break;
+
+    // ── DOTS / MARKS ──
+    case 20: // Three dots vertical
       ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(0, -h * 0.6, s * 0.06, 0, Math.PI * 2);
+      ctx.arc(0, 0, s * 0.06, 0, Math.PI * 2);
+      ctx.arc(0, h * 0.6, s * 0.06, 0, Math.PI * 2);
+      ctx.fill();
+      break;
+
+    case 21: // Colon with horizontal bar
+      ctx.moveTo(-h * 0.7, 0); ctx.lineTo(h * 0.7, 0);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(0, -h * 0.55, s * 0.055, 0, Math.PI * 2);
+      ctx.arc(0, h * 0.55, s * 0.055, 0, Math.PI * 2);
+      ctx.fill();
+      break;
+
+    // ── FORK / BRANCH (some Yautja feel) ──
+    case 22: // Simple fork — stem + two angled lines
+      ctx.moveTo(0, h); ctx.lineTo(0, 0);
+      ctx.moveTo(0, 0); ctx.lineTo(-h * 0.6, -h);
+      ctx.moveTo(0, 0); ctx.lineTo(h * 0.6, -h);
+      break;
+
+    case 23: // Trident with crossbar
+      ctx.moveTo(0, h); ctx.lineTo(0, -h);
+      ctx.moveTo(0, -h * 0.2); ctx.lineTo(-h * 0.6, -h);
+      ctx.moveTo(0, -h * 0.2); ctx.lineTo(h * 0.6, -h);
+      ctx.moveTo(-h * 0.4, -h * 0.6); ctx.lineTo(h * 0.4, -h * 0.6);
       break;
   }
+  ctx.stroke();
 }
 
-// Column positions — glyphs spawn in fixed columns for order
-const NUM_COLUMNS = 8;
+const NUM_COLUMNS = 7;
 
 export const TypingParticles: React.FC<{ trigger: number }> = ({ trigger }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -279,30 +211,31 @@ export const TypingParticles: React.FC<{ trigger: number }> = ({ trigger }) => {
     const w = canvas.width;
     const h = canvas.height;
     const colWidth = w / NUM_COLUMNS;
-    const count = 1 + Math.floor(Math.random() * 2); // 1-2 per keystroke
+    const count = 1 + Math.floor(Math.random() * 2);
 
     for (let i = 0; i < count; i++) {
-      // Cycle through columns in order, with slight random offset
       const col = colIndexRef.current % NUM_COLUMNS;
       colIndexRef.current++;
 
       const colorArr = COLORS[Math.floor(Math.random() * COLORS.length)];
-      const particle: Particle = {
-        x: colWidth * col + colWidth * 0.5 + (Math.random() - 0.5) * colWidth * 0.4,
-        y: h * 0.15 + Math.random() * h * 0.7, // Between 15%-85% of height
-        vy: -(0.15 + Math.random() * 0.35),
-        life: 1.0,
-        maxLife: 500 + Math.random() * 400, // 500-900ms
-        size: 16 + Math.random() * 12,
-        glyphIndex: Math.floor(Math.random() * 20),
-        color: colorArr,
-      };
-      particlesRef.current.push(particle);
+      particle: {
+        const p: Particle = {
+          x: colWidth * col + colWidth * 0.5 + (Math.random() - 0.5) * colWidth * 0.35,
+          y: h * 0.1 + Math.random() * h * 0.75,
+          vy: -(0.12 + Math.random() * 0.3),
+          life: 1.0,
+          maxLife: 500 + Math.random() * 500,
+          size: 14 + Math.random() * 14,
+          glyphIndex: Math.floor(Math.random() * 24),
+          color: colorArr,
+          rotation: (Math.floor(Math.random() * 8) * Math.PI) / 4, // 0, 45, 90, 135, 180, 225, 270, 315 degrees
+        };
+        particlesRef.current.push(p);
+      }
     }
 
-    // Cap particles to prevent performance issues
-    if (particlesRef.current.length > 40) {
-      particlesRef.current = particlesRef.current.slice(-40);
+    if (particlesRef.current.length > 45) {
+      particlesRef.current = particlesRef.current.slice(-45);
     }
   }, []);
 
@@ -326,15 +259,15 @@ export const TypingParticles: React.FC<{ trigger: number }> = ({ trigger }) => {
 
       p.y += p.vy;
 
-      // Opacity: fade in quick, hold, fade out
       const fadeIn = p.life > 0.88 ? (1 - p.life) / 0.12 : 1;
       const fadeOut = p.life < 0.35 ? p.life / 0.35 : 1;
-      const opacity = fadeIn * fadeOut * 0.25; // max 25%
+      const opacity = fadeIn * fadeOut * 0.22;
 
       if (opacity <= 0.003) return true;
 
       ctx.save();
       ctx.translate(p.x, p.y);
+      ctx.rotate(p.rotation);
       ctx.globalAlpha = opacity;
       ctx.strokeStyle = `rgba(${p.color[0]},${p.color[1]},${p.color[2]},1)`;
       ctx.fillStyle = `rgba(${p.color[0]},${p.color[1]},${p.color[2]},1)`;
