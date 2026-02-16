@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════
-// AIdark — Chat Area (FULL CANVAS + YAUTJA RUNES)
+// AIdark — Chat Area v5 (PARTICLES FULL AREA)
 // ═══════════════════════════════════════
 
 import React, { useRef, useEffect, useState } from 'react';
@@ -121,31 +121,22 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
   };
 
   return (
-    <div style={{ 
-      display: 'flex', 
-      flexDirection: 'column', 
-      flex: 1, 
-      height: '100%',
-      position: 'relative',
-      overflow: 'hidden',
-    }}>
+    /* ── Wrapper: position relative so particles canvas covers everything ── */
+    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, height: '100%', position: 'relative', overflow: 'hidden' }}>
+
+      {/* ── Yautja particles — covers entire chat area ── */}
       <TypingParticles trigger={keystrokeCount} />
 
+      {/* Messages */}
       <div ref={scrollRef} style={{
-        flex: 1, 
-        overflowY: 'auto', 
-        display: 'flex', 
-        flexDirection: 'column',
+        flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column',
         padding: writerMode ? '0' : undefined,
-        position: 'relative',
-        zIndex: 1,
+        position: 'relative', zIndex: 2,
       }}>
         {messages.length === 0 && !streamingContent ? (
           <div style={{
             flex: 1, display: 'flex', flexDirection: 'column',
             alignItems: 'center', justifyContent: 'center', padding: 20,
-            position: 'relative',
-            zIndex: 1,
           }}>
             <div style={{ marginBottom: 6, animation: 'fadeIn 0.8s ease' }}>
               <span style={{
@@ -174,8 +165,6 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
           <div style={{
             maxWidth: writerMode ? 900 : 720, width: '100%', margin: '0 auto',
             padding: isMobile ? '16px 14px' : '24px 20px', flex: 1,
-            position: 'relative',
-            zIndex: 1,
           }}>
             {messages.map((msg, idx) => (
               <MessageBubble key={msg.id} message={msg} index={idx} />
@@ -214,13 +203,13 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
         )}
       </div>
 
+      {/* ── Input Area ── */}
       <div style={{
         padding: messages.length === 0
           ? (isMobile ? '0 12px 24px' : '0 20px 40px')
           : (isMobile ? '0 12px 14px' : '0 20px 20px'),
         display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0,
-        position: 'relative',
-        zIndex: 1,
+        position: 'relative', zIndex: 2,
       }}>
         <div style={{ maxWidth: writerMode ? 900 : 720, width: '100%' }}>
           <div style={{
@@ -229,9 +218,6 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
             borderRadius: isMobile ? 12 : 14,
             padding: isMobile ? '10px 12px 8px' : '12px 16px 8px',
             transition: 'border-color 0.2s',
-            position: 'relative',
-            overflow: 'hidden',
-            zIndex: 2,
           }}
           onFocus={e => e.currentTarget.style.borderColor = 'var(--border-def)'}
           onBlur={e => e.currentTarget.style.borderColor = 'var(--border-sub)'}
@@ -250,13 +236,12 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
                 minHeight: 24, maxHeight: 160,
                 overflowY: 'auto', overflowX: 'hidden',
                 wordWrap: 'break-word', whiteSpace: 'pre-wrap',
-                position: 'relative', zIndex: 2,
               }}
             />
 
             <div style={{
               display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              marginTop: 8, gap: 6, position: 'relative', zIndex: 2,
+              marginTop: 8, gap: 6,
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                 <ModelSelector />
