@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { useChatStore } from '@/lib/store';
 import { DEFAULT_PROJECTS } from '@/lib/constants';
+import { t } from '@/lib/i18n';
 
 const PROJECT_ICONS: Record<string, React.ReactNode> = {
   book: <BookOpen size={15} />, flask: <FlaskConical size={15} />, skull: <Skull size={15} />,
@@ -50,7 +51,7 @@ const ChatMenu: React.FC<{ chatId: string; onRename: (id: string) => void; onDel
           }}
           onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
           onMouseLeave={e => e.currentTarget.style.background = 'none'}
-          ><Pencil size={11} /> Renombrar</button>
+          ><Pencil size={11} /> {t('sidebar.rename')}</button>
           <button onClick={e => { e.stopPropagation(); onDelete(chatId); setOpen(false); }} style={{
             width: '100%', padding: '9px 12px', display: 'flex', alignItems: 'center', gap: 7,
             background: 'none', border: 'none',
@@ -58,7 +59,7 @@ const ChatMenu: React.FC<{ chatId: string; onRename: (id: string) => void; onDel
           }}
           onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
           onMouseLeave={e => e.currentTarget.style.background = 'none'}
-          ><Trash2 size={11} /> Eliminar</button>
+          ><Trash2 size={11} /> {t('sidebar.delete')}</button>
         </div>
       )}
     </div>
@@ -80,7 +81,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ onOpenPricing, onOpenSettings,
   const [projOpen, setProjOpen] = useState(true);
 
   const handleNew = () => { createSession(); if (isMobile) setSidebarOpen(false); };
-  const handleRename = (id: string) => { const n = prompt('Nuevo nombre:'); if (n) renameSession(id, n); };
+  const handleRename = (id: string) => { const n = prompt(t('sidebar.new_name')); if (n) renameSession(id, n); };
   const handleSelect = (id: string) => { setActiveSession(id); if (isMobile) setSidebarOpen(false); };
 
   return (
@@ -108,7 +109,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ onOpenPricing, onOpenSettings,
         <div style={{ marginBottom: 6 }}>
           {sessions.length === 0 && (
             <p style={{ fontSize: 11, color: 'var(--txt-mut)', padding: '14px 10px', textAlign: 'center' }}>
-              Sin chats aún
+              {t('sidebar.no_chats')}
             </p>
           )}
           {sessions.map(s => (
@@ -134,7 +135,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ onOpenPricing, onOpenSettings,
             width: '100%', padding: '7px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
             background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit',
           }}>
-            <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--txt-ter)', letterSpacing: 0.5 }}>Proyectos</span>
+            <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--txt-ter)', letterSpacing: 0.5 }}>{t('sidebar.projects')}</span>
             <span style={{ color: 'var(--txt-mut)', transform: projOpen ? 'rotate(0)' : 'rotate(-90deg)', transition: 'transform 0.2s', display: 'flex' }}>
               <ChevronDown size={12} />
             </span>
@@ -169,7 +170,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ onOpenPricing, onOpenSettings,
           }}
           onMouseEnter={e => e.currentTarget.style.color = 'var(--txt-sec)'}
           onMouseLeave={e => e.currentTarget.style.color = 'var(--txt-mut)'}
-          ><Settings size={12} /> Ajustes</button>
+          ><Settings size={12} /> {t('sidebar.settings')}</button>
           <button onClick={onOpenPrivacy} style={{
             flex: 1, padding: 7, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,
             background: 'none', border: 'none', color: 'var(--txt-mut)', fontSize: 10,
@@ -177,7 +178,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ onOpenPricing, onOpenSettings,
           }}
           onMouseEnter={e => e.currentTarget.style.color = 'var(--txt-sec)'}
           onMouseLeave={e => e.currentTarget.style.color = 'var(--txt-mut)'}
-          ><Lock size={12} /> Privacidad</button>
+          ><Lock size={12} /> {t('sidebar.privacy')}</button>
         </div>
         <button onClick={onOpenPricing} style={{
           width: '100%', padding: '10px 12px',
@@ -188,7 +189,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ onOpenPricing, onOpenSettings,
         }}
         onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--border-def)'}
         onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border-sub)'}
-        ><Crown size={13} /> Upgrade a Premium</button>
+        ><Crown size={13} /> {t('sidebar.upgrade')}</button>
       </div>
     </>
   );
