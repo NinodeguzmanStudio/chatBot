@@ -6,6 +6,7 @@ import React, { useState } from 'react';
 import { Eye, EyeOff, Loader2 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/lib/store';
+import { LanguageSelector } from '@/components/chat/LanguageSelector';
 
 interface AuthModalProps {
   onSuccess: () => void;
@@ -127,6 +128,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onSuccess }) => {
       <div style={{
         width: '100%', maxWidth: 380, animation: 'fadeUp 0.5s ease',
       }}>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
+          <LanguageSelector />
+        </div>
+
         {/* Logo */}
         <div style={{ textAlign: 'center', marginBottom: 32 }}>
           <h1 style={{ fontSize: 36, fontWeight: 500, color: 'var(--txt-ghost)', marginBottom: 4 }}>
