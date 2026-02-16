@@ -6,6 +6,7 @@ import React, { useState } from 'react';
 import { X, Check, Loader2, Crown } from 'lucide-react';
 import { PRICING_PLANS } from '@/lib/constants';
 import { useAuthStore } from '@/lib/store';
+import { t } from '@/lib/i18n';
 
 interface PricingModalProps {
   isOpen: boolean;
@@ -23,7 +24,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose }) =
     if (planId === 'free') return;
 
     if (!user) {
-      setError('Necesitas una cuenta para suscribirte. Regístrate primero.');
+      setError(t('pricing.need_account'));
       return;
     }
 
@@ -46,10 +47,10 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose }) =
       if (data.checkout_url) {
         window.location.href = data.checkout_url;
       } else {
-        setError(data.error || 'Error al crear el pago');
+        setError(data.error || t('pricing.error'));
       }
     } catch {
-      setError('Error de conexión. Intenta de nuevo.');
+      setError(t('pricing.connection_error'));
     } finally {
       setLoading(null);
     }
@@ -74,9 +75,9 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose }) =
           <div>
             <h2 style={{ fontSize: 20, fontWeight: 500, color: 'var(--txt-pri)', marginBottom: 4 }}>
               <Crown size={18} style={{ display: 'inline', marginRight: 8, verticalAlign: 'middle' }} />
-              Planes AIdark
+              {t('pricing.title')}
             </h2>
-            <p style={{ fontSize: 12, color: 'var(--txt-mut)' }}>Desbloquea todo el potencial sin censura</p>
+            <p style={{ fontSize: 12, color: 'var(--txt-mut)' }}>{t('pricing.subtitle')}</p>
           </div>
           <button onClick={onClose} style={{
             width: 30, height: 30, display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -119,7 +120,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose }) =
                     background: 'var(--accent)', color: '#fff',
                     fontSize: 9, fontWeight: 600, letterSpacing: 0.5,
                   }}>
-                    POPULAR
+                    {t('pricing.popular')}
                   </span>
                 )}
 
@@ -155,7 +156,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose }) =
                   }}
                 >
                   {loading === plan.id && <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} />}
-                  {isCurrent ? 'Plan actual' : plan.id === 'free' ? 'Gratis' : 'Activar'}
+                  {isCurrent ? t('pricing.current') : plan.id === 'free' ? t('pricing.free') : t('pricing.activate')}
                 </button>
               </div>
             );
@@ -163,7 +164,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose }) =
         </div>
 
         <p style={{ fontSize: 10, color: 'var(--txt-mut)', textAlign: 'center', marginTop: 16 }}>
-          Pago seguro con MercadoPago · Cancela cuando quieras
+          {t('pricing.secure')}
         </p>
       </div>
     </div>
