@@ -1,32 +1,37 @@
 import React, { useState } from 'react';
-import { X, Loader2, Check, Zap, Crown, Gem } from 'lucide-react';
+import { X, Loader2, Check, Zap, Crown, Gem, ImagePlus, Paperclip } from 'lucide-react';
 import { useAuthStore } from '@/lib/store';
+import { useIsMobile } from '@/hooks/useIsMobile';
 import { t } from '@/lib/i18n';
 
 const plans = [
   {
     id: 'free', name: 'Free', price: 0, period: '',
+    periodLabel: '',
     icon: Zap, color: 'var(--txt-mut)',
-    features: ['5 msgs/day', '1 model', 'Basic chat'],
+    features: ['5 msgs/día', '1 modelo', 'Chat básico'],
     months: 0,
   },
   {
-    id: 'basic_monthly', name: 'Basic', price: 12, period: '/mo',
+    id: 'basic_monthly', name: 'Basic', price: 12, period: '/mes',
+    periodLabel: 'Plan mensual',
     icon: Zap, color: '#6b8f71',
-    features: ['Unlimited msgs', '1 model', 'Chat history 7d'],
+    features: ['Mensajes ilimitados', '1 modelo', 'Historial 7 días'],
     months: 1, badge: null,
   },
   {
-    id: 'pro_quarterly', name: 'Pro', price: 29.99, period: '/3mo',
+    id: 'pro_quarterly', name: 'Pro', price: 29.99, period: '/3 meses',
+    periodLabel: 'Plan por 3 meses',
     icon: Crown, color: '#c9944a',
-    features: ['Unlimited msgs', 'All models', 'Priority speed', 'Chat history 30d'],
-    months: 3, badge: 'POPULAR', equiv: '$10/mo',
+    features: ['Mensajes ilimitados', 'Todos los modelos', 'Velocidad prioritaria', 'Historial 30 días', 'Adjuntar fotos y archivos'],
+    months: 3, badge: 'POPULAR', equiv: '$10/mes',
   },
   {
-    id: 'ultra_annual', name: 'Ultra', price: 99.99, period: '/yr',
+    id: 'ultra_annual', name: 'Ultra', price: 99.99, period: '/año',
+    periodLabel: 'Plan por 1 año',
     icon: Gem, color: '#8b6fc0',
-    features: ['Unlimited msgs', 'All models', 'Max speed', 'Chat history 90d', 'Early access'],
-    months: 12, badge: 'BEST', equiv: '$8.33/mo',
+    features: ['Mensajes ilimitados', 'Todos los modelos', 'Velocidad máxima', 'Historial 90 días', 'Adjuntar fotos y archivos', 'Acceso anticipado'],
+    months: 12, badge: 'MEJOR PRECIO', equiv: '$8.33/mes',
   },
 ];
 
@@ -35,10 +40,11 @@ export const PricingModal: React.FC<{ isOpen: boolean; onClose: () => void }> = 
   const [loading, setLoading] = useState<string | null>(null);
   const [error, setError] = useState('');
   const currentPlan = user?.plan || 'free';
+  const isMobile = useIsMobile();
 
   const handleSubscribe = async (planId: string) => {
     if (planId === 'free') return;
-    if (!user) { setError(t('pricing.need_account') || 'Necesitas cuenta para suscribirte.'); return; }
+    if (!user) { setError('Necesitas una cuenta para suscribirte.'); return; }
     setLoading(planId); setError('');
     try {
       const res = await fetch('/api/create-payment', {
@@ -46,10 +52,18 @@ export const PricingModal: React.FC<{ isOpen: boolean; onClose: () => void }> = 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ planId, userEmail: user.email, userId: user.id }),
       });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setError(data.error || 'Error al crear el pago. Verifica la configuración de MercadoPago.');
+        setLoading(null);
+        return;
+      }
       const data = await res.json();
       if (data.init_point) { window.location.href = data.init_point; }
       else { setError(data.error || 'Error al crear pago'); }
-    } catch { setError('Error de conexión'); }
+    } catch {
+      setError('Error de conexión. Intenta de nuevo.');
+    }
     setLoading(null);
   };
 
@@ -57,20 +71,20 @@ export const PricingModal: React.FC<{ isOpen: boolean; onClose: () => void }> = 
 
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: 16 }}>
-      <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 720, background: 'var(--bg-surface)', border: '1px solid var(--border-def)', borderRadius: 16, padding: '24px 20px', maxHeight: '90vh', overflowY: 'auto' }}>
+      <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 760, background: 'var(--bg-surface)', border: '1px solid var(--border-def)', borderRadius: 16, padding: '24px 20px', maxHeight: '90vh', overflowY: 'auto' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
           <div>
             <h2 style={{ fontSize: 18, fontWeight: 600, color: 'var(--txt-pri)', margin: 0 }}>
-              {t('pricing.title') || 'Desbloquea AIdark'}
+              Planes AIdark
             </h2>
-            <p style={{ fontSize: 11, color: 'var(--txt-mut)', margin: '4px 0 0 0', display: 'flex', gap: 8 }}>
-              <span>{t('pricing.no_limits') || 'Sin límites'}</span>
+            <p style={{ fontSize: 11, color: 'var(--txt-mut)', margin: '4px 0 0 0', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <span>Sin límites</span>
               <span>·</span>
-              <span>{t('pricing.no_censorship') || 'Sin censura'}</span>
+              <span>Sin censura</span>
               <span>·</span>
-              <span>{t('pricing.no_filters') || 'Sin filtros'}</span>
+              <span>Sin filtros</span>
               <span>·</span>
-              <span>{t('pricing.no_ads') || 'Sin anuncios'}</span>
+              <span>Sin anuncios</span>
             </p>
           </div>
           <button onClick={onClose} style={{ width: 30, height: 30, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'none', border: 'none', color: 'var(--txt-mut)', cursor: 'pointer' }}><X size={16} /></button>
@@ -78,8 +92,12 @@ export const PricingModal: React.FC<{ isOpen: boolean; onClose: () => void }> = 
 
         {error && <div style={{ padding: '8px 12px', marginBottom: 12, borderRadius: 8, background: 'rgba(160,81,59,0.1)', color: 'var(--danger)', fontSize: 11 }}>{error}</div>}
 
-        {/* Plans grid — 4 columns */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginTop: 16 }}>
+        {/* Plans grid */}
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)',
+          gap: 10, marginTop: 16,
+        }}>
           {plans.map(plan => {
             const isCurrent = currentPlan !== 'free' && plan.id !== 'free' && currentPlan === plan.id;
             const Icon = plan.icon;
@@ -93,14 +111,17 @@ export const PricingModal: React.FC<{ isOpen: boolean; onClose: () => void }> = 
                 {plan.badge && (
                   <span style={{
                     position: 'absolute', top: -8, left: '50%', transform: 'translateX(-50%)',
-                    fontSize: 8, fontWeight: 700, letterSpacing: 1,
-                    padding: '2px 8px', borderRadius: 10,
+                    fontSize: 7, fontWeight: 700, letterSpacing: 1,
+                    padding: '2px 8px', borderRadius: 10, whiteSpace: 'nowrap',
                     background: plan.badge === 'POPULAR' ? 'rgba(201,148,74,0.2)' : 'rgba(139,111,192,0.2)',
                     color: plan.badge === 'POPULAR' ? '#c9944a' : '#8b6fc0',
                   }}>{plan.badge}</span>
                 )}
                 <Icon size={18} style={{ color: plan.color, marginBottom: 8 }} />
-                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--txt-pri)', marginBottom: 4 }}>{plan.name}</div>
+                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--txt-pri)', marginBottom: 2 }}>{plan.name}</div>
+                {plan.periodLabel && (
+                  <div style={{ fontSize: 9, color: 'var(--txt-ter)', marginBottom: 4 }}>{plan.periodLabel}</div>
+                )}
                 <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--txt-pri)', lineHeight: 1 }}>
                   {plan.price === 0 ? '$0' : `$${plan.price}`}
                 </div>
@@ -126,7 +147,7 @@ export const PricingModal: React.FC<{ isOpen: boolean; onClose: () => void }> = 
                     display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,
                   }}>
                   {loading === plan.id && <Loader2 size={10} style={{ animation: 'spin 1s linear infinite' }} />}
-                  {isCurrent ? (t('pricing.current') || 'Actual') : plan.id === 'free' ? (t('pricing.free') || 'Gratis') : (t('pricing.activate') || 'Activar')}
+                  {isCurrent ? 'Plan actual' : plan.id === 'free' ? 'Gratis' : 'Activar'}
                 </button>
               </div>
             );
@@ -134,7 +155,7 @@ export const PricingModal: React.FC<{ isOpen: boolean; onClose: () => void }> = 
         </div>
 
         <p style={{ textAlign: 'center', fontSize: 9, color: 'var(--txt-ghost)', marginTop: 14 }}>
-          {t('pricing.secure') || 'Pago seguro con MercadoPago'} · {t('pricing.cancel') || 'Cancela cuando quieras'}
+          Pago seguro con MercadoPago · Cancela cuando quieras
         </p>
       </div>
     </div>
