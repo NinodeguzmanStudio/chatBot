@@ -3,7 +3,7 @@
 // api/webhook-mercadopago.ts
 // ═══════════════════════════════════════
 
-import type { VercelRequest, VercelResponse } from '@vercel/node';
+const handler = async (req: any, res: any) => {
 import { createClient } from '@supabase/supabase-js';
 
 const MP_ACCESS_TOKEN = process.env.MP_ACCESS_TOKEN!;
@@ -18,7 +18,6 @@ const PLAN_MONTHS: Record<string, number> = {
   ultra_annual: 12,
 };
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
   // MercadoPago sends GET for verification and POST for notifications
   if (req.method === 'GET') return res.status(200).send('OK');
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
