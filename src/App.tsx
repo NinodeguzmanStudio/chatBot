@@ -98,7 +98,7 @@ const App: React.FC = () => {
           } else {
             const newProfile = {
               id: session.user.id,
-              email: session.user.email,
+              email: session.user.email || '',
               plan: 'free',
               plan_id: 'free',
               created_at: new Date().toISOString(),
