@@ -4,7 +4,7 @@ import { useChatStore } from '@/lib/store';
 import { useIsMobile } from '@/hooks/useIsMobile';
 import { t } from '@/lib/i18n';
 
-export const Sidebar: React.FC<{ onOpenPrivacy?: () => void; onOpenTerms?: () => void }> = ({ onOpenPrivacy, onOpenTerms }) => {
+export const Sidebar: React.FC<{ onOpenPricing?: () => void; onOpenSettings?: () => void; onOpenPrivacy?: () => void; onOpenTerms?: () => void; isMobile?: boolean }> = ({ onOpenPrivacy, onOpenTerms }) => {
   const { sessions, activeSessionId, sidebarOpen, setSidebarOpen, createSession, setActiveSession, deleteSession } = useChatStore();
   const isMobile = useIsMobile();
   const sidebarRef = useRef<HTMLDivElement>(null);
