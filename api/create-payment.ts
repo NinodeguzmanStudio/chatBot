@@ -1,87 +1,97 @@
 // ═══════════════════════════════════════
-// AIdark — Create Payment (Vercel Serverless)
+// AIdark — Create MercadoPago Payment
+// api/create-payment.ts
 // ═══════════════════════════════════════
-// Crea una preferencia de pago en MercadoPago
-// Docs: https://www.mercadopago.com.ar/developers/es/reference/preferences/_checkout_preferences/post
 
-export const config = {
-  runtime: 'edge',
+import type { VercelRequest, VercelResponse } from '@vercel/node';
+
+const MP_ACCESS_TOKEN = process.env.MP_ACCESS_TOKEN!;
+
+const PLANS: Record<string, { title: string; price: number; period: string; months: number }> = {
+  basic_monthly: {
+    title: 'AIdark Premium - Mensual',
+    price: 12.00,
+    period: 'monthly',
+    months: 1,
+  },
+  pro_quarterly: {
+    title: 'AIdark Premium - Trimestral',
+    price: 29.99,
+    period: 'quarterly',
+    months: 3,
+  },
+  ultra_annual: {
+    title: 'AIdark Premium - Anual',
+    price: 99.99,
+    period: 'annual',
+    months: 12,
+  },
 };
 
-const PLAN_PRICES: Record<string, { title: string; price: number; months: number }> = {
-  premium_monthly: { title: 'AIdark Premium — Mensual', price: 15, months: 1 },
-  premium_quarterly: { title: 'AIdark Premium — Trimestral', price: 40, months: 3 },
-  premium_annual: { title: 'AIdark Premium — Anual', price: 108, months: 12 },
-};
+export default async function handler(req: VercelRequest, res: VercelResponse) {
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-export default async function handler(req: Request) {
-  if (req.method !== 'POST') {
-    return new Response(JSON.stringify({ error: 'Method not allowed' }), { status: 405 });
+  const { planId, userEmail, userId } = req.body;
+
+  if (!planId || !userEmail || !userId) {
+    return res.status(400).json({ error: 'Missing planId, userEmail or userId' });
   }
 
-  const accessToken = process.env.MERCADOPAGO_ACCESS_TOKEN;
-  if (!accessToken) {
-    return new Response(
-      JSON.stringify({ error: 'MercadoPago not configured' }),
-      { status: 500, headers: { 'Content-Type': 'application/json' } }
-    );
-  }
+  const plan = PLANS[planId];
+  if (!plan) return res.status(400).json({ error: 'Invalid plan' });
 
   try {
-    const { plan_id, user_id, user_email } = await req.json();
+    const origin = req.headers.origin || req.headers.referer?.replace(/\/$/, '') || 'https://aidark.vercel.app';
 
-    const plan = PLAN_PRICES[plan_id];
-    if (!plan) {
-      return new Response(
-        JSON.stringify({ error: 'Invalid plan' }),
-        { status: 400, headers: { 'Content-Type': 'application/json' } }
-      );
-    }
+    const preference = {
+      items: [
+        {
+          title: plan.title,
+          quantity: 1,
+          unit_price: plan.price,
+          currency_id: 'USD',
+        },
+      ],
+      payer: { email: userEmail },
+      metadata: {
+        user_id: userId,
+        user_email: userEmail,
+        plan_id: planId,
+        months: plan.months,
+      },
+      back_urls: {
+        success: `${origin}/payment/success`,
+        failure: `${origin}/payment/failure`,
+        pending: `${origin}/payment/pending`,
+      },
+      auto_return: 'approved',
+      notification_url: `${origin}/api/webhook-mercadopago`,
+      external_reference: `${userId}|${planId}|${Date.now()}`,
+    };
 
-    // Crear preferencia de pago
-    const preference = await fetch('https://api.mercadopago.com/checkout/preferences', {
+    const mpRes = await fetch('https://api.mercadopago.com/checkout/preferences', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${accessToken}`,
+        Authorization: `Bearer ${MP_ACCESS_TOKEN}`,
       },
-      body: JSON.stringify({
-        items: [
-          {
-            title: plan.title,
-            quantity: 1,
-            currency_id: 'USD',
-            unit_price: plan.price,
-          },
-        ],
-        payer: {
-          email: user_email,
-        },
-        back_urls: {
-          success: `${process.env.VITE_APP_URL || 'https://aidark.app'}/payment/success`,
-          failure: `${process.env.VITE_APP_URL || 'https://aidark.app'}/payment/failure`,
-          pending: `${process.env.VITE_APP_URL || 'https://aidark.app'}/payment/pending`,
-        },
-        auto_return: 'approved',
-        external_reference: JSON.stringify({ user_id, plan_id }),
-        notification_url: `${process.env.VITE_APP_URL || 'https://aidark.app'}/api/webhook-mercadopago`,
-      }),
+      body: JSON.stringify(preference),
     });
 
-    const data = await preference.json();
+    if (!mpRes.ok) {
+      const err = await mpRes.text();
+      console.error('[MP] Error creating preference:', err);
+      return res.status(500).json({ error: 'Error creating payment' });
+    }
 
-    return new Response(
-      JSON.stringify({
-        checkout_url: data.init_point,
-        preference_id: data.id,
-      }),
-      { headers: { 'Content-Type': 'application/json' } }
-    );
-  } catch (error) {
-    console.error('[AIdark Payment] Error:', error);
-    return new Response(
-      JSON.stringify({ error: 'Error creating payment' }),
-      { status: 500, headers: { 'Content-Type': 'application/json' } }
-    );
+    const data = await mpRes.json();
+
+    return res.status(200).json({
+      init_point: data.init_point,
+      sandbox_init_point: data.sandbox_init_point,
+    });
+  } catch (err) {
+    console.error('[MP] Error:', err);
+    return res.status(500).json({ error: 'Server error' });
   }
 }
