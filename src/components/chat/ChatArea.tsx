@@ -3,7 +3,7 @@
 // ═══════════════════════════════════════
 
 import React, { useRef, useEffect, useState } from 'react';
-import { Send, Maximize2, Minimize2 } from 'lucide-react';
+import { Send, Maximize2, Minimize2, Square } from 'lucide-react';
 import { useChatStore, useAuthStore } from '@/lib/store';
 import { sendMessageStream, sendMessage } from '@/services/venice';
 import { generateId } from '@/lib/utils';
@@ -31,6 +31,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
   const [keystrokeCount, setKeystrokeCount] = useState(0);
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
   const isMobile = useIsMobile();
 
   const activeSession = sessions.find((s) => s.id === activeSessionId);
@@ -60,6 +61,14 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
     }
   }, [streamingContent]);
 
+  const stopGeneration = () => {
+    if (abortRef.current) {
+      abortRef.current.abort();
+      abortRef.current = null;
+      setIsTyping(false);
+    }
+  };
+
   const handleSend = async () => {
     if (!input.trim() || isTyping) return;
 
@@ -82,6 +91,9 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
     setStreamingContent('');
     incrementMessages();
 
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     try {
       let fullResponse = '';
       await sendMessageStream(
@@ -99,24 +111,31 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
           });
           setStreamingContent('');
           setIsTyping(false);
-        }
+        },
+        controller.signal
       );
-    } catch (error) {
-      try {
-        const response = await sendMessage([...messages, userMsg], selectedModel, selectedCharacter);
-        addMessage(sessionId!, {
-          id: generateId(), role: 'assistant', content: response,
-          timestamp: Date.now(), model: selectedModel, character: selectedCharacter,
-        });
-      } catch {
-        addMessage(sessionId!, {
-          id: generateId(), role: 'assistant',
-          content: t('chat.error'),
-          timestamp: Date.now(),
-        });
+    } catch (error: any) {
+      if (error.name === 'AbortError') {
+        // User stopped — no error needed
+      } else {
+        try {
+          const response = await sendMessage([...messages, userMsg], selectedModel, selectedCharacter);
+          addMessage(sessionId!, {
+            id: generateId(), role: 'assistant', content: response,
+            timestamp: Date.now(), model: selectedModel, character: selectedCharacter,
+          });
+        } catch {
+          addMessage(sessionId!, {
+            id: generateId(), role: 'assistant',
+            content: t('chat.error'),
+            timestamp: Date.now(),
+          });
+        }
       }
       setStreamingContent('');
       setIsTyping(false);
+    } finally {
+      abortRef.current = null;
     }
   };
 
@@ -275,16 +294,26 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
                 }}>
                   {input.length}/{charLimit}
                 </span>
-                <button onClick={handleSend} disabled={!input.trim() || isTyping} style={{
-                  width: 34, height: 34, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  background: input.trim() ? 'var(--border-str)' : 'var(--bg-el)',
-                  border: 'none', borderRadius: 8,
-                  color: input.trim() ? 'var(--txt-pri)' : 'var(--txt-mut)',
-                  cursor: input.trim() ? 'pointer' : 'default', transition: 'all 0.2s',
-                  animation: input.trim() ? 'glow 2s ease-in-out infinite' : 'none',
-                }}>
-                  <Send size={15} />
-                </button>
+                {isTyping ? (
+                  <button onClick={stopGeneration} style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    width: 34, height: 34, background: 'var(--danger)',
+                    border: 'none', borderRadius: '50%', cursor: 'pointer',
+                  }}>
+                    <Square size={12} fill="#fff" color="#fff" />
+                  </button>
+                ) : (
+                  <button onClick={handleSend} disabled={!input.trim() || isTyping} style={{
+                    width: 34, height: 34, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    background: input.trim() ? 'var(--border-str)' : 'var(--bg-el)',
+                    border: 'none', borderRadius: 8,
+                    color: input.trim() ? 'var(--txt-pri)' : 'var(--txt-mut)',
+                    cursor: input.trim() ? 'pointer' : 'default', transition: 'all 0.2s',
+                    animation: input.trim() ? 'glow 2s ease-in-out infinite' : 'none',
+                  }}>
+                    <Send size={15} />
+                  </button>
+                )}
               </div>
             </div>
           </div>
