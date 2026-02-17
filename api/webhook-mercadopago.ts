@@ -118,7 +118,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       mp_payment_id: String(paymentId),
       status: payment.status,
       expires_at: expiresAt.toISOString(),
-    }).catch(console.error);
+    });
 
     console.log(`[Webhook] ✅ Premium activated for ${userId}, plan: ${planId}, expires: ${expiresAt.toISOString()}`);
     return res.status(200).json({ received: true, activated: true });
