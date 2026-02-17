@@ -94,8 +94,19 @@ const App: React.FC = () => {
             setUser(profile);
             setAuthenticated(true);
             setAuthComplete(true);
-            // Load saved chats
             await loadFromSupabase(session.user.id);
+          } else {
+            const newProfile = {
+              id: session.user.id,
+              email: session.user.email,
+              plan: 'free',
+              plan_id: 'free',
+              created_at: new Date().toISOString(),
+            };
+            await supabase.from('profiles').insert(newProfile);
+            setUser(newProfile);
+            setAuthenticated(true);
+            setAuthComplete(true);
           }
         } catch {
           setAuthComplete(true);
@@ -136,3 +147,4 @@ const App: React.FC = () => {
 };
 
 export default App;
+
