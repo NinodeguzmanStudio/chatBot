@@ -1,14 +1,14 @@
 import React, { useState } from 'react';
 import { Eye, EyeOff, Loader2 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
-import { useAuthStore } from '@/lib/store';
+import { useAuthStore, useChatStore } from '@/lib/store';
 import { LanguageSelector } from '@/components/chat/LanguageSelector';
 import { isTempEmail } from '@/lib/fingerprint';
 import { t } from '@/lib/i18n';
 
 interface AuthModalProps {
   onSuccess: () => void;
-  initialError?: string; // error pasado desde App.tsx (ej: timeout, API key)
+  initialError?: string;
 }
 
 export const AuthModal: React.FC<AuthModalProps> = ({ onSuccess, initialError }) => {
@@ -20,14 +20,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onSuccess, initialError })
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(initialError || '');
   const [success, setSuccess] = useState('');
-  const { setUser } = useAuthStore();
+  const { setUser, setAuthenticated } = useAuthStore();
+  const { loadFromSupabase } = useChatStore();
 
-  // ══════════════════════════════════════════════════════════════
-  // Helper: Traducir errores de Supabase a mensajes claros
-  // ══════════════════════════════════════════════════════════════
   const translateError = (msg: string): string => {
     if (msg.includes('Invalid API key') || msg.includes('apikey'))
-      return 'Error de configuración del servidor. Contacta al administrador. (API key inválida)';
+      return 'Error de configuración del servidor. Contacta al administrador.';
     if (msg.includes('Invalid login credentials'))
       return t('auth.wrong_credentials') || 'Credenciales incorrectas.';
     if (msg.includes('Email not confirmed'))
@@ -36,8 +34,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onSuccess, initialError })
       return 'Este email ya está registrado. Intenta iniciar sesión.';
     if (msg.includes('rate limit') || msg.includes('too many requests'))
       return 'Demasiados intentos. Espera unos minutos.';
-    if (msg.includes('network') || msg.includes('fetch'))
-      return 'Error de conexión. Verifica tu internet.';
     return msg;
   };
 
@@ -58,7 +54,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onSuccess, initialError })
       setError(translateError(oauthError.message));
       setLoading(false);
     }
-    // No setLoading(false) si fue exitoso: la página va a redirigir
+    // Si no hubo error, la página redirige a Google — no hacer nada más
   };
 
   const handleLogin = async () => {
@@ -78,9 +74,16 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onSuccess, initialError })
           setLoading(false);
           return;
         }
+        // Buscar profile
         const { data: profile } = await supabase.from('profiles').select('*').eq('id', data.user.id).single();
-        if (profile) setUser(profile);
-        onSuccess();
+        if (profile) {
+          setUser(profile);
+          setAuthenticated(true);
+          await loadFromSupabase(data.user.id);
+          onSuccess();
+        } else {
+          setError('Error al cargar tu perfil. Intenta de nuevo.');
+        }
       }
     } catch (err: any) {
       setError(translateError(err?.message || 'Error desconocido.'));
