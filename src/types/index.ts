@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════
-// AIdark — Type Definitions (FIXED)
+// AIdark — Type Definitions (+ ATTACHMENTS)
 // ═══════════════════════════════════════
 
 // ── Chat ──
@@ -29,6 +29,15 @@ export interface PromptItem {
   prompt: string;
 }
 
+// ── Attachment (imagen o PDF) ──
+export interface Attachment {
+  type: 'image' | 'pdf';
+  data: string;       // base64 para imágenes, texto extraído para PDFs
+  name: string;        // nombre del archivo
+  mimeType: string;    // image/jpeg, image/png, application/pdf, etc.
+  preview?: string;    // base64 thumbnail para mostrar en el chat
+}
+
 export interface Message {
   id: string;
   role: 'user' | 'assistant';
@@ -36,6 +45,7 @@ export interface Message {
   timestamp: number;
   model?: ModelId;
   character?: CharacterId;
+  attachment?: Attachment;  // ← NUEVO
 }
 
 export interface ChatSession {
@@ -62,10 +72,15 @@ export interface UserProfile {
 
 // ── API ──
 export interface VeniceRequest {
-  messages: { role: string; content: string }[];
+  messages: { role: string; content: string | VeniceContentPart[] }[];
   model: ModelId;
   stream?: boolean;
 }
+
+// Venice/OpenAI multimodal content parts
+export type VeniceContentPart =
+  | { type: 'text'; text: string }
+  | { type: 'image_url'; image_url: { url: string } };
 
 export interface VeniceResponse {
   content: string;
