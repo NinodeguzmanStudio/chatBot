@@ -5,7 +5,7 @@ import { useIsMobile } from '@/hooks/useIsMobile';
 import { t } from '@/lib/i18n';
 
 export const Sidebar: React.FC<{ onOpenPrivacy?: () => void; onOpenTerms?: () => void }> = ({ onOpenPrivacy, onOpenTerms }) => {
-  const { sessions, currentSessionId, sidebarOpen, setSidebarOpen, createSession, switchSession, deleteSession } = useChatStore();
+  const { sessions, activeSessionId, sidebarOpen, setSidebarOpen, createSession, setActiveSession, deleteSession } = useChatStore();
   const isMobile = useIsMobile();
   const sidebarRef = useRef<HTMLDivElement>(null);
 
@@ -20,7 +20,7 @@ export const Sidebar: React.FC<{ onOpenPrivacy?: () => void; onOpenTerms?: () =>
 
   if (!sidebarOpen) return null;
 
-  const sortedSessions = [...sessions].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+  const sortedSessions = [...sessions].sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
 
   return (
     <>
@@ -43,12 +43,12 @@ export const Sidebar: React.FC<{ onOpenPrivacy?: () => void; onOpenTerms?: () =>
         {/* Sessions list */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '8px 8px' }}>
           {sortedSessions.map(session => {
-            const isActive = session.id === currentSessionId;
+            const isActive = session.id === activeSessionId;
             const preview = session.messages.length > 0
               ? session.messages[session.messages.length - 1].content.slice(0, 40) + (session.messages[session.messages.length - 1].content.length > 40 ? '...' : '')
               : t('sidebar.empty_chat');
             return (
-              <div key={session.id} onClick={() => { switchSession(session.id); if (isMobile) setSidebarOpen(false); }}
+              <div key={session.id} onClick={() => { setActiveSession(session.id); if (isMobile) setSidebarOpen(false); }}
                 style={{
                   padding: '10px 10px', borderRadius: 8, cursor: 'pointer', marginBottom: 2,
                   background: isActive ? 'var(--bg-el)' : 'transparent',
@@ -62,7 +62,7 @@ export const Sidebar: React.FC<{ onOpenPrivacy?: () => void; onOpenTerms?: () =>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 12, color: isActive ? 'var(--txt-pri)' : 'var(--txt-sec)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{preview}</div>
                   <div style={{ fontSize: 9, color: 'var(--txt-ghost)', marginTop: 2 }}>
-                    {new Date(session.updatedAt).toLocaleDateString()}
+                    {new Date(session.updated_at).toLocaleDateString()}
                   </div>
                 </div>
                 <button onClick={e => { e.stopPropagation(); deleteSession(session.id); }}
