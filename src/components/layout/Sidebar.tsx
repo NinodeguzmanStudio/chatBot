@@ -1,5 +1,9 @@
+// ═══════════════════════════════════════
+// AIdark — Sidebar (THREE DOT MENU + VISIBLE FOOTER)
+// ═══════════════════════════════════════
+
 import React, { useEffect, useRef, useState } from 'react';
-import { Plus, Trash2, MessageSquare, PanelLeftClose, Shield, FileText, Settings, MoreHorizontal, Pencil } from 'lucide-react';
+import { Plus, Trash2, MessageSquare, PanelLeftClose, Shield, Settings, MoreHorizontal, Pencil } from 'lucide-react';
 import { useChatStore } from '@/lib/store';
 import { useIsMobile } from '@/hooks/useIsMobile';
 import { t } from '@/lib/i18n';
@@ -12,7 +16,7 @@ interface SidebarProps {
   isMobile?: boolean;
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({ onOpenPricing, onOpenSettings, onOpenPrivacy, onOpenTerms }) => {
+export const Sidebar: React.FC<SidebarProps> = ({ onOpenSettings, onOpenPrivacy }) => {
   const { sessions, activeSessionId, sidebarOpen, setSidebarOpen, createSession, setActiveSession, deleteSession, renameSession } = useChatStore();
   const isMobile = useIsMobile();
   const sidebarRef = useRef<HTMLDivElement>(null);
@@ -30,7 +34,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ onOpenPricing, onOpenSettings,
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [isMobile, sidebarOpen, setSidebarOpen]);
 
-  // Close menu when clicking outside
+  // Close menu on outside click
   useEffect(() => {
     if (!menuOpen) return;
     const handle = (e: MouseEvent) => {
@@ -70,40 +74,47 @@ export const Sidebar: React.FC<SidebarProps> = ({ onOpenPricing, onOpenSettings,
         width: isMobile ? 280 : 260, height: '100%', background: 'var(--bg-surface)',
         borderRight: '1px solid var(--border-sub)', display: 'flex', flexDirection: 'column',
         flexShrink: 0, position: isMobile ? 'fixed' : 'relative', left: 0, top: 0,
-        zIndex: isMobile ? 100 : 1, transition: 'transform 0.2s ease',
+        zIndex: isMobile ? 100 : 1,
       }}>
         {/* Header */}
         <div style={{ padding: '12px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--border-sub)' }}>
           <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--txt-ter)', letterSpacing: 0.5 }}>{t('sidebar.chats') || 'Chats'}</span>
           <div style={{ display: 'flex', gap: 4 }}>
-            <button onClick={() => createSession()} title={t('sidebar.new_chat') || 'Nuevo chat'} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28, background: 'none', border: 'none', color: 'var(--txt-ter)', cursor: 'pointer', borderRadius: 6 }}
+            <button onClick={() => createSession()} title={t('sidebar.new_chat') || 'Nuevo chat'} style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28,
+              background: 'none', border: 'none', color: 'var(--txt-ter)', cursor: 'pointer', borderRadius: 6,
+            }}
               onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-el)'}
               onMouseLeave={e => e.currentTarget.style.background = 'none'}
             ><Plus size={15} /></button>
-            <button onClick={() => setSidebarOpen(false)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28, background: 'none', border: 'none', color: 'var(--txt-ter)', cursor: 'pointer', borderRadius: 6 }}
+            <button onClick={() => setSidebarOpen(false)} style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28,
+              background: 'none', border: 'none', color: 'var(--txt-ter)', cursor: 'pointer', borderRadius: 6,
+            }}
               onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-el)'}
               onMouseLeave={e => e.currentTarget.style.background = 'none'}
             ><PanelLeftClose size={15} /></button>
           </div>
         </div>
 
-        {/* Sessions list */}
+        {/* Sessions */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '8px 8px' }}>
           {sortedSessions.length === 0 && (
             <div style={{ padding: '20px 10px', textAlign: 'center' }}>
-              <span style={{ fontSize: 11, color: 'var(--txt-ghost)' }}>{t('sidebar.no_chats')}</span>
+              <span style={{ fontSize: 11, color: 'var(--txt-mut)' }}>{t('sidebar.no_chats')}</span>
             </div>
           )}
           {sortedSessions.map(session => {
             const isActive = session.id === activeSessionId;
             const isRenaming = renaming === session.id;
             return (
-              <div key={session.id} onClick={() => { if (!isRenaming) { setActiveSession(session.id); if (isMobile) setSidebarOpen(false); } }}
+              <div key={session.id}
+                onClick={() => { if (!isRenaming) { setActiveSession(session.id); if (isMobile) setSidebarOpen(false); } }}
                 style={{
-                  padding: '10px 10px', borderRadius: 8, cursor: isRenaming ? 'default' : 'pointer', marginBottom: 2,
-                  background: isActive ? 'var(--bg-el)' : 'transparent',
-                  display: 'flex', alignItems: 'center', gap: 10,
-                  transition: 'background 0.15s', position: 'relative',
+                  padding: '10px 10px', borderRadius: 8, cursor: isRenaming ? 'default' : 'pointer',
+                  marginBottom: 2, background: isActive ? 'var(--bg-el)' : 'transparent',
+                  display: 'flex', alignItems: 'center', gap: 10, position: 'relative',
+                  transition: 'background 0.15s',
                 }}
                 onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = 'var(--bg-el)'; }}
                 onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = 'transparent'; }}
@@ -111,9 +122,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ onOpenPricing, onOpenSettings,
                 <MessageSquare size={13} style={{ color: 'var(--txt-ghost)', flexShrink: 0 }} />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   {isRenaming ? (
-                    <input
-                      autoFocus
-                      value={renameValue}
+                    <input autoFocus value={renameValue}
                       onChange={e => setRenameValue(e.target.value)}
                       onKeyDown={e => { if (e.key === 'Enter') handleRenameConfirm(); if (e.key === 'Escape') setRenaming(null); }}
                       onBlur={handleRenameConfirm}
@@ -152,35 +161,28 @@ export const Sidebar: React.FC<SidebarProps> = ({ onOpenPricing, onOpenSettings,
                     >
                       <MoreHorizontal size={14} />
                     </button>
-
-                    {/* Dropdown menu */}
                     {menuOpen === session.id && (
                       <div ref={menuRef} onClick={e => e.stopPropagation()} style={{
                         position: 'absolute', right: 0, top: 28, zIndex: 50,
                         background: 'var(--bg-surface)', border: '1px solid var(--border-def)',
                         borderRadius: 8, padding: 4, minWidth: 140,
                         boxShadow: '0 4px 16px rgba(0,0,0,0.3)',
-                        animation: 'fadeIn 0.1s ease',
                       }}>
-                        <button
-                          onClick={() => handleRenameStart(session.id, session.title || 'Nuevo chat')}
-                          style={{
-                            width: '100%', padding: '8px 10px', display: 'flex', alignItems: 'center', gap: 8,
-                            background: 'none', border: 'none', borderRadius: 6,
-                            color: 'var(--txt-sec)', fontSize: 11, cursor: 'pointer', fontFamily: 'inherit',
-                          }}
+                        <button onClick={() => handleRenameStart(session.id, session.title || 'Nuevo chat')} style={{
+                          width: '100%', padding: '8px 10px', display: 'flex', alignItems: 'center', gap: 8,
+                          background: 'none', border: 'none', borderRadius: 6,
+                          color: 'var(--txt-sec)', fontSize: 11, cursor: 'pointer', fontFamily: 'inherit',
+                        }}
                           onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-el)'}
                           onMouseLeave={e => e.currentTarget.style.background = 'none'}
                         >
                           <Pencil size={12} /> {t('sidebar.rename')}
                         </button>
-                        <button
-                          onClick={() => handleDelete(session.id)}
-                          style={{
-                            width: '100%', padding: '8px 10px', display: 'flex', alignItems: 'center', gap: 8,
-                            background: 'none', border: 'none', borderRadius: 6,
-                            color: 'var(--danger)', fontSize: 11, cursor: 'pointer', fontFamily: 'inherit',
-                          }}
+                        <button onClick={() => handleDelete(session.id)} style={{
+                          width: '100%', padding: '8px 10px', display: 'flex', alignItems: 'center', gap: 8,
+                          background: 'none', border: 'none', borderRadius: 6,
+                          color: 'var(--danger)', fontSize: 11, cursor: 'pointer', fontFamily: 'inherit',
+                        }}
                           onMouseEnter={e => e.currentTarget.style.background = 'rgba(160,81,59,0.08)'}
                           onMouseLeave={e => e.currentTarget.style.background = 'none'}
                         >
@@ -195,30 +197,37 @@ export const Sidebar: React.FC<SidebarProps> = ({ onOpenPricing, onOpenSettings,
           })}
         </div>
 
-        {/* Footer — Settings + Privacy */}
-        <div style={{ padding: '10px 14px', borderTop: '1px solid var(--border-sub)', display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
+        {/* ── Footer — MÁS VISIBLE (color --txt-sec en vez de --txt-ghost) ── */}
+        <div style={{
+          padding: '12px 14px', borderTop: '1px solid var(--border-sub)',
+          display: 'flex', gap: 14, justifyContent: 'center',
+        }}>
           {onOpenSettings && (
-            <button onClick={onOpenSettings} style={{ background: 'none', border: 'none', color: 'var(--txt-ghost)', fontSize: 10, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, fontFamily: 'inherit' }}
-              onMouseEnter={e => e.currentTarget.style.color = 'var(--txt-sec)'}
-              onMouseLeave={e => e.currentTarget.style.color = 'var(--txt-ghost)'}
+            <button onClick={onOpenSettings} style={{
+              background: 'none', border: 'none',
+              color: 'var(--txt-sec)',       /* ← 10-15% más visible */
+              fontSize: 11, cursor: 'pointer', display: 'flex',
+              alignItems: 'center', gap: 5, fontFamily: 'inherit',
+              transition: 'color 0.15s',
+            }}
+              onMouseEnter={e => e.currentTarget.style.color = 'var(--txt-pri)'}
+              onMouseLeave={e => e.currentTarget.style.color = 'var(--txt-sec)'}
             >
-              <Settings size={10} /> {t('sidebar.settings')}
+              <Settings size={12} /> {t('sidebar.settings')}
             </button>
           )}
           {onOpenPrivacy && (
-            <button onClick={onOpenPrivacy} style={{ background: 'none', border: 'none', color: 'var(--txt-ghost)', fontSize: 10, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, fontFamily: 'inherit' }}
-              onMouseEnter={e => e.currentTarget.style.color = 'var(--txt-sec)'}
-              onMouseLeave={e => e.currentTarget.style.color = 'var(--txt-ghost)'}
+            <button onClick={onOpenPrivacy} style={{
+              background: 'none', border: 'none',
+              color: 'var(--txt-sec)',       /* ← 10-15% más visible */
+              fontSize: 11, cursor: 'pointer', display: 'flex',
+              alignItems: 'center', gap: 5, fontFamily: 'inherit',
+              transition: 'color 0.15s',
+            }}
+              onMouseEnter={e => e.currentTarget.style.color = 'var(--txt-pri)'}
+              onMouseLeave={e => e.currentTarget.style.color = 'var(--txt-sec)'}
             >
-              <Shield size={10} /> {t('sidebar.privacy')}
-            </button>
-          )}
-          {onOpenTerms && (
-            <button onClick={onOpenTerms} style={{ background: 'none', border: 'none', color: 'var(--txt-ghost)', fontSize: 10, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, fontFamily: 'inherit' }}
-              onMouseEnter={e => e.currentTarget.style.color = 'var(--txt-sec)'}
-              onMouseLeave={e => e.currentTarget.style.color = 'var(--txt-ghost)'}
-            >
-              <FileText size={10} /> {t('sidebar.terms') || 'Términos'}
+              <Shield size={12} /> {t('sidebar.privacy')}
             </button>
           )}
         </div>
