@@ -1,8 +1,8 @@
 // ═══════════════════════════════════════
-// AIdark — Venice AI Service (FIXED)
+// AIdark — Venice AI Service (+ VISION)
 // ═══════════════════════════════════════
 
-import type { Message, ModelId, CharacterId } from '@/types';
+import type { Message, ModelId, CharacterId, VeniceContentPart } from '@/types';
 import { AI_CHARACTERS } from '@/lib/constants';
 
 // ── Venice API models mapping ──
@@ -12,10 +12,52 @@ const VENICE_MODELS: Record<ModelId, string> = {
   'void-x': 'qwen3-235b',
 };
 
+// Modelo de visión para cuando se adjuntan imágenes
+const VISION_MODEL = 'qwen-2.5-vl-72b';
+
 // ── Get system prompt for character ──
 function getSystemPrompt(character: CharacterId): string {
   const char = AI_CHARACTERS.find((c) => c.id === character);
   return char?.systemPrompt || AI_CHARACTERS[0].systemPrompt;
+}
+
+// ══════════════════════════════════════════════════════════════
+// Formatear mensajes para la API
+// Si hay imagen adjunta → content es un array multimodal
+// Si hay PDF adjunto → el texto extraído se agrega al content
+// ══════════════════════════════════════════════════════════════
+function formatMessages(messages: Message[]): { role: string; content: string | VeniceContentPart[] }[] {
+  return messages.map((m) => {
+    // Si tiene imagen adjunta → formato multimodal
+    if (m.attachment?.type === 'image' && m.attachment.data) {
+      const parts: VeniceContentPart[] = [
+        {
+          type: 'image_url',
+          image_url: { url: `data:${m.attachment.mimeType};base64,${m.attachment.data}` },
+        },
+      ];
+      if (m.content.trim()) {
+        parts.push({ type: 'text', text: m.content });
+      } else {
+        parts.push({ type: 'text', text: 'Describe esta imagen en detalle.' });
+      }
+      return { role: m.role, content: parts };
+    }
+
+    // Si tiene PDF adjunto → prepend texto extraído
+    if (m.attachment?.type === 'pdf' && m.attachment.data) {
+      const pdfContext = `[Contenido del archivo "${m.attachment.name}"]\n${m.attachment.data}\n\n`;
+      return { role: m.role, content: pdfContext + m.content };
+    }
+
+    // Normal → solo texto
+    return { role: m.role, content: m.content };
+  });
+}
+
+// Detectar si algún mensaje tiene imagen → usar modelo de visión
+function needsVisionModel(messages: Message[]): boolean {
+  return messages.some((m) => m.attachment?.type === 'image');
 }
 
 // ── Send message (non-streaming) ──
@@ -24,18 +66,18 @@ export async function sendMessage(
   model: ModelId,
   character: CharacterId = 'default'
 ): Promise<string> {
+  const useVision = needsVisionModel(messages);
+  const veniceModel = useVision ? VISION_MODEL : VENICE_MODELS[model];
+
   const response = await fetch('/api/chat', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       messages: [
         { role: 'system', content: getSystemPrompt(character) },
-        ...messages.map((m) => ({
-          role: m.role,
-          content: m.content,
-        })),
+        ...formatMessages(messages),
       ],
-      model: VENICE_MODELS[model],
+      model: veniceModel,
     }),
   });
 
@@ -45,7 +87,6 @@ export async function sendMessage(
   }
 
   const data = await response.json();
-  // Handle Venice API response format
   const content = data.content || data.choices?.[0]?.message?.content || '';
   return content;
 }
@@ -59,6 +100,9 @@ export async function sendMessageStream(
   onDone: () => void,
   signal?: AbortSignal
 ): Promise<void> {
+  const useVision = needsVisionModel(messages);
+  const veniceModel = useVision ? VISION_MODEL : VENICE_MODELS[model];
+
   const response = await fetch('/api/chat', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -66,12 +110,9 @@ export async function sendMessageStream(
     body: JSON.stringify({
       messages: [
         { role: 'system', content: getSystemPrompt(character) },
-        ...messages.map((m) => ({
-          role: m.role,
-          content: m.content,
-        })),
+        ...formatMessages(messages),
       ],
-      model: VENICE_MODELS[model],
+      model: veniceModel,
       stream: true,
     }),
   });
