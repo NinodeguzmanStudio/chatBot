@@ -79,6 +79,7 @@ const translations: Record<Lang, Record<string, string>> = {
     'settings.language': 'Idioma',
     'settings.delete_all': 'Eliminar todos los chats',
     'settings.delete_confirm': '¿Eliminar todos los chats? Esta acción no se puede deshacer.',
+    'settings.logout': 'Cerrar sesión',
 
     // Pricing
     'pricing.title': 'Planes AIdark',
@@ -91,7 +92,8 @@ const translations: Record<Lang, Record<string, string>> = {
     'pricing.current': 'Plan actual',
     'pricing.free': 'Gratis',
     'pricing.activate': 'Activar',
-    'pricing.secure': 'Pago seguro · Cancela cuando quieras',
+    'pricing.secure': 'Pago seguro con MercadoPago',
+    'pricing.cancel': 'Cancela cuando quieras',
     'pricing.need_account': 'Necesitas una cuenta para suscribirte. Regístrate primero.',
     'pricing.error': 'Error al crear el pago',
     'pricing.connection_error': 'Error de conexión. Intenta de nuevo.',
@@ -177,6 +179,7 @@ const translations: Record<Lang, Record<string, string>> = {
     'settings.language': 'Idioma',
     'settings.delete_all': 'Excluir todos os chats',
     'settings.delete_confirm': 'Excluir todos os chats? Esta ação não pode ser desfeita.',
+    'settings.logout': 'Sair',
 
     'pricing.title': 'Planos AIdark',
     'pricing.subtitle': 'Desbloqueie todo o potencial sem censura',
@@ -188,7 +191,8 @@ const translations: Record<Lang, Record<string, string>> = {
     'pricing.current': 'Plano atual',
     'pricing.free': 'Grátis',
     'pricing.activate': 'Ativar',
-    'pricing.secure': 'Pagamento seguro · Cancele quando quiser',
+    'pricing.secure': 'Pagamento seguro com MercadoPago',
+    'pricing.cancel': 'Cancele quando quiser',
     'pricing.need_account': 'Você precisa de uma conta para assinar. Registre-se primeiro.',
     'pricing.error': 'Erro ao criar o pagamento',
     'pricing.connection_error': 'Erro de conexão. Tente novamente.',
@@ -272,6 +276,7 @@ const translations: Record<Lang, Record<string, string>> = {
     'settings.language': 'Language',
     'settings.delete_all': 'Delete all chats',
     'settings.delete_confirm': 'Delete all chats? This cannot be undone.',
+    'settings.logout': 'Log out',
 
     'pricing.title': 'AIdark Plans',
     'pricing.subtitle': 'Unlock the full uncensored potential',
@@ -283,7 +288,8 @@ const translations: Record<Lang, Record<string, string>> = {
     'pricing.current': 'Current plan',
     'pricing.free': 'Free',
     'pricing.activate': 'Activate',
-    'pricing.secure': 'Secure payment · Cancel anytime',
+    'pricing.secure': 'Secure payment',
+    'pricing.cancel': 'Cancel anytime',
     'pricing.need_account': 'You need an account to subscribe. Sign up first.',
     'pricing.error': 'Error creating payment',
     'pricing.connection_error': 'Connection error. Try again.',
