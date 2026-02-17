@@ -2,8 +2,9 @@
 // AIdark — Chat API Proxy (RATE LIMITED)
 // ═══════════════════════════════════════
 
-const handler = async (req: any, res: any) => {
+import type { VercelRequest, VercelResponse } from '@vercel/node';
 
+// Rate limiter (in-memory, resets per serverless instance)
 const rateMap = new Map<string, { count: number; reset: number }>();
 const RATE_LIMIT = 30;
 const RATE_WINDOW = 60 * 1000;
@@ -19,6 +20,13 @@ function isRateLimited(key: string): boolean {
   return entry.count > RATE_LIMIT;
 }
 
+// ══════════════════════════════════════════════════════════════
+// FIX: Agregado "export default" — sin esto Vercel no reconoce
+// la función y /api/chat devuelve 404/500.
+// También movido rateMap fuera del handler para que persista
+// entre requests dentro de la misma instancia.
+// ══════════════════════════════════════════════════════════════
+export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   const apiKey = process.env.VENICE_API_KEY;
@@ -76,4 +84,3 @@ function isRateLimited(key: string): boolean {
     res.status(500).json({ error: err.message || 'Internal error' });
   }
 }
- 
