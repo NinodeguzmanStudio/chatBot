@@ -81,6 +81,15 @@ const App: React.FC = () => {
   const [authComplete, setAuthComplete] = useState(false);
 
   useEffect(() => {
+    // Handle Google OAuth PKCE code exchange
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get('code');
+    if (code) {
+      supabase.auth.exchangeCodeForSession(code).then(() => {
+        window.history.replaceState({}, '', window.location.pathname);
+      });
+    }
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       if (session?.user) {
         try {
