@@ -44,17 +44,13 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onSuccess, initialError })
       provider: 'google',
       options: {
         redirectTo: window.location.origin,
-        queryParams: {
-          access_type: 'offline',
-          prompt: 'consent',
-        },
+        queryParams: { access_type: 'offline', prompt: 'consent' },
       },
     });
     if (oauthError) {
       setError(translateError(oauthError.message));
       setLoading(false);
     }
-    // Si no hubo error, la página redirige a Google — no hacer nada más
   };
 
   const handleLogin = async () => {
@@ -62,11 +58,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onSuccess, initialError })
     setLoading(true); setError('');
     try {
       const { data, error: authError } = await supabase.auth.signInWithPassword({ email, password });
-      if (authError) {
-        setError(translateError(authError.message));
-        setLoading(false);
-        return;
-      }
+      if (authError) { setError(translateError(authError.message)); setLoading(false); return; }
       if (data.user) {
         if (!data.user.email_confirmed_at) {
           setError(t('auth.verify_email') || 'Verifica tu email antes de iniciar sesión.');
@@ -74,7 +66,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onSuccess, initialError })
           setLoading(false);
           return;
         }
-        // Buscar profile
         const { data: profile } = await supabase.from('profiles').select('*').eq('id', data.user.id).single();
         if (profile) {
           setUser(profile);
@@ -99,15 +90,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onSuccess, initialError })
     setLoading(true); setError('');
     try {
       const { data, error: authError } = await supabase.auth.signUp({ email, password });
-      if (authError) {
-        setError(translateError(authError.message));
-        setLoading(false);
-        return;
-      }
-      if (data.user) {
-        setSuccess(t('auth.account_created'));
-        setMode('login');
-      }
+      if (authError) { setError(translateError(authError.message)); setLoading(false); return; }
+      if (data.user) { setSuccess(t('auth.account_created')); setMode('login'); }
     } catch (err: any) {
       setError(translateError(err?.message || 'Error desconocido.'));
     }
@@ -127,7 +111,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onSuccess, initialError })
     setLoading(false);
   };
 
-  const handleSubmit = () => { if (mode === 'login') handleLogin(); else if (mode === 'register') handleRegister(); else handleForgotPassword(); };
+  const handleSubmit = () => {
+    if (mode === 'login') handleLogin();
+    else if (mode === 'register') handleRegister();
+    else handleForgotPassword();
+  };
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-primary)', padding: 20 }}>
@@ -184,7 +172,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onSuccess, initialError })
             )}
           </div>
 
-          {/* Google */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 18 }}>
             <div style={{ flex: 1, height: 1, background: 'var(--border-sub)' }} />
             <span style={{ fontSize: 10, color: 'var(--txt-ghost)' }}>o</span>
