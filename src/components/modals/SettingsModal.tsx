@@ -1,17 +1,18 @@
 // ═══════════════════════════════════════
-// AIdark — Settings Modal (i18n + language)
+// AIdark — Settings Modal (+ LOGOUT + LANGUAGE)
 // ═══════════════════════════════════════
 
 import React from 'react';
-import { X, Trash2, Globe } from 'lucide-react';
+import { X, Trash2, Globe, LogOut } from 'lucide-react';
 import { useChatStore, useAuthStore } from '@/lib/store';
+import { supabase } from '@/lib/supabase';
 import { APP_CONFIG } from '@/lib/constants';
 import { useLanguage } from '@/hooks/useLanguage';
 import { LANG_OPTIONS } from '@/lib/i18n';
 
 export const SettingsModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ isOpen, onClose }) => {
   const { sessions } = useChatStore();
-  const { user } = useAuthStore();
+  const { user, setUser, setAuthenticated } = useAuthStore();
   const { t, lang, changeLang } = useLanguage();
 
   if (!isOpen) return null;
@@ -27,6 +28,14 @@ export const SettingsModal: React.FC<{ isOpen: boolean; onClose: () => void }> =
     }
   };
 
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    setUser(null);
+    setAuthenticated(false);
+    onClose();
+    window.location.reload();
+  };
+
   return (
     <div onClick={onClose} style={{
       position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)',
@@ -38,33 +47,31 @@ export const SettingsModal: React.FC<{ isOpen: boolean; onClose: () => void }> =
         background: 'var(--bg-surface)', border: '1px solid var(--border-def)',
         borderRadius: 14, padding: 24, animation: 'fadeUp 0.3s ease',
       }}>
+        {/* Title */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
           <h2 style={{ fontSize: 16, fontWeight: 500, color: 'var(--txt-pri)' }}>{t('settings.title')}</h2>
-          <button onClick={onClose} style={{ width: 30, height: 30, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'none', border: 'none', color: 'var(--txt-mut)', cursor: 'pointer', borderRadius: 6 }}>
+          <button onClick={onClose} style={{
+            width: 30, height: 30, display: 'flex', alignItems: 'center',
+            justifyContent: 'center', background: 'none', border: 'none',
+            color: 'var(--txt-mut)', cursor: 'pointer', borderRadius: 6,
+          }}>
             <X size={16} />
           </button>
         </div>
 
         {/* Info */}
         <div style={{ marginBottom: 20 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-            <span style={{ fontSize: 12, color: 'var(--txt-sec)' }}>{t('settings.version')}</span>
-            <span style={{ fontSize: 12, color: 'var(--txt-mut)' }}>{APP_CONFIG.version}</span>
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-            <span style={{ fontSize: 12, color: 'var(--txt-sec)' }}>{t('settings.active_chats')}</span>
-            <span style={{ fontSize: 12, color: 'var(--txt-mut)' }}>{sessions.length}</span>
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-            <span style={{ fontSize: 12, color: 'var(--txt-sec)' }}>{t('settings.plan')}</span>
-            <span style={{ fontSize: 12, color: 'var(--accent)' }}>{user?.plan || 'free'}</span>
-          </div>
-          {user && (
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-              <span style={{ fontSize: 12, color: 'var(--txt-sec)' }}>Email</span>
-              <span style={{ fontSize: 12, color: 'var(--txt-mut)' }}>{user.email}</span>
+          {[
+            { label: t('settings.version'), value: APP_CONFIG.version },
+            { label: t('settings.active_chats'), value: String(sessions.length) },
+            { label: t('settings.plan'), value: user?.plan || 'free', accent: true },
+            ...(user ? [{ label: 'Email', value: user.email }] : []),
+          ].map((row, i) => (
+            <div key={i} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+              <span style={{ fontSize: 12, color: 'var(--txt-sec)' }}>{row.label}</span>
+              <span style={{ fontSize: 12, color: row.accent ? 'var(--accent)' : 'var(--txt-mut)' }}>{row.value}</span>
             </div>
-          )}
+          ))}
         </div>
 
         {/* Language selector */}
@@ -93,19 +100,35 @@ export const SettingsModal: React.FC<{ isOpen: boolean; onClose: () => void }> =
         </div>
 
         {/* Actions */}
-        <div style={{ borderTop: '1px solid var(--border-sub)', paddingTop: 16 }}>
+        <div style={{ borderTop: '1px solid var(--border-sub)', paddingTop: 16, display: 'flex', flexDirection: 'column', gap: 8 }}>
           <button onClick={handleClearChats} style={{
             width: '100%', padding: '10px 14px',
             display: 'flex', alignItems: 'center', gap: 8,
             background: 'none', border: '1px solid var(--border-sub)', borderRadius: 8,
-            color: 'var(--danger)', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit',
+            color: 'var(--txt-sec)', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit',
             transition: 'all 0.12s',
           }}
-          onMouseEnter={e => e.currentTarget.style.background = 'rgba(160,81,59,0.05)'}
-          onMouseLeave={e => e.currentTarget.style.background = 'none'}
+            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(160,81,59,0.05)'; e.currentTarget.style.color = 'var(--danger)'; }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'none'; e.currentTarget.style.color = 'var(--txt-sec)'; }}
           >
             <Trash2 size={13} /> {t('settings.delete_all')}
           </button>
+
+          {/* Cerrar sesión */}
+          {user && (
+            <button onClick={handleLogout} style={{
+              width: '100%', padding: '10px 14px',
+              display: 'flex', alignItems: 'center', gap: 8,
+              background: 'none', border: '1px solid rgba(160,81,59,0.3)', borderRadius: 8,
+              color: 'var(--danger)', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit',
+              transition: 'all 0.12s',
+            }}
+              onMouseEnter={e => e.currentTarget.style.background = 'rgba(160,81,59,0.08)'}
+              onMouseLeave={e => e.currentTarget.style.background = 'none'}
+            >
+              <LogOut size={13} /> {t('settings.logout') || 'Cerrar sesión'}
+            </button>
+          )}
         </div>
       </div>
     </div>
