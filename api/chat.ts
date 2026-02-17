@@ -1,10 +1,9 @@
 // ═══════════════════════════════════════
-// AIdark — Chat API Proxy (RATE LIMITED)
+// AIdark — Chat API Proxy (+ VISION SUPPORT)
 // ═══════════════════════════════════════
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
-// Rate limiter (in-memory, resets per serverless instance)
 const rateMap = new Map<string, { count: number; reset: number }>();
 const RATE_LIMIT = 30;
 const RATE_WINDOW = 60 * 1000;
@@ -20,12 +19,6 @@ function isRateLimited(key: string): boolean {
   return entry.count > RATE_LIMIT;
 }
 
-// ══════════════════════════════════════════════════════════════
-// FIX: Agregado "export default" — sin esto Vercel no reconoce
-// la función y /api/chat devuelve 404/500.
-// También movido rateMap fuera del handler para que persista
-// entre requests dentro de la misma instancia.
-// ══════════════════════════════════════════════════════════════
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
@@ -40,6 +33,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const { messages, model, stream } = req.body;
 
   try {
+    // Los mensajes pasan directo — pueden tener content como string
+    // o como array (multimodal con imágenes). Venice/OpenAI los acepta.
     const veniceRes = await fetch('https://api.venice.ai/api/v1/chat/completions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
