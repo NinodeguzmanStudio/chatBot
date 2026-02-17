@@ -96,7 +96,8 @@ const App: React.FC = () => {
             setAuthComplete(true);
             await loadFromSupabase(session.user.id);
           } else {
-            const newProfile = {
+            // First Google login — create profile
+            const newProfile: any = {
               id: session.user.id,
               email: session.user.email || '',
               plan: 'free',
@@ -150,4 +151,3 @@ const App: React.FC = () => {
 };
 
 export default App;
-
