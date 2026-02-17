@@ -6,29 +6,44 @@ import { LanguageSelector } from '@/components/chat/LanguageSelector';
 import { isTempEmail } from '@/lib/fingerprint';
 import { t } from '@/lib/i18n';
 
-interface AuthModalProps { onSuccess: () => void; }
+interface AuthModalProps {
+  onSuccess: () => void;
+  initialError?: string; // error pasado desde App.tsx (ej: timeout, API key)
+}
 
-export const AuthModal: React.FC<AuthModalProps> = ({ onSuccess }) => {
+export const AuthModal: React.FC<AuthModalProps> = ({ onSuccess, initialError }) => {
   const [mode, setMode] = useState<'login' | 'register' | 'forgot'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState(initialError || '');
   const [success, setSuccess] = useState('');
   const { setUser } = useAuthStore();
+
+  // ══════════════════════════════════════════════════════════════
+  // Helper: Traducir errores de Supabase a mensajes claros
+  // ══════════════════════════════════════════════════════════════
+  const translateError = (msg: string): string => {
+    if (msg.includes('Invalid API key') || msg.includes('apikey'))
+      return 'Error de configuración del servidor. Contacta al administrador. (API key inválida)';
+    if (msg.includes('Invalid login credentials'))
+      return t('auth.wrong_credentials') || 'Credenciales incorrectas.';
+    if (msg.includes('Email not confirmed'))
+      return t('auth.verify_email') || 'Verifica tu email antes de iniciar sesión.';
+    if (msg.includes('User already registered'))
+      return 'Este email ya está registrado. Intenta iniciar sesión.';
+    if (msg.includes('rate limit') || msg.includes('too many requests'))
+      return 'Demasiados intentos. Espera unos minutos.';
+    if (msg.includes('network') || msg.includes('fetch'))
+      return 'Error de conexión. Verifica tu internet.';
+    return msg;
+  };
 
   const handleGoogleLogin = async () => {
     setLoading(true);
     setError('');
-    // ══════════════════════════════════════════════════════════════
-    // FIX 8 — Google OAuth: usar queryParams para forzar PKCE y
-    // asegurar que el redirect funcione correctamente.
-    //
-    // Se usa redirectTo apuntando al origin limpio (sin path extra)
-    // y se deja que Supabase maneje el flujo PKCE completo.
-    // ══════════════════════════════════════════════════════════════
     const { error: oauthError } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
@@ -40,27 +55,35 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onSuccess }) => {
       },
     });
     if (oauthError) {
-      setError(oauthError.message);
+      setError(translateError(oauthError.message));
       setLoading(false);
     }
-    // No setLoading(false) en caso exitoso: la página va a redirigir a Google
+    // No setLoading(false) si fue exitoso: la página va a redirigir
   };
 
   const handleLogin = async () => {
     if (!email || !password) { setError(t('auth.fill_all')); return; }
     setLoading(true); setError('');
-    const { data, error: authError } = await supabase.auth.signInWithPassword({ email, password });
-    if (authError) { setError(authError.message === 'Invalid login credentials' ? t('auth.wrong_credentials') : authError.message); setLoading(false); return; }
-    if (data.user) {
-      if (!data.user.email_confirmed_at) {
-        setError(t('auth.verify_email') || 'Verifica tu email antes de iniciar sesión.');
-        await supabase.auth.signOut();
+    try {
+      const { data, error: authError } = await supabase.auth.signInWithPassword({ email, password });
+      if (authError) {
+        setError(translateError(authError.message));
         setLoading(false);
         return;
       }
-      const { data: profile } = await supabase.from('profiles').select('*').eq('id', data.user.id).single();
-      if (profile) setUser(profile);
-      onSuccess();
+      if (data.user) {
+        if (!data.user.email_confirmed_at) {
+          setError(t('auth.verify_email') || 'Verifica tu email antes de iniciar sesión.');
+          await supabase.auth.signOut();
+          setLoading(false);
+          return;
+        }
+        const { data: profile } = await supabase.from('profiles').select('*').eq('id', data.user.id).single();
+        if (profile) setUser(profile);
+        onSuccess();
+      }
+    } catch (err: any) {
+      setError(translateError(err?.message || 'Error desconocido.'));
     }
     setLoading(false);
   };
@@ -71,11 +94,19 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onSuccess }) => {
     if (password !== confirmPassword) { setError(t('auth.passwords_mismatch')); return; }
     if (password.length < 6) { setError(t('auth.password_min')); return; }
     setLoading(true); setError('');
-    const { data, error: authError } = await supabase.auth.signUp({ email, password });
-    if (authError) { setError(authError.message); setLoading(false); return; }
-    if (data.user) {
-      setSuccess(t('auth.account_created'));
-      setMode('login');
+    try {
+      const { data, error: authError } = await supabase.auth.signUp({ email, password });
+      if (authError) {
+        setError(translateError(authError.message));
+        setLoading(false);
+        return;
+      }
+      if (data.user) {
+        setSuccess(t('auth.account_created'));
+        setMode('login');
+      }
+    } catch (err: any) {
+      setError(translateError(err?.message || 'Error desconocido.'));
     }
     setLoading(false);
   };
@@ -83,9 +114,13 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onSuccess }) => {
   const handleForgotPassword = async () => {
     if (!email) { setError(t('auth.enter_email')); return; }
     setLoading(true); setError('');
-    const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: `${window.location.origin}/reset-password` });
-    if (resetError) setError(resetError.message);
-    else setSuccess(t('auth.reset_sent'));
+    try {
+      const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: `${window.location.origin}/reset-password` });
+      if (resetError) setError(translateError(resetError.message));
+      else setSuccess(t('auth.reset_sent'));
+    } catch (err: any) {
+      setError(translateError(err?.message || 'Error desconocido.'));
+    }
     setLoading(false);
   };
 
@@ -146,7 +181,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onSuccess }) => {
             )}
           </div>
 
-          {/* Google — subtle, below register link */}
+          {/* Google */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 18 }}>
             <div style={{ flex: 1, height: 1, background: 'var(--border-sub)' }} />
             <span style={{ fontSize: 10, color: 'var(--txt-ghost)' }}>o</span>
