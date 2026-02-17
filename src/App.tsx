@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════
-// AIdark — Main App (ROUTER + PERSISTENCE)
+// AIdark — Main App (v3 — MANUAL AUTH FLOW)
 // ═══════════════════════════════════════
 
 import React, { useState, useEffect, useRef } from 'react';
@@ -74,148 +74,155 @@ const ChatLayout: React.FC = () => {
   );
 };
 
+// ══════════════════════════════════════════════════════════════════
+// Helper: Buscar o crear profile del usuario
+// ══════════════════════════════════════════════════════════════════
+async function resolveUserProfile(userId: string, email: string) {
+  // Intentar leer profile (con retry por race condition del trigger)
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const { data } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', userId)
+      .single();
+    if (data) return data;
+    if (attempt < 2) await new Promise(r => setTimeout(r, 500));
+  }
+
+  // No existe → crear
+  const newProfile = {
+    id: userId,
+    email: email,
+    plan: 'free',
+    created_at: new Date().toISOString(),
+    messages_used: 0,
+    messages_limit: 5,
+    plan_expires_at: null,
+  };
+  await supabase.from('profiles').upsert(newProfile, { onConflict: 'id' });
+  return newProfile;
+}
+
 // ── Root App ──
 const App: React.FC = () => {
   const { isAgeVerified, setUser, setAuthenticated, setLoading } = useAuthStore();
   const { loadFromSupabase } = useChatStore();
 
-  // ══════════════════════════════════════════════════════════════════
-  // CLAVE: Capturar UNA SOLA VEZ si venimos de OAuth (al montar).
-  // Antes el bug era que se re-evaluaba en cada render y si la URL
-  // aún tenía ?code= el spinner giraba infinitamente.
-  // ══════════════════════════════════════════════════════════════════
-  const [cameFromOAuth] = useState(() => {
-    const params = new URLSearchParams(window.location.search);
-    const hash = window.location.hash;
-    return params.has('code') || hash.includes('access_token') || hash.includes('error');
-  });
-
   const [authComplete, setAuthComplete] = useState(false);
   const [authError, setAuthError] = useState('');
-  const authProcessed = useRef(false); // evitar procesar doble
+  const initialized = useRef(false);
 
   useEffect(() => {
-    // ══════════════════════════════════════════════════════════════
-    // TIMEOUT DE SEGURIDAD: Si después de 10 segundos no se resuelve
-    // la autenticación, dejar de mostrar el spinner y mostrar el
-    // AuthModal con un error. Esto previene el "gira y gira infinito".
-    // ══════════════════════════════════════════════════════════════
-    const timeout = setTimeout(() => {
-      if (!authProcessed.current) {
-        console.error('[Auth] Timeout: la autenticación no se completó en 10s');
-        setAuthError('La autenticación tardó demasiado. Intenta de nuevo.');
-        setAuthComplete(true);
-        setLoading(false);
-        // Limpiar URL por si quedó ?code=
-        window.history.replaceState({}, '', window.location.pathname);
-      }
-    }, 10000);
+    if (initialized.current) return;
+    initialized.current = true;
 
-    // ══════════════════════════════════════════════════════════════
-    // ELIMINADO: exchangeCodeForSession() manual.
-    // Supabase con detectSessionInUrl:true lo maneja automáticamente.
-    // El doble exchange era la causa raíz del fallo original.
-    // ══════════════════════════════════════════════════════════════
+    // ══════════════════════════════════════════════════════════
+    // FLUJO COMPLETO — 3 pasos secuenciales, sin ambigüedad:
+    //
+    // Paso 1: ¿Hay ?code= en la URL? → Exchange manual
+    // Paso 2: ¿Hay sesión existente? → Cargar profile  
+    // Paso 3: ¿Nada? → Mostrar AuthModal
+    // ══════════════════════════════════════════════════════════
+    const initAuth = async () => {
+      try {
+        const params = new URLSearchParams(window.location.search);
+        const code = params.get('code');
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log('[Auth] onAuthStateChange →', event, session?.user?.email ?? 'sin sesión');
-
-      if (session?.user) {
-        if (authProcessed.current) return; // ya procesado, ignorar duplicados
-        authProcessed.current = true;
-
-        try {
-          // Limpiar URL (quitar ?code= etc.)
+        // ── PASO 1: OAuth code exchange ──
+        if (code) {
+          console.log('[Auth] Code detectado, intercambiando...');
+          // Limpiar URL inmediatamente
           window.history.replaceState({}, '', window.location.pathname);
 
-          // Buscar profile con retry (el trigger puede tardar)
-          let profile = null;
-          for (let attempt = 0; attempt < 3; attempt++) {
-            const { data } = await supabase
-              .from('profiles')
-              .select('*')
-              .eq('id', session.user.id)
-              .single();
+          const { data, error } = await supabase.auth.exchangeCodeForSession(code);
 
-            if (data) { profile = data; break; }
-            if (attempt < 2) await new Promise(r => setTimeout(r, 600));
+          if (error) {
+            console.error('[Auth] Exchange falló:', error.message);
+            setAuthError('Error al iniciar sesión con Google: ' + error.message);
+            setAuthComplete(true);
+            setLoading(false);
+            return;
           }
 
-          if (profile) {
-            setUser(profile);
-          } else {
-            // Fallback: crear profile via upsert
-            console.warn('[Auth] Profile no encontrado, creando...');
-            const newProfile = {
-              id: session.user.id,
-              email: session.user.email || '',
-              plan: 'free',
-              created_at: new Date().toISOString(),
-              messages_used: 0,
-              messages_limit: 5,
-              plan_expires_at: null,
-            };
-            await supabase.from('profiles').upsert(newProfile, { onConflict: 'id' });
-            setUser(newProfile as any);
+          if (data.session?.user) {
+            console.log('[Auth] Exchange exitoso:', data.session.user.email);
+            const profile = await resolveUserProfile(
+              data.session.user.id,
+              data.session.user.email || ''
+            );
+            setUser(profile as any);
+            setAuthenticated(true);
+            setAuthComplete(true);
+            setLoading(false);
+            await loadFromSupabase(data.session.user.id);
+            return;
           }
-
-          setAuthenticated(true);
-          setAuthComplete(true);
-          await loadFromSupabase(session.user.id);
-        } catch (err) {
-          console.error('[Auth] Error procesando sesión:', err);
-          setAuthError('Error al cargar tu perfil. Intenta de nuevo.');
-          setAuthComplete(true);
         }
-      } else {
-        // No hay sesión → mostrar AuthModal
-        // Pero solo si no es el evento INITIAL_SESSION mientras esperamos OAuth
-        if (event === 'INITIAL_SESSION' && cameFromOAuth) {
-          // Estamos esperando que detectSessionInUrl procese el code
-          // No hacer nada aún, el timeout nos cubre si falla
-          console.log('[Auth] Esperando code exchange de OAuth...');
+
+        // ── PASO 2: Sesión existente (refresh / ya logueado) ──
+        console.log('[Auth] Buscando sesión existente...');
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+
+        if (sessionError) {
+          console.error('[Auth] getSession error:', sessionError.message);
+          setAuthError(
+            sessionError.message.includes('Invalid API key')
+              ? 'Error de configuración: API key de Supabase inválida.'
+              : ''
+          );
+          setAuthComplete(true);
+          setLoading(false);
           return;
         }
 
-        // Realmente no hay sesión
-        setUser(null);
-        setAuthenticated(false);
-        setAuthComplete(true);
-        // Limpiar URL por si quedó basura
-        if (cameFromOAuth) {
-          window.history.replaceState({}, '', window.location.pathname);
+        if (session?.user) {
+          console.log('[Auth] Sesión encontrada:', session.user.email);
+          const profile = await resolveUserProfile(
+            session.user.id,
+            session.user.email || ''
+          );
+          setUser(profile as any);
+          setAuthenticated(true);
+          setAuthComplete(true);
+          setLoading(false);
+          await loadFromSupabase(session.user.id);
+          return;
         }
-      }
-      setLoading(false);
-    });
 
-    // Verificación inicial directa de sesión existente
-    supabase.auth.getSession().then(({ data: { session }, error }) => {
-      if (error) {
-        console.error('[Auth] getSession error:', error.message);
-        // Si el error es de API key, mostrarlo al usuario
-        if (error.message.includes('Invalid API key') || error.message.includes('apikey')) {
-          setAuthError('Error de configuración: API key de Supabase inválida. Revisa tus variables de entorno.');
-        }
-      }
-      if (!session && !cameFromOAuth) {
-        // No hay sesión y no venimos de OAuth → mostrar login directo
+        // ── PASO 3: No hay sesión → mostrar login ──
+        console.log('[Auth] Sin sesión, mostrando login.');
+        setAuthComplete(true);
+        setLoading(false);
+
+      } catch (err: any) {
+        console.error('[Auth] Error inesperado:', err);
+        setAuthError('Error inesperado: ' + (err?.message || 'intenta de nuevo.'));
         setAuthComplete(true);
         setLoading(false);
       }
+    };
+
+    initAuth();
+
+    // Listener para cambios futuros (logout, token refresh, etc.)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log('[Auth] StateChange:', event);
+      if (event === 'SIGNED_OUT') {
+        setUser(null);
+        setAuthenticated(false);
+        setAuthComplete(true);
+      }
     });
 
-    return () => {
-      clearTimeout(timeout);
-      subscription.unsubscribe();
-    };
+    return () => subscription.unsubscribe();
   }, []);
 
-  // ══════════════════════════════════════════════════════════════════
-  // RENDER: Decidir qué mostrar
-  // ══════════════════════════════════════════════════════════════════
+  // Suscribirse al estado reactivo de auth
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+
+  // ── Render ──
+
   if (!authComplete) {
-    // Mostrar spinner mientras se procesa (con timeout de seguridad)
     return (
       <div style={{
         minHeight: '100vh', display: 'flex', alignItems: 'center',
@@ -229,15 +236,12 @@ const App: React.FC = () => {
           borderRadius: '50%',
           animation: 'spin 0.8s linear infinite',
         }} />
-        <span style={{ fontSize: 12, color: 'var(--txt-mut)' }}>
-          Autenticando...
-        </span>
+        <span style={{ fontSize: 12, color: 'var(--txt-mut)' }}>Cargando...</span>
       </div>
     );
   }
 
-  // Auth resuelto pero sin sesión → AuthModal
-  if (!useAuthStore.getState().isAuthenticated) {
+  if (!isAuthenticated) {
     return <AuthModal onSuccess={() => setAuthComplete(true)} initialError={authError} />;
   }
 
