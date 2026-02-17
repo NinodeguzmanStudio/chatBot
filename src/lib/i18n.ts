@@ -41,6 +41,10 @@ const translations: Record<Lang, Record<string, string>> = {
     'auth.account_created': 'Cuenta creada. Revisa tu email para confirmar.',
     'auth.reset_sent': 'Email de recuperación enviado. Revisa tu bandeja.',
     'auth.enter_email': 'Ingresa tu email',
+    'auth.verify_email': 'Verifica tu email antes de iniciar sesión. Revisa tu bandeja.',
+    'auth.temp_email': 'No se permiten emails temporales.',
+    'auth.google_login': 'Continuar con Google',
+    'auth.google_register': 'Registrarse con Google',
 
     // Sidebar
     'sidebar.no_chats': 'Sin chats aún',
@@ -130,6 +134,10 @@ const translations: Record<Lang, Record<string, string>> = {
     'auth.account_created': 'Conta criada. Verifique seu email para confirmar.',
     'auth.reset_sent': 'Email de recuperação enviado. Verifique sua caixa de entrada.',
     'auth.enter_email': 'Digite seu email',
+    'auth.verify_email': 'Verifique seu email antes de fazer login. Confira sua caixa de entrada.',
+    'auth.temp_email': 'Emails temporários não são permitidos.',
+    'auth.google_login': 'Continuar com Google',
+    'auth.google_register': 'Registrar com Google',
 
     'sidebar.no_chats': 'Sem chats ainda',
     'sidebar.projects': 'Projetos',
@@ -213,6 +221,10 @@ const translations: Record<Lang, Record<string, string>> = {
     'auth.account_created': 'Account created. Check your email to confirm.',
     'auth.reset_sent': 'Recovery email sent. Check your inbox.',
     'auth.enter_email': 'Enter your email',
+    'auth.verify_email': 'Verify your email before logging in. Check your inbox.',
+    'auth.temp_email': 'Temporary emails are not allowed.',
+    'auth.google_login': 'Continue with Google',
+    'auth.google_register': 'Sign up with Google',
 
     'sidebar.no_chats': 'No chats yet',
     'sidebar.projects': 'Projects',
