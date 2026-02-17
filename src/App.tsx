@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════
-// AIdark — Main App (v3 — MANUAL AUTH FLOW)
+// AIdark — Main App (v4 — IMPLICIT FLOW)
 // ═══════════════════════════════════════
 
 import React, { useState, useEffect, useRef } from 'react';
@@ -75,10 +75,9 @@ const ChatLayout: React.FC = () => {
 };
 
 // ══════════════════════════════════════════════════════════════════
-// Helper: Buscar o crear profile del usuario
+// Helper: Buscar o crear profile
 // ══════════════════════════════════════════════════════════════════
 async function resolveUserProfile(userId: string, email: string) {
-  // Intentar leer profile (con retry por race condition del trigger)
   for (let attempt = 0; attempt < 3; attempt++) {
     const { data } = await supabase
       .from('profiles')
@@ -88,11 +87,10 @@ async function resolveUserProfile(userId: string, email: string) {
     if (data) return data;
     if (attempt < 2) await new Promise(r => setTimeout(r, 500));
   }
-
-  // No existe → crear
+  // Fallback: crear profile
   const newProfile = {
     id: userId,
-    email: email,
+    email,
     plan: 'free',
     created_at: new Date().toISOString(),
     messages_used: 0,
@@ -103,9 +101,28 @@ async function resolveUserProfile(userId: string, email: string) {
   return newProfile;
 }
 
+// ══════════════════════════════════════════════════════════════════
+// Helper: Procesar sesión activa → cargar profile → marcar auth OK
+// ══════════════════════════════════════════════════════════════════
+async function processSession(
+  session: any,
+  setUser: any,
+  setAuthenticated: any,
+  loadFromSupabase: any,
+) {
+  const profile = await resolveUserProfile(
+    session.user.id,
+    session.user.email || '',
+  );
+  setUser(profile as any);
+  setAuthenticated(true);
+  await loadFromSupabase(session.user.id);
+}
+
 // ── Root App ──
 const App: React.FC = () => {
   const { isAgeVerified, setUser, setAuthenticated, setLoading } = useAuthStore();
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const { loadFromSupabase } = useChatStore();
 
   const [authComplete, setAuthComplete] = useState(false);
@@ -117,108 +134,82 @@ const App: React.FC = () => {
     initialized.current = true;
 
     // ══════════════════════════════════════════════════════════
-    // FLUJO COMPLETO — 3 pasos secuenciales, sin ambigüedad:
+    // FLUJO IMPLICIT — Simple y sin race conditions:
     //
-    // Paso 1: ¿Hay ?code= en la URL? → Exchange manual
-    // Paso 2: ¿Hay sesión existente? → Cargar profile  
-    // Paso 3: ¿Nada? → Mostrar AuthModal
+    // 1. Supabase client (al crear el createClient) ya procesó
+    //    el #access_token del hash si venimos de Google.
+    //    Esto pasa SINCRÓNICAMENTE en la inicialización.
+    //
+    // 2. onAuthStateChange nos notifica de cualquier sesión.
+    //
+    // 3. Si no llega nada → mostrar AuthModal.
     // ══════════════════════════════════════════════════════════
-    const initAuth = async () => {
-      try {
-        const params = new URLSearchParams(window.location.search);
-        const code = params.get('code');
 
-        // ── PASO 1: OAuth code exchange ──
-        if (code) {
-          console.log('[Auth] Code detectado, intercambiando...');
-          // Limpiar URL inmediatamente
-          window.history.replaceState({}, '', window.location.pathname);
+    let resolved = false;
 
-          const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log('[Auth] onAuthStateChange →', event, session?.user?.email ?? 'sin sesión');
 
-          if (error) {
-            console.error('[Auth] Exchange falló:', error.message);
-            setAuthError('Error al iniciar sesión con Google: ' + error.message);
-            setAuthComplete(true);
-            setLoading(false);
-            return;
+      if (session?.user && !resolved) {
+        resolved = true;
+        try {
+          // Limpiar hash de la URL si venimos de OAuth
+          if (window.location.hash.includes('access_token')) {
+            window.history.replaceState({}, '', window.location.pathname);
           }
-
-          if (data.session?.user) {
-            console.log('[Auth] Exchange exitoso:', data.session.user.email);
-            const profile = await resolveUserProfile(
-              data.session.user.id,
-              data.session.user.email || ''
-            );
-            setUser(profile as any);
-            setAuthenticated(true);
-            setAuthComplete(true);
-            setLoading(false);
-            await loadFromSupabase(data.session.user.id);
-            return;
-          }
-        }
-
-        // ── PASO 2: Sesión existente (refresh / ya logueado) ──
-        console.log('[Auth] Buscando sesión existente...');
-        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-
-        if (sessionError) {
-          console.error('[Auth] getSession error:', sessionError.message);
-          setAuthError(
-            sessionError.message.includes('Invalid API key')
-              ? 'Error de configuración: API key de Supabase inválida.'
-              : ''
-          );
+          await processSession(session, setUser, setAuthenticated, loadFromSupabase);
           setAuthComplete(true);
-          setLoading(false);
-          return;
-        }
-
-        if (session?.user) {
-          console.log('[Auth] Sesión encontrada:', session.user.email);
-          const profile = await resolveUserProfile(
-            session.user.id,
-            session.user.email || ''
-          );
-          setUser(profile as any);
-          setAuthenticated(true);
+        } catch (err: any) {
+          console.error('[Auth] Error procesando sesión:', err);
+          setAuthError('Error al cargar tu perfil. Intenta de nuevo.');
           setAuthComplete(true);
-          setLoading(false);
-          await loadFromSupabase(session.user.id);
-          return;
         }
-
-        // ── PASO 3: No hay sesión → mostrar login ──
-        console.log('[Auth] Sin sesión, mostrando login.');
-        setAuthComplete(true);
-        setLoading(false);
-
-      } catch (err: any) {
-        console.error('[Auth] Error inesperado:', err);
-        setAuthError('Error inesperado: ' + (err?.message || 'intenta de nuevo.'));
-        setAuthComplete(true);
         setLoading(false);
       }
-    };
 
-    initAuth();
-
-    // Listener para cambios futuros (logout, token refresh, etc.)
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log('[Auth] StateChange:', event);
       if (event === 'SIGNED_OUT') {
         setUser(null);
         setAuthenticated(false);
-        setAuthComplete(true);
       }
     });
 
-    return () => subscription.unsubscribe();
-  }, []);
+    // Safety: si onAuthStateChange no emite con sesión en 3s, mostrar login
+    const fallback = setTimeout(async () => {
+      if (resolved) return;
+      console.log('[Auth] Fallback: verificando sesión directamente...');
+      
+      const { data: { session }, error } = await supabase.auth.getSession();
+      
+      if (error) {
+        console.error('[Auth] getSession error:', error.message);
+        if (error.message.includes('Invalid API key')) {
+          setAuthError('Error de configuración: API key de Supabase inválida.');
+        }
+      }
+      
+      if (session?.user && !resolved) {
+        resolved = true;
+        try {
+          await processSession(session, setUser, setAuthenticated, loadFromSupabase);
+        } catch (err: any) {
+          setAuthError('Error al cargar tu perfil.');
+        }
+      }
 
-  // Suscribirse al estado reactivo de auth
-  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+      // Limpiar URL
+      if (window.location.hash.includes('access_token') || window.location.search.includes('code')) {
+        window.history.replaceState({}, '', window.location.pathname);
+      }
+
+      setAuthComplete(true);
+      setLoading(false);
+    }, 3000);
+
+    return () => {
+      clearTimeout(fallback);
+      subscription.unsubscribe();
+    };
+  }, []);
 
   // ── Render ──
 
