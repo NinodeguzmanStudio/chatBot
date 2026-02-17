@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════
-// AIdark — Supabase Client (FIXED)
+// AIdark — Supabase Client (v3 — MANUAL FLOW)
 // ═══════════════════════════════════════
 
 import { createClient } from '@supabase/supabase-js';
@@ -7,22 +7,12 @@ import { createClient } from '@supabase/supabase-js';
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-// ══════════════════════════════════════════════════════════════════
-// VALIDACIÓN: Verificar que las variables de entorno estén configuradas.
-// "Invalid API key" ocurre cuando estas variables están vacías o mal puestas.
-// ══════════════════════════════════════════════════════════════════
 if (!supabaseUrl || !supabaseAnonKey) {
   console.error(
-    '[AIdark] ❌ Supabase NO configurado. Agrega estas variables de entorno:\n' +
-    '  VITE_SUPABASE_URL=https://TU_PROYECTO.supabase.co\n' +
-    '  VITE_SUPABASE_ANON_KEY=eyJ...\n\n' +
-    '  → En desarrollo: crea un archivo .env.local en la raíz del proyecto\n' +
-    '  → En Vercel: Settings → Environment Variables'
+    '[AIdark] ❌ Supabase NO configurado.\n' +
+    '  VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY son requeridas.\n' +
+    '  → Local: .env.local  |  → Producción: Vercel Environment Variables'
   );
-}
-
-if (supabaseAnonKey && supabaseAnonKey.length < 30) {
-  console.error('[AIdark] ❌ VITE_SUPABASE_ANON_KEY parece inválida (muy corta). Verifica el valor.');
 }
 
 export const supabase = createClient(
@@ -32,26 +22,25 @@ export const supabase = createClient(
     auth: {
       autoRefreshToken: true,
       persistSession: true,
-      detectSessionInUrl: true,
       // ══════════════════════════════════════════════════════════
-      // PKCE explícito: Esto es el estándar de seguridad para
-      // OAuth en apps SPA. Supabase v2 lo usa por defecto, pero
-      // dejarlo explícito evita ambigüedad y asegura que el
-      // flujo de Google OAuth use code exchange (no implicit).
+      // CLAVE: detectSessionInUrl en FALSE.
+      // Nosotros manejamos el ?code= manualmente en App.tsx.
+      // Esto elimina el problema de timing donde el auto-detect
+      // procesaba el code antes/después del listener y se perdía.
       // ══════════════════════════════════════════════════════════
+      detectSessionInUrl: false,
       flowType: 'pkce',
     },
   }
 );
 
-// ── Helper: Get current user ──
+// ── Helpers ──
 export async function getCurrentUser() {
   const { data: { user }, error } = await supabase.auth.getUser();
   if (error) throw error;
   return user;
 }
 
-// ── Helper: Get user profile ──
 export async function getUserProfile(userId: string) {
   const { data, error } = await supabase
     .from('profiles')
@@ -62,7 +51,6 @@ export async function getUserProfile(userId: string) {
   return data;
 }
 
-// ── Helper: Increment message count ──
 export async function incrementMessageCount(userId: string) {
   const { error } = await supabase.rpc('increment_message_count', {
     user_id: userId,
