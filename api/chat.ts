@@ -2,7 +2,7 @@
 // AIdark — Chat API Proxy (RATE LIMITED)
 // ═══════════════════════════════════════
 
-import type { VercelRequest, VercelResponse } from '@vercel/node';
+const handler = async (req: any, res: any) => {
 
 const rateMap = new Map<string, { count: number; reset: number }>();
 const RATE_LIMIT = 30;
@@ -19,7 +19,6 @@ function isRateLimited(key: string): boolean {
   return entry.count > RATE_LIMIT;
 }
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   const apiKey = process.env.VENICE_API_KEY;
