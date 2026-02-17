@@ -27,7 +27,10 @@ export const Header: React.FC<HeaderProps> = ({ onOpenPricing }) => {
         {!isMobile && !sidebarOpen && (
           <button onClick={() => createSession()} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 30, height: 30, background: 'none', border: 'none', color: 'var(--txt-ter)', cursor: 'pointer', borderRadius: 6 }}><Plus size={15} /></button>
         )}
-        <span style={{ fontSize: 15, fontWeight: 500, color: 'var(--txt-pri)', letterSpacing: -0.3 }}>AI<span style={{ color: 'var(--txt-ter)' }}>dark</span></span>
+        <span style={{ fontSize: 15, fontWeight: 500, color: 'var(--txt-pri)', letterSpacing: -0.3 }}>
+          AI<span style={{ color: 'var(--txt-ter)' }}>dark</span>
+          <span style={{ fontSize: 13, color: 'var(--txt-mut)', fontWeight: 400, marginLeft: 2 }}>sincensura</span>
+        </span>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         {!isMobile && (
