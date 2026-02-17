@@ -56,11 +56,13 @@ export async function sendMessageStream(
   model: ModelId,
   character: CharacterId = 'default',
   onChunk: (text: string) => void,
-  onDone: () => void
+  onDone: () => void,
+  signal?: AbortSignal
 ): Promise<void> {
   const response = await fetch('/api/chat', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
+    signal,
     body: JSON.stringify({
       messages: [
         { role: 'system', content: getSystemPrompt(character) },
