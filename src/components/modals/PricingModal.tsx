@@ -3,29 +3,56 @@
 // ═══════════════════════════════════════
 
 import React, { useState, useMemo } from 'react';
-import { X, Loader2, Check, Zap, Crown, Gem, Lock, ImagePlus, Sparkles } from 'lucide-react';
+import { X, Loader2, Check, Zap, Crown, Gem, Lock, Sparkles } from 'lucide-react';
 import { useAuthStore } from '@/lib/store';
 import { useIsMobile } from '@/hooks/useIsMobile';
 import { t } from '@/lib/i18n';
+
+// ── Types ──
+type PlanFeature = {
+  text: string;
+  included: boolean;
+  highlight?: boolean;
+};
+
+type ScarcityConfig = {
+  max: number;
+  startPct: number;
+  speed: number;
+  label: string;
+};
+
+type Plan = {
+  id: string;
+  name: string;
+  price: number;
+  period: string;
+  periodLabel: string;
+  icon: React.FC<{ size?: number; style?: React.CSSProperties }>;
+  color: string;
+  features: PlanFeature[];
+  scarcity: ScarcityConfig | null;
+  badge?: string;
+  badgeColor?: string;
+  equiv?: string;
+};
 
 // ══════════════════════════════════════════════════════════════════
 // CONTADOR PROGRESIVO INTELIGENTE
 // Calcula un número creíble basado en la fecha, que sube cada día
 // y varía ligeramente por hora del día. Nunca llega al límite.
 // ══════════════════════════════════════════════════════════════════
-const LAUNCH_DATE = new Date('2026-02-17').getTime(); // Fecha de lanzamiento
+const LAUNCH_DATE = new Date('2026-02-17').getTime();
 
 function getOccupied(maxSlots: number, startPct: number, speedFactor: number): number {
   const now = Date.now();
   const daysSinceLaunch = Math.max(0, (now - LAUNCH_DATE) / (1000 * 60 * 60 * 24));
 
-  // Curva logarítmica: sube rápido al inicio, se frena al acercarse al 95%
   const ceiling = maxSlots * 0.95;
   const base = maxSlots * startPct;
   const growth = (ceiling - base) * (1 - Math.exp(-daysSinceLaunch * speedFactor / 100));
 
-  // Variación por hora del día (±0.2% del max, se siente "vivo")
-  const hourSeed = Math.floor(now / (1000 * 60 * 60)); // cambia cada hora
+  const hourSeed = Math.floor(now / (1000 * 60 * 60));
   const hourVariation = ((Math.sin(hourSeed * 7.3) + 1) / 2) * maxSlots * 0.004;
 
   const result = Math.floor(base + growth + hourVariation);
@@ -35,7 +62,7 @@ function getOccupied(maxSlots: number, startPct: number, speedFactor: number): n
 // ══════════════════════════════════════════════════════════════════
 // PLANES
 // ══════════════════════════════════════════════════════════════════
-const plans = [
+const plans: Plan[] = [
   {
     id: 'free',
     name: 'Free',
@@ -110,7 +137,7 @@ const plans = [
       { text: 'Tokens encriptados', included: true, highlight: true },
       { text: 'Acceso anticipado', included: true },
     ],
-    scarcity: null, // Ultra no muestra contador, es exclusivo
+    scarcity: null,
     badge: 'FUNDADOR',
     badgeColor: '#8b6fc0',
   },
@@ -258,7 +285,7 @@ export const PricingModal: React.FC<{ isOpen: boolean; onClose: () => void }> = 
 
                 {/* Features */}
                 <div style={{ marginTop: 8, marginBottom: 8, width: '100%' }}>
-                  {plan.features.map((f, i) => (
+                  {plan.features.map((f: PlanFeature, i: number) => (
                     <div key={i} style={{
                       display: 'flex', alignItems: 'center', gap: 4,
                       justifyContent: 'flex-start', marginBottom: 2, paddingLeft: 2,
@@ -293,7 +320,7 @@ export const PricingModal: React.FC<{ isOpen: boolean; onClose: () => void }> = 
                   />
                 )}
 
-                {/* Ultra: Founder exclusive label instead of bar */}
+                {/* Ultra: Founder exclusive label */}
                 {isFounder && (
                   <div style={{
                     width: '100%', marginTop: 8, padding: '5px 0',
