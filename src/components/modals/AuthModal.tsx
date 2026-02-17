@@ -21,12 +21,29 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onSuccess }) => {
 
   const handleGoogleLogin = async () => {
     setLoading(true);
-    const { error } = await supabase.auth.signInWithOAuth({
+    setError('');
+    // ══════════════════════════════════════════════════════════════
+    // FIX 8 — Google OAuth: usar queryParams para forzar PKCE y
+    // asegurar que el redirect funcione correctamente.
+    //
+    // Se usa redirectTo apuntando al origin limpio (sin path extra)
+    // y se deja que Supabase maneje el flujo PKCE completo.
+    // ══════════════════════════════════════════════════════════════
+    const { error: oauthError } = await supabase.auth.signInWithOAuth({
       provider: 'google',
-      options: { redirectTo: window.location.origin },
+      options: {
+        redirectTo: window.location.origin,
+        queryParams: {
+          access_type: 'offline',
+          prompt: 'consent',
+        },
+      },
     });
-    if (error) setError(error.message);
-    setLoading(false);
+    if (oauthError) {
+      setError(oauthError.message);
+      setLoading(false);
+    }
+    // No setLoading(false) en caso exitoso: la página va a redirigir a Google
   };
 
   const handleLogin = async () => {
