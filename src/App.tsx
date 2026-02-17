@@ -102,6 +102,9 @@ const App: React.FC = () => {
               plan: 'free',
               plan_id: 'free',
               created_at: new Date().toISOString(),
+              messages_used: 0,
+              messages_limit: 5,
+              plan_expires_at: null,
             };
             await supabase.from('profiles').insert(newProfile);
             setUser(newProfile);
