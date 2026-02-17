@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════
-// AIdark — Supabase Client (v3 — MANUAL FLOW)
+// AIdark — Supabase Client (v4 — IMPLICIT FLOW)
 // ═══════════════════════════════════════
 
 import { createClient } from '@supabase/supabase-js';
@@ -10,8 +10,7 @@ const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 if (!supabaseUrl || !supabaseAnonKey) {
   console.error(
     '[AIdark] ❌ Supabase NO configurado.\n' +
-    '  VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY son requeridas.\n' +
-    '  → Local: .env.local  |  → Producción: Vercel Environment Variables'
+    '  VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY son requeridas.'
   );
 }
 
@@ -23,13 +22,17 @@ export const supabase = createClient(
       autoRefreshToken: true,
       persistSession: true,
       // ══════════════════════════════════════════════════════════
-      // CLAVE: detectSessionInUrl en FALSE.
-      // Nosotros manejamos el ?code= manualmente en App.tsx.
-      // Esto elimina el problema de timing donde el auto-detect
-      // procesaba el code antes/después del listener y se perdía.
+      // IMPLICIT FLOW: El token viene directo en el hash (#)
+      // de la URL, sin necesidad de code exchange ni PKCE.
+      // Esto elimina el error "code challenge does not match
+      // previously saved code verifier".
+      //
+      // detectSessionInUrl: true → Supabase lee el #access_token
+      // automáticamente al cargar la página. No hay race condition
+      // porque no hay exchange asíncrono — el token ya está ahí.
       // ══════════════════════════════════════════════════════════
-      detectSessionInUrl: false,
-      flowType: 'pkce',
+      detectSessionInUrl: true,
+      flowType: 'implicit',
     },
   }
 );
