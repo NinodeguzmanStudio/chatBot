@@ -3,32 +3,37 @@
 // api/create-payment.ts
 // ═══════════════════════════════════════
 
-const handler = async (req: any, res: any) => {
-const MP_ACCESS_TOKEN = process.env.MP_ACCESS_TOKEN!;
+import type { VercelRequest, VercelResponse } from '@vercel/node';
 
 const PLANS: Record<string, { title: string; price: number; period: string; months: number }> = {
   basic_monthly: {
-    title: 'AIdark Premium - Mensual',
+    title: 'AIdark Basic - Plan mensual',
     price: 12.00,
     period: 'monthly',
     months: 1,
   },
   pro_quarterly: {
-    title: 'AIdark Premium - Trimestral',
+    title: 'AIdark Pro - Plan por 3 meses',
     price: 29.99,
     period: 'quarterly',
     months: 3,
   },
   ultra_annual: {
-    title: 'AIdark Premium - Anual',
+    title: 'AIdark Ultra - Plan por 1 año',
     price: 99.99,
     period: 'annual',
     months: 12,
   },
 };
 
-
+// FIX: Agregado "export default" — sin esto Vercel devuelve 404/500
+export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+
+  const MP_ACCESS_TOKEN = process.env.MP_ACCESS_TOKEN;
+  if (!MP_ACCESS_TOKEN) {
+    return res.status(500).json({ error: 'MercadoPago no configurado. Agrega MP_ACCESS_TOKEN en Environment Variables.' });
+  }
 
   const { planId, userEmail, userId } = req.body;
 
