@@ -1,15 +1,18 @@
 // ═══════════════════════════════════════
-// AIdark — Global Store (PERSISTENCE + i18n)
+// AIdark — Global Store (ANTI-ABUSE + PREMIUM)
 // ═══════════════════════════════════════
 
 import { create } from 'zustand';
 import type { Message, ModelId, CharacterId, ChatSession, UserProfile } from '@/types';
 import { APP_CONFIG } from '@/lib/constants';
 import { supabase } from '@/lib/supabase';
+import { getDeviceMessagesUsed, incrementDeviceMessages } from '@/lib/fingerprint';
 import {
   loadUserSessions, createDbSession, saveMessage,
   updateDbSessionTitle, deleteDbSession, deleteAllDbSessions, cleanOldChats,
 } from '@/services/chatService';
+
+const FREE_LIMIT = 5;
 
 // ── Chat Store ──
 interface ChatState {
@@ -70,24 +73,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
   createSession: () => {
     const id = crypto.randomUUID();
     const session: ChatSession = {
-      id,
-      title: 'Nuevo chat',
-      messages: [],
-      model: get().selectedModel,
-      created_at: Date.now(),
-      updated_at: Date.now(),
+      id, title: 'Nuevo chat', messages: [],
+      model: get().selectedModel, created_at: Date.now(), updated_at: Date.now(),
     };
-    set((state) => ({
-      sessions: [session, ...state.sessions],
-      activeSessionId: id,
-    }));
-
-    // Persist to Supabase (fire and forget)
+    set((state) => ({ sessions: [session, ...state.sessions], activeSessionId: id }));
     const userId = useAuthStore.getState().user?.id;
-    if (userId) {
-      createDbSession(userId, id, get().selectedModel).catch(console.error);
-    }
-
+    if (userId) createDbSession(userId, id, get().selectedModel).catch(console.error);
     return id;
   },
 
@@ -96,10 +87,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       const filtered = state.sessions.filter((s) => s.id !== id);
       return {
         sessions: filtered,
-        activeSessionId:
-          state.activeSessionId === id
-            ? filtered[0]?.id || null
-            : state.activeSessionId,
+        activeSessionId: state.activeSessionId === id ? filtered[0]?.id || null : state.activeSessionId,
       };
     });
     deleteDbSession(id).catch(console.error);
@@ -117,24 +105,17 @@ export const useChatStore = create<ChatState>((set, get) => ({
       sessions: state.sessions.map((s) =>
         s.id === sessionId
           ? {
-              ...s,
-              messages: [...s.messages, message],
-              updated_at: Date.now(),
-              title:
-                s.messages.length === 0 && message.role === 'user'
-                  ? message.content.slice(0, 40) + (message.content.length > 40 ? '...' : '')
-                  : s.title,
+              ...s, messages: [...s.messages, message], updated_at: Date.now(),
+              title: s.messages.length === 0 && message.role === 'user'
+                ? message.content.slice(0, 40) + (message.content.length > 40 ? '...' : '')
+                : s.title,
             }
           : s
       ),
     }));
-
-    // Persist message + update title
     const userId = useAuthStore.getState().user?.id;
     if (userId) {
       saveMessage(sessionId, userId, message).catch(console.error);
-
-      // Update title on first user message
       const session = get().sessions.find((s) => s.id === sessionId);
       if (session && session.messages.length === 1 && message.role === 'user') {
         const title = message.content.slice(0, 40) + (message.content.length > 40 ? '...' : '');
@@ -152,30 +133,25 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   updateSessionTitle: (sessionId, title) => {
     set((state) => ({
-      sessions: state.sessions.map((s) =>
-        s.id === sessionId ? { ...s, title } : s
-      ),
+      sessions: state.sessions.map((s) => s.id === sessionId ? { ...s, title } : s),
     }));
     updateDbSessionTitle(sessionId, title).catch(console.error);
   },
 
   renameSession: (id, title) => {
     set((state) => ({
-      sessions: state.sessions.map((s) =>
-        s.id === id ? { ...s, title } : s
-      ),
+      sessions: state.sessions.map((s) => s.id === id ? { ...s, title } : s),
     }));
     updateDbSessionTitle(id, title).catch(console.error);
   },
 }));
 
-// ── Auth Store ──
+// ── Auth Store (ANTI-ABUSE) ──
 interface AuthState {
   user: UserProfile | null;
   isLoading: boolean;
   isAgeVerified: boolean;
   isAuthenticated: boolean;
-  messagesUsed: number;
 
   setUser: (user: UserProfile | null) => void;
   setLoading: (loading: boolean) => void;
@@ -192,7 +168,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   isLoading: true,
   isAuthenticated: false,
   isAgeVerified: localStorage.getItem('aidark_age_verified') === 'true',
-  messagesUsed: Number(localStorage.getItem('aidark_messages_used') || '0'),
 
   setUser: (user) => set({ user, isAuthenticated: !!user }),
   setLoading: (loading) => set({ isLoading: loading }),
@@ -204,10 +179,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   incrementMessages: () => {
-    const next = get().messagesUsed + 1;
-    localStorage.setItem('aidark_messages_used', String(next));
-    set({ messagesUsed: next });
-
+    incrementDeviceMessages();
     const user = get().user;
     if (user) {
       void supabase.rpc('increment_message_count', { p_user_id: user.id });
@@ -216,20 +188,21 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   canSendMessage: () => {
     if (window.location.search.includes('dev=1')) return true;
-    const { user, messagesUsed } = get();
+    const { user } = get();
+    // Premium users: unlimited
     if (user?.plan && user.plan !== 'free') return true;
-    return messagesUsed < APP_CONFIG.freeMessageLimit;
+    // Free users: check DEVICE limit (not account)
+    return getDeviceMessagesUsed() < FREE_LIMIT;
   },
 
   getRemainingMessages: () => {
     if (window.location.search.includes('dev=1')) return 999;
-    const { user, messagesUsed } = get();
+    const { user } = get();
     if (user?.plan && user.plan !== 'free') return 999;
-    return Math.max(0, APP_CONFIG.freeMessageLimit - messagesUsed);
+    return Math.max(0, FREE_LIMIT - getDeviceMessagesUsed());
   },
 
   resetMessages: () => {
-    localStorage.setItem('aidark_messages_used', '0');
-    set({ messagesUsed: 0 });
+    localStorage.setItem('aidark_fp_msgs', '0');
   },
 }));
