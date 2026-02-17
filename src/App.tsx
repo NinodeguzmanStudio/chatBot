@@ -1,7 +1,6 @@
 // ═══════════════════════════════════════
 // AIdark — Main App (ROUTER + PERSISTENCE)
 // ═══════════════════════════════════════
-// FIXED: Flujo completo de autenticación Google OAuth
 
 import React, { useState, useEffect, useRef } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
@@ -81,53 +80,56 @@ const App: React.FC = () => {
   const { loadFromSupabase } = useChatStore();
 
   // ══════════════════════════════════════════════════════════════════
-  // FIX 1 — Detectar si venimos de un redirect de Google OAuth.
-  // Esto evita mostrar el AuthModal mientras el code se procesa.
+  // CLAVE: Capturar UNA SOLA VEZ si venimos de OAuth (al montar).
+  // Antes el bug era que se re-evaluaba en cada render y si la URL
+  // aún tenía ?code= el spinner giraba infinitamente.
   // ══════════════════════════════════════════════════════════════════
-  const returningFromOAuth = useRef(() => {
+  const [cameFromOAuth] = useState(() => {
     const params = new URLSearchParams(window.location.search);
     const hash = window.location.hash;
     return params.has('code') || hash.includes('access_token') || hash.includes('error');
   });
 
-  const [authReady, setAuthReady] = useState(false);
   const [authComplete, setAuthComplete] = useState(false);
+  const [authError, setAuthError] = useState('');
+  const authProcessed = useRef(false); // evitar procesar doble
 
   useEffect(() => {
-    // ══════════════════════════════════════════════════════════════════
-    // FIX 2 — ELIMINADO: exchangeCodeForSession(code) manual.
-    //
-    // ❌ ANTES (BUG):
-    //   const code = params.get('code');
-    //   if (code) supabase.auth.exchangeCodeForSession(code)...
-    //
-    // ¿Por qué fallaba?
-    //   - supabase.ts tiene detectSessionInUrl: true
-    //   - Eso hace que Supabase AUTOMÁTICAMENTE detecte el ?code= y
-    //     haga el intercambio internamente
-    //   - Al llamar exchangeCodeForSession() TAMBIÉN, se creaba un
-    //     DOBLE intercambio: uno fallaba porque el code ya fue usado
-    //   - Resultado: onAuthStateChange nunca recibía la sesión
-    //
-    // ✅ AHORA: Supabase lo maneja solo via detectSessionInUrl.
-    // ══════════════════════════════════════════════════════════════════
+    // ══════════════════════════════════════════════════════════════
+    // TIMEOUT DE SEGURIDAD: Si después de 10 segundos no se resuelve
+    // la autenticación, dejar de mostrar el spinner y mostrar el
+    // AuthModal con un error. Esto previene el "gira y gira infinito".
+    // ══════════════════════════════════════════════════════════════
+    const timeout = setTimeout(() => {
+      if (!authProcessed.current) {
+        console.error('[Auth] Timeout: la autenticación no se completó en 10s');
+        setAuthError('La autenticación tardó demasiado. Intenta de nuevo.');
+        setAuthComplete(true);
+        setLoading(false);
+        // Limpiar URL por si quedó ?code=
+        window.history.replaceState({}, '', window.location.pathname);
+      }
+    }, 10000);
+
+    // ══════════════════════════════════════════════════════════════
+    // ELIMINADO: exchangeCodeForSession() manual.
+    // Supabase con detectSessionInUrl:true lo maneja automáticamente.
+    // El doble exchange era la causa raíz del fallo original.
+    // ══════════════════════════════════════════════════════════════
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       console.log('[Auth] onAuthStateChange →', event, session?.user?.email ?? 'sin sesión');
 
       if (session?.user) {
-        try {
-          // ══════════════════════════════════════════════════════════
-          // FIX 3 — Retry para el profile lookup.
-          //
-          // ¿Por qué? El trigger on_auth_user_created en PostgreSQL
-          // crea el profile, pero hay una race condition donde
-          // onAuthStateChange puede dispararse ANTES de que el
-          // trigger termine. Sin retry, profile = null y el código
-          // intentaba un INSERT manual que fallaba por RLS.
-          // ══════════════════════════════════════════════════════════
-          let profile = null;
+        if (authProcessed.current) return; // ya procesado, ignorar duplicados
+        authProcessed.current = true;
 
+        try {
+          // Limpiar URL (quitar ?code= etc.)
+          window.history.replaceState({}, '', window.location.pathname);
+
+          // Buscar profile con retry (el trigger puede tardar)
+          let profile = null;
           for (let attempt = 0; attempt < 3; attempt++) {
             const { data } = await supabase
               .from('profiles')
@@ -135,41 +137,19 @@ const App: React.FC = () => {
               .eq('id', session.user.id)
               .single();
 
-            if (data) {
-              profile = data;
-              break;
-            }
-            // Esperar un poco: el trigger DB puede estar corriendo
+            if (data) { profile = data; break; }
             if (attempt < 2) await new Promise(r => setTimeout(r, 600));
           }
 
           if (profile) {
             setUser(profile);
-            setAuthenticated(true);
-            setAuthComplete(true);
-            await loadFromSupabase(session.user.id);
           } else {
-            // ══════════════════════════════════════════════════════
-            // FIX 4 — Reemplazar .insert() por .upsert().
-            //
-            // ❌ ANTES (BUG):
-            //   await supabase.from('profiles').insert(newProfile);
-            //
-            // Problemas:
-            //   a) No existe policy RLS de INSERT → bloqueado
-            //   b) Incluía campo "plan_id" que NO existe en schema
-            //   c) Si el trigger ya creó el row → constraint violation
-            //
-            // ✅ AHORA: .upsert() con onConflict funciona tanto si
-            //   el row existe como si no, y no necesita policy INSERT
-            //   separada (usa UPDATE si ya existe).
-            // ══════════════════════════════════════════════════════
-            console.warn('[Auth] Profile no encontrado, creando via upsert...');
+            // Fallback: crear profile via upsert
+            console.warn('[Auth] Profile no encontrado, creando...');
             const newProfile = {
               id: session.user.id,
               email: session.user.email || '',
               plan: 'free',
-              // FIX 4b: Eliminado "plan_id" que no existe en el schema
               created_at: new Date().toISOString(),
               messages_used: 0,
               messages_limit: 5,
@@ -177,88 +157,88 @@ const App: React.FC = () => {
             };
             await supabase.from('profiles').upsert(newProfile, { onConflict: 'id' });
             setUser(newProfile as any);
-            setAuthenticated(true);
-            setAuthComplete(true);
           }
+
+          setAuthenticated(true);
+          setAuthComplete(true);
+          await loadFromSupabase(session.user.id);
         } catch (err) {
           console.error('[Auth] Error procesando sesión:', err);
-          // ══════════════════════════════════════════════════════════
-          // FIX 5 — Siempre marcar authComplete en error para no
-          // dejar al usuario en un loading infinito.
-          // ══════════════════════════════════════════════════════════
+          setAuthError('Error al cargar tu perfil. Intenta de nuevo.');
           setAuthComplete(true);
         }
       } else {
-        // ══════════════════════════════════════════════════════════════
-        // FIX 6 — Marcar authReady cuando NO hay sesión.
-        //
-        // ❌ ANTES (BUG): Cuando onAuthStateChange emitía sin sesión
-        //   (evento INITIAL_SESSION antes del code exchange), 
-        //   authComplete nunca se ponía en true, y el usuario veía
-        //   un estado muerto donde el AuthModal renderizaba pero el
-        //   exchange estaba pendiente en background.
-        //
-        // ✅ AHORA: authReady indica "ya verificamos, no hay sesión".
-        //   Combinado con returningFromOAuth, decidimos si mostrar
-        //   loading (esperando OAuth) o el AuthModal (login normal).
-        // ══════════════════════════════════════════════════════════════
+        // No hay sesión → mostrar AuthModal
+        // Pero solo si no es el evento INITIAL_SESSION mientras esperamos OAuth
+        if (event === 'INITIAL_SESSION' && cameFromOAuth) {
+          // Estamos esperando que detectSessionInUrl procese el code
+          // No hacer nada aún, el timeout nos cubre si falla
+          console.log('[Auth] Esperando code exchange de OAuth...');
+          return;
+        }
+
+        // Realmente no hay sesión
         setUser(null);
         setAuthenticated(false);
-        setAuthReady(true);
+        setAuthComplete(true);
+        // Limpiar URL por si quedó basura
+        if (cameFromOAuth) {
+          window.history.replaceState({}, '', window.location.pathname);
+        }
       }
       setLoading(false);
     });
 
-    // Limpiar URL después del redirect OAuth (safety net)
-    if (returningFromOAuth.current()) {
-      const cleanup = setTimeout(() => {
-        const clean = window.location.pathname;
-        window.history.replaceState({}, '', clean);
-      }, 3000);
-      return () => { clearTimeout(cleanup); subscription.unsubscribe(); };
-    }
+    // Verificación inicial directa de sesión existente
+    supabase.auth.getSession().then(({ data: { session }, error }) => {
+      if (error) {
+        console.error('[Auth] getSession error:', error.message);
+        // Si el error es de API key, mostrarlo al usuario
+        if (error.message.includes('Invalid API key') || error.message.includes('apikey')) {
+          setAuthError('Error de configuración: API key de Supabase inválida. Revisa tus variables de entorno.');
+        }
+      }
+      if (!session && !cameFromOAuth) {
+        // No hay sesión y no venimos de OAuth → mostrar login directo
+        setAuthComplete(true);
+        setLoading(false);
+      }
+    });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      clearTimeout(timeout);
+      subscription.unsubscribe();
+    };
   }, []);
 
   // ══════════════════════════════════════════════════════════════════
-  // FIX 7 — Loading screen durante OAuth redirect.
-  //
-  // ❌ ANTES (BUG PRINCIPAL): Al regresar de Google, authComplete
-  //   era false → se mostraba el AuthModal inmediatamente → el
-  //   usuario veía la pantalla de login pensando que falló.
-  //   En realidad, el code exchange estaba procesándose en background.
-  //
-  // ✅ AHORA: Si detectamos que venimos de un OAuth redirect
-  //   (hay ?code= en la URL), mostramos un spinner. Cuando
-  //   onAuthStateChange resuelve, authComplete pasa a true
-  //   y la app continúa normalmente.
+  // RENDER: Decidir qué mostrar
   // ══════════════════════════════════════════════════════════════════
   if (!authComplete) {
-    // Caso 1: Venimos de OAuth redirect → mostrar loading
-    // Caso 2: Aún no se resolvió la verificación inicial → loading
-    if (returningFromOAuth.current() || !authReady) {
-      return (
+    // Mostrar spinner mientras se procesa (con timeout de seguridad)
+    return (
+      <div style={{
+        minHeight: '100vh', display: 'flex', alignItems: 'center',
+        justifyContent: 'center', background: 'var(--bg-primary)',
+        flexDirection: 'column', gap: 16,
+      }}>
         <div style={{
-          minHeight: '100vh', display: 'flex', alignItems: 'center',
-          justifyContent: 'center', background: 'var(--bg-primary)',
-          flexDirection: 'column', gap: 16,
-        }}>
-          <div style={{
-            width: 32, height: 32,
-            border: '2px solid var(--border-sub)',
-            borderTopColor: 'var(--accent)',
-            borderRadius: '50%',
-            animation: 'spin 0.8s linear infinite',
-          }} />
-          <span style={{ fontSize: 12, color: 'var(--txt-mut)' }}>
-            Autenticando...
-          </span>
-        </div>
-      );
-    }
-    // Caso 3: No hay OAuth redirect y auth check terminó sin sesión → AuthModal
-    return <AuthModal onSuccess={() => setAuthComplete(true)} />;
+          width: 32, height: 32,
+          border: '2px solid var(--border-sub)',
+          borderTopColor: 'var(--accent)',
+          borderRadius: '50%',
+          animation: 'spin 0.8s linear infinite',
+        }} />
+        <span style={{ fontSize: 12, color: 'var(--txt-mut)' }}>
+          Autenticando...
+        </span>
+      </div>
+    );
+  }
+
+  // Auth resuelto pero sin sesión → AuthModal
+  if (!useAuthStore.getState().isAuthenticated) {
+    return <AuthModal onSuccess={() => setAuthComplete(true)} initialError={authError} />;
   }
 
   if (!isAgeVerified) {
