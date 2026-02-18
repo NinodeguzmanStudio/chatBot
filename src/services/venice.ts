@@ -1,9 +1,11 @@
 // ═══════════════════════════════════════
-// AIdark — Venice AI Service (+ VISION)
+// AIdark — Venice AI Service (+ VISION + AUTH)
 // ═══════════════════════════════════════
+// CAMBIO: Envía token JWT en cada request para validación server-side
 
 import type { Message, ModelId, CharacterId, VeniceContentPart } from '@/types';
 import { AI_CHARACTERS } from '@/lib/constants';
+import { supabase } from '@/lib/supabase';
 
 // ── Venice API models mapping ──
 const VENICE_MODELS: Record<ModelId, string> = {
@@ -21,10 +23,15 @@ function getSystemPrompt(character: CharacterId): string {
   return char?.systemPrompt || AI_CHARACTERS[0].systemPrompt;
 }
 
+// ── Obtener token JWT actual ──
+async function getAuthToken(): Promise<string> {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session?.access_token) throw new Error('No hay sesión activa. Inicia sesión.');
+  return session.access_token;
+}
+
 // ══════════════════════════════════════════════════════════════
 // Formatear mensajes para la API
-// Si hay imagen adjunta → content es un array multimodal
-// Si hay PDF adjunto → el texto extraído se agrega al content
 // ══════════════════════════════════════════════════════════════
 function formatMessages(messages: Message[]): { role: string; content: string | VeniceContentPart[] }[] {
   return messages.map((m) => {
@@ -68,10 +75,14 @@ export async function sendMessage(
 ): Promise<string> {
   const useVision = needsVisionModel(messages);
   const veniceModel = useVision ? VISION_MODEL : VENICE_MODELS[model];
+  const token = await getAuthToken();
 
   const response = await fetch('/api/chat', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`,  // ← NUEVO: enviar token
+    },
     body: JSON.stringify({
       messages: [
         { role: 'system', content: getSystemPrompt(character) },
@@ -83,7 +94,7 @@ export async function sendMessage(
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
-    throw new Error(error.message || 'Error al conectar con AIdark');
+    throw new Error(error.error || error.message || 'Error al conectar con AIdark');
   }
 
   const data = await response.json();
@@ -102,10 +113,14 @@ export async function sendMessageStream(
 ): Promise<void> {
   const useVision = needsVisionModel(messages);
   const veniceModel = useVision ? VISION_MODEL : VENICE_MODELS[model];
+  const token = await getAuthToken();
 
   const response = await fetch('/api/chat', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`,  // ← NUEVO: enviar token
+    },
     signal,
     body: JSON.stringify({
       messages: [
@@ -118,7 +133,8 @@ export async function sendMessageStream(
   });
 
   if (!response.ok) {
-    throw new Error('Error al conectar con AIdark');
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || error.message || 'Error al conectar con AIdark');
   }
 
   const reader = response.body?.getReader();
