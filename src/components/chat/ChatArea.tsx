@@ -232,19 +232,26 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
           setStreamingContent(fullResponse);
         },
         () => {
-         const errorMsg = (error as any)?.message?.includes('límite')
-          ? 'Has alcanzado el límite de mensajes. Actualiza tu plan para continuar.'
-          : t('chat.error');
-        addMessage(sessionId!, {
-            id: generateId(), role: 'assistant', content: errorMsg,
-            timestamp: Date.now(),
+          addMessage(sessionId!, {
+            id: generateId(), role: 'assistant', content: fullResponse,
+            timestamp: Date.now(), model: selectedModel, character: selectedCharacter,
           });
           setStreamingContent('');
           setIsTyping(false);
         },
         controller.signal
       );
-    } catch (err: any) {
+    } catch (error: any) {
+      if (error.name === 'AbortError') {
+        // User stopped
+      } else {
+        try {
+          const response = await sendMessage([...messages, userMsg], selectedModel, selectedCharacter);
+          addMessage(sessionId!, {
+            id: generateId(), role: 'assistant', content: response,
+            timestamp: Date.now(), model: selectedModel, character: selectedCharacter,
+          });
+        } catch (err: any) {
           const errorMsg = (err as any)?.message?.includes('límite')
             ? 'Has alcanzado el límite de mensajes. Actualiza tu plan para continuar.'
             : t('chat.error');
@@ -253,13 +260,13 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
             timestamp: Date.now(),
           });
         }
+      }
       setStreamingContent('');
       setIsTyping(false);
     } finally {
       abortRef.current = null;
     }
   };
-
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const val = e.target.value;
     if (val.length <= charLimit) {
