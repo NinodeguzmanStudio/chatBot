@@ -1,0 +1,6 @@
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /payment/
+
+Sitemap: https://aidark.es/sitemap.xml
