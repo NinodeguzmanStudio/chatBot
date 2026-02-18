@@ -45,7 +45,7 @@ export interface Message {
   timestamp: number;
   model?: ModelId;
   character?: CharacterId;
-  attachment?: Attachment;  // ← NUEVO
+  attachment?: Attachment;
 }
 
 export interface ChatSession {
@@ -58,7 +58,8 @@ export interface ChatSession {
 }
 
 // ── Auth & User ──
-export type PlanType = 'free' | 'premium_monthly' | 'premium_quarterly' | 'premium_annual';
+// CAMBIO: IDs alineados con backend (create-payment.ts y webhook)
+export type PlanType = 'free' | 'basic_monthly' | 'pro_quarterly' | 'ultra_annual';
 
 export interface UserProfile {
   id: string;
