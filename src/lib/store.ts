@@ -146,7 +146,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 }));
 
-// ── Auth Store (ANTI-ABUSE) ──
+// ── Auth Store ──
+// CAMBIO: Eliminados todos los backdoors (?dev=1)
+// CAMBIO: El límite real se valida en el server (api/chat.ts)
+//         El frontend solo muestra el contador como referencia visual
 interface AuthState {
   user: UserProfile | null;
   isLoading: boolean;
@@ -186,17 +189,17 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
   },
 
+  // CAMBIO: Sin backdoor. El server también valida, esto es solo UX.
   canSendMessage: () => {
-    if (window.location.search.includes('dev=1')) return true;
     const { user } = get();
-    // Premium users: unlimited
+    // Cualquier plan pagado = ilimitado
     if (user?.plan && user.plan !== 'free') return true;
-    // Free users: check DEVICE limit (not account)
+    // Free: check device limit (referencia visual, el server valida también)
     return getDeviceMessagesUsed() < FREE_LIMIT;
   },
 
+  // CAMBIO: Sin backdoor
   getRemainingMessages: () => {
-    if (window.location.search.includes('dev=1')) return 999;
     const { user } = get();
     if (user?.plan && user.plan !== 'free') return 999;
     return Math.max(0, FREE_LIMIT - getDeviceMessagesUsed());
