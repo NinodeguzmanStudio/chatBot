@@ -52,7 +52,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
 
   // ── ¿Puede adjuntar archivos? (Pro/Ultra o developer) ──
   const userPlan = user?.plan || 'free';
-  const canAttach = ['pro_quarterly', 'ultra_annual'].includes(userPlan);
+  const canAttach = false;
 
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
