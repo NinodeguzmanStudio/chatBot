@@ -16,14 +16,6 @@ import { useIsMobile } from '@/hooks/useIsMobile';
 import { t } from '@/lib/i18n';
 import type { Message, Attachment } from '@/types';
 
-// ══════════════════════════════════════════════════════════════
-// DEVELOPER — tu email aquí para acceso ilimitado
-// ══════════════════════════════════════════════════════════════
-const DEVELOPER_EMAILS = [
-  'ninodeguzmanstudio@gmail.com',
-  'ninodeguzman.studio@gmail.com',
-];
-
 // Límites de archivos
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
@@ -59,9 +51,8 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
   const character = AI_CHARACTERS.find((c) => c.id === selectedCharacter) || AI_CHARACTERS[0];
 
   // ── ¿Puede adjuntar archivos? (Pro/Ultra o developer) ──
-  const isDeveloper = user?.email ? DEVELOPER_EMAILS.includes(user.email) : false;
   const userPlan = user?.plan || 'free';
-  const canAttach = isDeveloper || ['premium_quarterly', 'premium_annual', 'pro_quarterly', 'ultra_annual'].includes(userPlan);
+  const canAttach = ['pro_quarterly', 'ultra_annual'].includes(userPlan);
 
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
@@ -241,9 +232,12 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
           setStreamingContent(fullResponse);
         },
         () => {
-          addMessage(sessionId!, {
-            id: generateId(), role: 'assistant', content: fullResponse,
-            timestamp: Date.now(), model: selectedModel, character: selectedCharacter,
+         const errorMsg = (error as any)?.message?.includes('límite')
+          ? 'Has alcanzado el límite de mensajes. Actualiza tu plan para continuar.'
+          : t('chat.error');
+        addMessage(sessionId!, {
+            id: generateId(), role: 'assistant', content: errorMsg,
+            timestamp: Date.now(),
           });
           setStreamingContent('');
           setIsTyping(false);
