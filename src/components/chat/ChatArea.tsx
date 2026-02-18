@@ -254,7 +254,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
             id: generateId(), role: 'assistant', content: response,
             timestamp: Date.now(), model: selectedModel, character: selectedCharacter,
           });
-        } catch {
+        } catch (err: any) {
           addMessage(sessionId!, {
             id: generateId(), role: 'assistant', content: t('chat.error'),
             timestamp: Date.now(),
