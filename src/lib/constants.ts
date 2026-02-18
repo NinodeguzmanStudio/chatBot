@@ -82,6 +82,7 @@ export const PROMPT_GALLERY: PromptItem[] = [
 ];
 
 // ── Pricing ──
+// CAMBIO: IDs y precios alineados con api/create-payment.ts y webhook
 export const PRICING_PLANS: PricingPlan[] = [
   {
     id: 'free',
@@ -91,26 +92,26 @@ export const PRICING_PLANS: PricingPlan[] = [
     features: ['5 consultas profundas', '1 modelo', 'Chat básico'],
   },
   {
-    id: 'premium_monthly',
-    name: 'Mensual',
-    price: '$15',
+    id: 'basic_monthly',
+    name: 'Basic',
+    price: '$12',
     period: '/mes',
     features: ['Consultas ilimitadas', 'Todos los modelos', 'Historial persistente', 'Novelas extensas', 'Prioridad'],
     highlight: true,
   },
   {
-    id: 'premium_quarterly',
-    name: 'Trimestral',
-    price: '$40',
+    id: 'pro_quarterly',
+    name: 'Pro',
+    price: '$29.99',
     period: '/3 meses',
-    features: ['Todo Premium', 'Ahorra 11%', '~$13.3/mes', 'Soporte prioritario'],
+    features: ['Todo Premium', '~$10/mes', 'Adjuntar archivos', 'Soporte prioritario'],
   },
   {
-    id: 'premium_annual',
-    name: 'Anual',
-    price: '$108',
+    id: 'ultra_annual',
+    name: 'Ultra',
+    price: '$99.99',
     period: '/año',
-    features: ['Todo Premium', 'Ahorra 40%', '~$9/mes', 'Badge fundador', 'Primeros 1000'],
+    features: ['Todo Premium', '~$8.33/mes', 'Badge fundador', 'Primeros 1000'],
   },
 ];
 
