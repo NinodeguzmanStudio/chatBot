@@ -244,23 +244,15 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
         },
         controller.signal
       );
-    } catch (error: any) {
-      if (error.name === 'AbortError') {
-        // User stopped
-      } else {
-        try {
-          const response = await sendMessage([...messages, userMsg], selectedModel, selectedCharacter);
+    } catch (err: any) {
+          const errorMsg = (err as any)?.message?.includes('límite')
+            ? 'Has alcanzado el límite de mensajes. Actualiza tu plan para continuar.'
+            : t('chat.error');
           addMessage(sessionId!, {
-            id: generateId(), role: 'assistant', content: response,
-            timestamp: Date.now(), model: selectedModel, character: selectedCharacter,
-          });
-        } catch (err: any) {
-          addMessage(sessionId!, {
-            id: generateId(), role: 'assistant', content: t('chat.error'),
+            id: generateId(), role: 'assistant', content: errorMsg,
             timestamp: Date.now(),
           });
         }
-      }
       setStreamingContent('');
       setIsTyping(false);
     } finally {
