@@ -105,6 +105,11 @@ export default function Landing({ onStart }: { onStart?: () => void }) {
     return () => clearInterval(interval);
   }, []);
 
+  useEffect(() => {
+    document.body.style.overflow = 'auto';
+    return () => { document.body.style.overflow = 'hidden'; };
+  }, []);
+
   return (
     <div style={{
       minHeight: "100vh", background: "#000", color: "#fff",
