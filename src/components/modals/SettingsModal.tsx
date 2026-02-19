@@ -32,6 +32,11 @@ export const SettingsModal: React.FC<{ isOpen: boolean; onClose: () => void }> =
     await supabase.auth.signOut();
     setUser(null);
     setAuthenticated(false);
+    // FIX #16: Limpiar estado persistido para que F5 no intente restaurar
+    localStorage.removeItem('aidark_authenticated');
+    localStorage.removeItem('aidark_age_verified');
+    localStorage.removeItem('aidark_fp_msgs');
+    localStorage.removeItem('aidark_fp_date');
     onClose();
     window.location.reload();
   };
