@@ -288,3 +288,8 @@ textarea::placeholder {
   background: rgba(139, 115, 85, 0.3);
   color: var(--txt-pri);
 }
+@keyframes slideLoad {
+  0% { transform: translateX(-100%); }
+  50% { transform: translateX(100%); }
+  100% { transform: translateX(300%); }
+}
