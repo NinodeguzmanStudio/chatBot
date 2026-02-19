@@ -5,7 +5,6 @@
 import { create } from 'zustand';
 import type { Message, ModelId, CharacterId, ChatSession, UserProfile } from '@/types';
 import { APP_CONFIG } from '@/lib/constants';
-import { supabase } from '@/lib/supabase';
 import { getDeviceMessagesUsed, incrementDeviceMessages } from '@/lib/fingerprint';
 import {
   loadUserSessions, createDbSession, saveMessage,
@@ -169,12 +168,19 @@ interface AuthState {
 export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
   isLoading: true,
-  isAuthenticated: false,
+  isAuthenticated: localStorage.getItem('aidark_authenticated') === 'true',
   isAgeVerified: localStorage.getItem('aidark_age_verified') === 'true',
 
-  setUser: (user) => set({ user, isAuthenticated: !!user }),
+  setUser: (user) => {
+    const auth = !!user;
+    localStorage.setItem('aidark_authenticated', String(auth));
+    set({ user, isAuthenticated: auth });
+  },
   setLoading: (loading) => set({ isLoading: loading }),
-  setAuthenticated: (auth) => set({ isAuthenticated: auth }),
+  setAuthenticated: (auth) => {
+    localStorage.setItem('aidark_authenticated', String(auth));
+    set({ isAuthenticated: auth });
+  },
 
   setAgeVerified: (verified) => {
     localStorage.setItem('aidark_age_verified', String(verified));
@@ -182,11 +188,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   incrementMessages: () => {
+    // Solo incrementar localStorage para UX visual (referencia).
+    // El incremento REAL en DB lo hace el server (api/chat.ts) 
+    // para evitar doble conteo.
     incrementDeviceMessages();
-    const user = get().user;
-    if (user) {
-      void supabase.rpc('increment_message_count', { p_user_id: user.id });
-    }
   },
 
   // CAMBIO: Sin backdoor. El server también valida, esto es solo UX.
