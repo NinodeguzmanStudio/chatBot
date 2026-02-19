@@ -11,7 +11,7 @@ import { useIsMobile } from '@/hooks/useIsMobile';
 
 // ── Payment result pages ──
 const PaymentSuccess: React.FC = () => (
-  <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-primary)', flexDirection: 'column', gap: 16 }}>
+  <div style={{ minHeight: '100dvh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-primary)', flexDirection: 'column', gap: 16 }}>
     <span style={{ fontSize: 48 }}>✅</span>
     <h1 style={{ fontSize: 22, color: 'var(--txt-pri)', fontWeight: 500 }}>¡Pago exitoso!</h1>
     <p style={{ fontSize: 13, color: 'var(--txt-sec)', textAlign: 'center', maxWidth: 300 }}>Tu plan premium está activo. Disfruta AIdark sin límites.</p>
@@ -20,7 +20,7 @@ const PaymentSuccess: React.FC = () => (
 );
 
 const PaymentFailure: React.FC = () => (
-  <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-primary)', flexDirection: 'column', gap: 16 }}>
+  <div style={{ minHeight: '100dvh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-primary)', flexDirection: 'column', gap: 16 }}>
     <span style={{ fontSize: 48 }}>❌</span>
     <h1 style={{ fontSize: 22, color: 'var(--txt-pri)', fontWeight: 500 }}>Pago fallido</h1>
     <p style={{ fontSize: 13, color: 'var(--txt-sec)', textAlign: 'center', maxWidth: 300 }}>Hubo un problema con tu pago. Intenta de nuevo.</p>
@@ -29,7 +29,7 @@ const PaymentFailure: React.FC = () => (
 );
 
 const PaymentPending: React.FC = () => (
-  <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-primary)', flexDirection: 'column', gap: 16 }}>
+  <div style={{ minHeight: '100dvh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-primary)', flexDirection: 'column', gap: 16 }}>
     <span style={{ fontSize: 48 }}>⏳</span>
     <h1 style={{ fontSize: 22, color: 'var(--txt-pri)', fontWeight: 500 }}>Pago pendiente</h1>
     <p style={{ fontSize: 13, color: 'var(--txt-sec)', textAlign: 'center', maxWidth: 300 }}>Tu pago está siendo procesado. Te notificaremos cuando se confirme.</p>
@@ -46,7 +46,7 @@ const ChatLayout: React.FC = () => {
   const isMobile = useIsMobile();
 
   return (
-    <div style={{ height: '100vh', display: 'flex', background: 'var(--bg-primary)', overflow: 'hidden' }}>
+    <div style={{ height: '100dvh', display: 'flex', background: 'var(--bg-primary)', overflow: 'hidden' }}>
       {!isMobile && sidebarOpen && (
         <aside style={{
           width: 260, display: 'flex', flexDirection: 'column',
@@ -63,7 +63,7 @@ const ChatLayout: React.FC = () => {
           </aside>
         </>
       )}
-      <main style={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100vh', minWidth: 0 }}>
+      <main style={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100dvh', minWidth: 0 }}>
         <Header onOpenPricing={() => setPricingOpen(true)} />
         <ChatArea onOpenPricing={() => setPricingOpen(true)} />
       </main>
@@ -216,7 +216,7 @@ const App: React.FC = () => {
   if (!authComplete) {
     return (
       <div style={{
-        minHeight: '100vh', display: 'flex', alignItems: 'center',
+        minHeight: '100dvh', display: 'flex', alignItems: 'center',
         justifyContent: 'center', background: 'var(--bg-primary)',
         flexDirection: 'column', gap: 16,
       }}>
