@@ -185,7 +185,7 @@ export default function Landing({ onStart }: { onStart?: () => void }) {
             background: "linear-gradient(135deg, #8b7355, #6b5a42)", color: "#fff",
             fontSize: 15, fontWeight: 700, cursor: "pointer", letterSpacing: 0.5,
             boxShadow: "0 4px 20px rgba(139,115,85,0.3)",
-          }}>Empezar gratis →</button>
+          }} onClick={onStart}>Empezar gratis →</button>
           <button style={{
             padding: "14px 32px", borderRadius: 10,
             border: "1px solid #333", background: "transparent", color: "#999",
@@ -319,7 +319,7 @@ export default function Landing({ onStart }: { onStart?: () => void }) {
           background: "linear-gradient(135deg, #8b7355, #6b5a42)", color: "#fff",
           fontSize: 16, fontWeight: 700, cursor: "pointer",
           boxShadow: "0 4px 30px rgba(139,115,85,0.3)",
-        }}>Obtener acceso ahora →</button>
+        }} onClick={onStart}>Obtener acceso ahora →</button>
         <p style={{ fontSize: 11, color: "#ffffff33", marginTop: 12 }}>
           5 mensajes gratis · No requiere tarjeta · Cancela cuando quieras
         </p>
@@ -362,7 +362,7 @@ export default function Landing({ onStart }: { onStart?: () => void }) {
           fontSize: 16, fontWeight: 700, cursor: "pointer",
           boxShadow: "0 4px 30px rgba(139,115,85,0.3)",
           animation: "glow 3s ease-in-out infinite",
-        }}>Empezar gratis →</button>
+        }} onClick={onStart}>Empezar gratis →</button>
       </section>
 
       {/* ═══ FOOTER ═══ */}
