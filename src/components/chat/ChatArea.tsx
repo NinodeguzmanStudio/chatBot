@@ -68,9 +68,9 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
     }
   }, [input]);
 
-  useEffect(() => {
-    if (streamingContent) setKeystrokeCount((k) => k + 1);
-  }, [streamingContent]);
+  // FIX: Removed useEffect that incremented keystrokeCount on every streaming chunk.
+  // That caused hundreds of particle spawns per AI response, killing CPU.
+  // Particles now only trigger on user keystrokes (handleInputChange).
 
   // Close attach menu on outside click
   useEffect(() => {
