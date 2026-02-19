@@ -9,7 +9,7 @@ import { useAuthStore, useChatStore } from '@/lib/store';
 import { supabase } from '@/lib/supabase';
 import { useIsMobile } from '@/hooks/useIsMobile';
 import { LegalPages } from '@/components/LegalPages';
-
+import Landing from '@/components/Landing';
 // ── Payment result pages ──
 const PaymentSuccess: React.FC = () => (
   <div style={{ minHeight: '100dvh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-primary)', flexDirection: 'column', gap: 16 }}>
@@ -245,8 +245,15 @@ const App: React.FC = () => {
     );
   }
 
+  const [showAuth, setShowAuth] = useState(false);
+
+  if (!isAuthenticated && !showAuth) {
+    return <Landing onStart={() => setShowAuth(true)} />;
+  }
+
   if (!isAuthenticated) {
     return <AuthModal onSuccess={() => setAuthComplete(true)} initialError={authError} />;
+  }
   }
 
   if (!isAgeVerified) {
