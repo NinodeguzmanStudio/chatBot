@@ -20,7 +20,7 @@ export interface AICharacter {
   color: string;
   role: string;
   premium: boolean;
-  systemPrompt: string;
+  systemPrompt?: string;
 }
 
 export interface PromptItem {
