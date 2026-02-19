@@ -1,10 +1,11 @@
 // ═══════════════════════════════════════
-// AIdark — Venice AI Service (+ VISION + AUTH)
+// AIdark — Venice AI Service (SECURED)
 // ═══════════════════════════════════════
-// CAMBIO: Envía token JWT en cada request para validación server-side
+// FIX #10: getAuthToken() now checks token expiry and refreshes if stale
+// FIX #13: System prompts removed from frontend. Only character ID is sent.
+//          The server (api/chat.ts) injects the correct prompt server-side.
 
 import type { Message, ModelId, CharacterId, VeniceContentPart } from '@/types';
-import { AI_CHARACTERS } from '@/lib/constants';
 import { supabase } from '@/lib/supabase';
 
 // ── Venice API models mapping ──
@@ -17,16 +18,31 @@ const VENICE_MODELS: Record<ModelId, string> = {
 // Modelo de visión para cuando se adjuntan imágenes
 const VISION_MODEL = 'qwen-2.5-vl-72b';
 
-// ── Get system prompt for character ──
-function getSystemPrompt(character: CharacterId): string {
-  const char = AI_CHARACTERS.find((c) => c.id === character);
-  return char?.systemPrompt || AI_CHARACTERS[0].systemPrompt;
-}
-
-// ── Obtener token JWT actual ──
+// ── FIX #10: Obtener token JWT con verificación de expiración ──
 async function getAuthToken(): Promise<string> {
   const { data: { session } } = await supabase.auth.getSession();
-  if (!session?.access_token) throw new Error('No hay sesión activa. Inicia sesión.');
+
+  if (!session?.access_token) {
+    throw new Error('No hay sesión activa. Inicia sesión.');
+  }
+
+  // Verificar si el token expira en menos de 60 segundos
+  if (session.expires_at) {
+    const expiresAt = session.expires_at * 1000; // viene en seconds, convertir a ms
+    const now = Date.now();
+    const bufferMs = 60_000; // 60 segundos de margen
+
+    if (expiresAt - now < bufferMs) {
+      // Token a punto de expirar → refrescar
+      console.log('[Auth] Token expiring soon, refreshing...');
+      const { data: refreshed, error } = await supabase.auth.refreshSession();
+      if (error || !refreshed.session) {
+        throw new Error('Sesión expirada. Inicia sesión de nuevo.');
+      }
+      return refreshed.session.access_token;
+    }
+  }
+
   return session.access_token;
 }
 
@@ -77,18 +93,18 @@ export async function sendMessage(
   const veniceModel = useVision ? VISION_MODEL : VENICE_MODELS[model];
   const token = await getAuthToken();
 
+  // FIX #13: NO enviar system prompt desde el frontend.
+  // Solo enviamos el character ID → el server inyecta el prompt correcto.
   const response = await fetch('/api/chat', {
     method: 'POST',
-    headers: { 
+    headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${token}`,  // ← NUEVO: enviar token
+      'Authorization': `Bearer ${token}`,
     },
     body: JSON.stringify({
-      messages: [
-        { role: 'system', content: getSystemPrompt(character) },
-        ...formatMessages(messages),
-      ],
+      messages: formatMessages(messages),
       model: veniceModel,
+      character,  // ← el server usa esto para inyectar el system prompt
     }),
   });
 
@@ -115,19 +131,18 @@ export async function sendMessageStream(
   const veniceModel = useVision ? VISION_MODEL : VENICE_MODELS[model];
   const token = await getAuthToken();
 
+  // FIX #13: NO enviar system prompt desde el frontend.
   const response = await fetch('/api/chat', {
     method: 'POST',
-    headers: { 
+    headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${token}`,  // ← NUEVO: enviar token
+      'Authorization': `Bearer ${token}`,
     },
     signal,
     body: JSON.stringify({
-      messages: [
-        { role: 'system', content: getSystemPrompt(character) },
-        ...formatMessages(messages),
-      ],
+      messages: formatMessages(messages),
       model: veniceModel,
+      character,  // ← el server usa esto para inyectar el system prompt
       stream: true,
     }),
   });
