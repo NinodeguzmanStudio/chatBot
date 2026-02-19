@@ -1,270 +1,60 @@
-// ═══════════════════════════════════════
-// AIdark — Main App (v4 — IMPLICIT FLOW)
-// ═══════════════════════════════════════
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    
+    <!-- Cache control -->
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
 
-import React, { useState, useEffect, useRef } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { Sidebar, Header, ChatArea, AgeGate, PricingModal, SettingsModal, PrivacyModal, AuthModal } from '@/components';
-import { useAuthStore, useChatStore } from '@/lib/store';
-import { supabase } from '@/lib/supabase';
-import { useIsMobile } from '@/hooks/useIsMobile';
-import { LegalPages } from '@/components/LegalPages';
+    <!-- SEO -->
+    <title>AIdark — IA Sin Censura | Chat IA Libre y Privado</title>
+    <meta name="description" content="AIdark: Inteligencia Artificial sin censura, sin filtros, sin límites. Escribe novelas, investiga temas prohibidos, roleplay sin restricciones. Chat privado +18." />
+    <meta name="keywords" content="AI sin censura, inteligencia artificial libre, chat IA, IA sin filtros, uncensored AI, AIdark, novelas IA, roleplay IA, chat privado, IA español" />
+    <meta name="author" content="AIdark" />
+    <meta name="robots" content="index, follow" />
+    <link rel="canonical" href="https://aidark.es" />
 
-// ── Payment result pages ──
-const PaymentSuccess: React.FC = () => (
-  <div style={{ minHeight: '100dvh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-primary)', flexDirection: 'column', gap: 16 }}>
-    <span style={{ fontSize: 48 }}>✅</span>
-    <h1 style={{ fontSize: 22, color: 'var(--txt-pri)', fontWeight: 500 }}>¡Pago exitoso!</h1>
-    <p style={{ fontSize: 13, color: 'var(--txt-sec)', textAlign: 'center', maxWidth: 300 }}>Tu plan premium está activo. Disfruta AIdark sin límites.</p>
-    <a href="/" style={{ marginTop: 12, padding: '10px 24px', background: 'var(--accent)', color: '#fff', borderRadius: 8, textDecoration: 'none', fontSize: 13 }}>Ir al chat</a>
-  </div>
-);
+    <!-- Open Graph -->
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="AIdark — IA Sin Censura" />
+    <meta property="og:description" content="Inteligencia Artificial sin filtros, sin censura, sin límites. Novelas, investigación, roleplay. Chat privado +18." />
+    <meta property="og:image" content="https://aidark.es/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:url" content="https://aidark.es" />
+    <meta property="og:site_name" content="AIdark" />
+    <meta property="og:locale" content="es_ES" />
 
-const PaymentFailure: React.FC = () => (
-  <div style={{ minHeight: '100dvh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-primary)', flexDirection: 'column', gap: 16 }}>
-    <span style={{ fontSize: 48 }}>❌</span>
-    <h1 style={{ fontSize: 22, color: 'var(--txt-pri)', fontWeight: 500 }}>Pago fallido</h1>
-    <p style={{ fontSize: 13, color: 'var(--txt-sec)', textAlign: 'center', maxWidth: 300 }}>Hubo un problema con tu pago. Intenta de nuevo.</p>
-    <a href="/" style={{ marginTop: 12, padding: '10px 24px', background: 'var(--bg-el)', color: 'var(--txt-pri)', borderRadius: 8, textDecoration: 'none', fontSize: 13, border: '1px solid var(--border-sub)' }}>Volver</a>
-  </div>
-);
+    <!-- Twitter -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="AIdark — IA Sin Censura" />
+    <meta name="twitter:description" content="Inteligencia Artificial sin filtros, sin censura, sin límites. Chat privado +18." />
+    <meta name="twitter:image" content="https://aidark.es/og-image.png" />
 
-const PaymentPending: React.FC = () => (
-  <div style={{ minHeight: '100dvh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-primary)', flexDirection: 'column', gap: 16 }}>
-    <span style={{ fontSize: 48 }}>⏳</span>
-    <h1 style={{ fontSize: 22, color: 'var(--txt-pri)', fontWeight: 500 }}>Pago pendiente</h1>
-    <p style={{ fontSize: 13, color: 'var(--txt-sec)', textAlign: 'center', maxWidth: 300 }}>Tu pago está siendo procesado. Te notificaremos cuando se confirme.</p>
-    <a href="/" style={{ marginTop: 12, padding: '10px 24px', background: 'var(--bg-el)', color: 'var(--txt-pri)', borderRadius: 8, textDecoration: 'none', fontSize: 13, border: '1px solid var(--border-sub)' }}>Ir al chat</a>
-  </div>
-);
+    <!-- PWA -->
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="theme-color" content="#0c0b0a" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="AIdark" />
+    <link rel="apple-touch-icon" href="/icon-192.png" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 
-// ── Main Chat Layout ──
-const ChatLayout: React.FC = () => {
-  const { sidebarOpen } = useChatStore();
-  const [pricingOpen, setPricingOpen] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [privacyOpen, setPrivacyOpen] = useState(false);
-  const isMobile = useIsMobile();
-
-  return (
-    <div style={{ height: '100dvh', display: 'flex', background: 'var(--bg-primary)', overflow: 'hidden' }}>
-      {!isMobile && sidebarOpen && (
-        <aside style={{
-          width: 260, display: 'flex', flexDirection: 'column',
-          background: 'var(--bg-secondary)', borderRight: '1px solid var(--border-sub)', flexShrink: 0,
-        }}>
-          <Sidebar onOpenPricing={() => setPricingOpen(true)} onOpenSettings={() => setSettingsOpen(true)} onOpenPrivacy={() => setPrivacyOpen(true)} />
-        </aside>
-      )}
-      {isMobile && sidebarOpen && (
-        <>
-          <div onClick={() => useChatStore.getState().setSidebarOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 99, animation: 'fadeIn 0.2s ease' }} />
-          <aside style={{ position: 'fixed', left: 0, top: 0, bottom: 0, width: 280, display: 'flex', flexDirection: 'column', background: 'var(--bg-secondary)', borderRight: '1px solid var(--border-sub)', zIndex: 100, animation: 'slideRight 0.2s ease' }}>
-            <Sidebar onOpenPricing={() => setPricingOpen(true)} onOpenSettings={() => setSettingsOpen(true)} onOpenPrivacy={() => setPrivacyOpen(true)} isMobile />
-          </aside>
-        </>
-      )}
-      <main style={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100dvh', minWidth: 0 }}>
-        <Header onOpenPricing={() => setPricingOpen(true)} />
-        <ChatArea onOpenPricing={() => setPricingOpen(true)} />
-      </main>
-      <PricingModal isOpen={pricingOpen} onClose={() => setPricingOpen(false)} />
-      <SettingsModal isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} />
-      <PrivacyModal isOpen={privacyOpen} onClose={() => setPrivacyOpen(false)} />
-    </div>
-  );
-};
-
-// ══════════════════════════════════════════════════════════════════
-// Helper: Buscar o crear profile
-// ══════════════════════════════════════════════════════════════════
-async function resolveUserProfile(userId: string, email: string) {
-  for (let attempt = 0; attempt < 3; attempt++) {
-    const { data } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', userId)
-      .single();
-    if (data) return data;
-    if (attempt < 2) await new Promise(r => setTimeout(r, 500));
-  }
-  // Fallback: crear profile
-  const newProfile = {
-    id: userId,
-    email,
-    plan: 'free',
-    created_at: new Date().toISOString(),
-    messages_used: 0,
-    messages_limit: 5,
-    plan_expires_at: null,
-  };
-  await supabase.from('profiles').upsert(newProfile, { onConflict: 'id' });
-  return newProfile;
-}
-
-// ══════════════════════════════════════════════════════════════════
-// Helper: Procesar sesión activa → cargar profile → marcar auth OK
-// ══════════════════════════════════════════════════════════════════
-async function processSession(
-  session: any,
-  setUser: any,
-  setAuthenticated: any,
-  loadFromSupabase: any,
-) {
-  const profile = await resolveUserProfile(
-    session.user.id,
-    session.user.email || '',
-  );
-  setUser(profile as any);
-  setAuthenticated(true);
-  await loadFromSupabase(session.user.id);
-}
-
-// ── Root App ──
-const App: React.FC = () => {
-  const { isAgeVerified, setUser, setAuthenticated, setLoading } = useAuthStore();
-  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
-  const { loadFromSupabase } = useChatStore();
-
-  const [authComplete, setAuthComplete] = useState(false);
-  const [authError, setAuthError] = useState('');
-  const initialized = useRef(false);
-
-  useEffect(() => {
-    if (initialized.current) return;
-    initialized.current = true;
-
-    // ══════════════════════════════════════════════════════════
-    // FLUJO IMPLICIT — Simple y sin race conditions:
-    //
-    // 1. Supabase client (al crear el createClient) ya procesó
-    //    el #access_token del hash si venimos de Google.
-    //    Esto pasa SINCRÓNICAMENTE en la inicialización.
-    //
-    // 2. onAuthStateChange nos notifica de cualquier sesión.
-    //
-    // 3. Si no llega nada → mostrar AuthModal.
-    // ══════════════════════════════════════════════════════════
-
-    let resolved = false;
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log('[Auth] onAuthStateChange →', event, session?.user?.email ?? 'sin sesión');
-
-      if (session?.user && !resolved) {
-        resolved = true;
-        try {
-          // Limpiar hash de la URL si venimos de OAuth
-          if (window.location.hash.includes('access_token')) {
-            window.history.replaceState({}, '', window.location.pathname);
-          }
-          await processSession(session, setUser, setAuthenticated, loadFromSupabase);
-          setAuthComplete(true);
-        } catch (err: any) {
-          console.error('[Auth] Error procesando sesión:', err);
-          setAuthError('Error al cargar tu perfil. Intenta de nuevo.');
-          setAuthComplete(true);
-        }
-        setLoading(false);
-      }
-
-      if (event === 'SIGNED_OUT') {
-        setUser(null);
-        setAuthenticated(false);
-      }
-    });
-
-    // Safety: si onAuthStateChange no emite con sesión en 3s, mostrar login
-    const fallback = setTimeout(async () => {
-      if (resolved) return;
-      console.log('[Auth] Fallback: verificando sesión directamente...');
-      
-      const { data: { session }, error } = await supabase.auth.getSession();
-      
-      if (error) {
-        console.error('[Auth] getSession error:', error.message);
-        if (error.message.includes('Invalid API key')) {
-          setAuthError('Error de configuración: API key de Supabase inválida.');
-        }
-      }
-      
-      if (session?.user && !resolved) {
-        resolved = true;
-        try {
-          await processSession(session, setUser, setAuthenticated, loadFromSupabase);
-        } catch (err: any) {
-          setAuthError('Error al cargar tu perfil.');
-        }
-      }
-
-      // Limpiar URL
-      if (window.location.hash.includes('access_token') || window.location.search.includes('code')) {
-        window.history.replaceState({}, '', window.location.pathname);
-      }
-
-      setAuthComplete(true);
-      setLoading(false);
-    }, 3000);
-
-    return () => {
-      clearTimeout(fallback);
-      subscription.unsubscribe();
-    };
-  }, []);
-
-  // ── Render ──
-
-  if (!authComplete) {
-    return (
-      <div style={{
-        minHeight: '100dvh', display: 'flex', alignItems: 'center',
-        justifyContent: 'center', background: '#000',
-        flexDirection: 'column', gap: 20,
-      }}>
-        <img
-          src="/icon-512.png"
-          alt="AIdark"
-          style={{
-            width: 120, height: 120, borderRadius: 24,
-            animation: 'fadeIn 0.6s ease, pulse 2s ease-in-out infinite',
-          }}
-        />
-        <span style={{ fontSize: 13, color: '#8b7355', fontWeight: 600, letterSpacing: 1 }}>
-          AIdark
-        </span>
-        <div style={{
-          width: 32, height: 2, borderRadius: 2,
-          background: '#8b735544', overflow: 'hidden', marginTop: 4,
-        }}>
-          <div style={{
-            width: '50%', height: '100%', background: '#8b7355',
-            animation: 'slideLoad 1.2s ease-in-out infinite',
-          }} />
-        </div>
-      </div>
-    );
-  }
-
-  if (!isAuthenticated) {
-    return <AuthModal onSuccess={() => setAuthComplete(true)} initialError={authError} />;
-  }
-
-  if (!isAgeVerified) {
-    return <AgeGate />;
-  }
-
-  return (
-    <BrowserRouter>
-      <Routes>
-        <Route path="/" element={<ChatLayout />} />
-        <Route path="/payment/success" element={<PaymentSuccess />} />
-        <Route path="/payment/failure" element={<PaymentFailure />} />
-        <Route path="/payment/pending" element={<PaymentPending />} />
-        <Route path="/legal" element={<LegalPages />} />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    </BrowserRouter>
-  );
-};
-
-export default App;
+    <!-- Google Analytics 4 -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-LXKZY921F2"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      gtag('config', 'G-LXKZY921F2');
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
