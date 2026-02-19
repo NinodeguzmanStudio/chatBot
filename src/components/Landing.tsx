@@ -84,7 +84,7 @@ const useCases = [
   { icon: I.flame, text: "Contenido adulto y erótico sin censura" },
 ];
 
-export default function Landing() {
+export default function Landing({ onStart }: { onStart?: () => void }) {
   const [currentPhrase, setCurrentPhrase] = useState(0);
   const [displayText, setDisplayText] = useState("");
   const [compIndex, setCompIndex] = useState(0);
