@@ -217,17 +217,29 @@ const App: React.FC = () => {
     return (
       <div style={{
         minHeight: '100dvh', display: 'flex', alignItems: 'center',
-        justifyContent: 'center', background: 'var(--bg-primary)',
-        flexDirection: 'column', gap: 16,
+        justifyContent: 'center', background: '#000',
+        flexDirection: 'column', gap: 20,
       }}>
+        <img
+          src="/icon-512.png"
+          alt="AIdark"
+          style={{
+            width: 120, height: 120, borderRadius: 24,
+            animation: 'fadeIn 0.6s ease, pulse 2s ease-in-out infinite',
+          }}
+        />
+        <span style={{ fontSize: 13, color: '#8b7355', fontWeight: 600, letterSpacing: 1 }}>
+          AIdark
+        </span>
         <div style={{
-          width: 32, height: 32,
-          border: '2px solid var(--border-sub)',
-          borderTopColor: 'var(--accent)',
-          borderRadius: '50%',
-          animation: 'spin 0.8s linear infinite',
-        }} />
-        <span style={{ fontSize: 12, color: 'var(--txt-mut)' }}>Cargando...</span>
+          width: 32, height: 2, borderRadius: 2,
+          background: '#8b735544', overflow: 'hidden', marginTop: 4,
+        }}>
+          <div style={{
+            width: '50%', height: '100%', background: '#8b7355',
+            animation: 'slideLoad 1.2s ease-in-out infinite',
+          }} />
+        </div>
       </div>
     );
   }
