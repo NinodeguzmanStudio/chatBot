@@ -8,6 +8,7 @@ import { Sidebar, Header, ChatArea, AgeGate, PricingModal, SettingsModal, Privac
 import { useAuthStore, useChatStore } from '@/lib/store';
 import { supabase } from '@/lib/supabase';
 import { useIsMobile } from '@/hooks/useIsMobile';
+import { LegalPages } from '@/components/LegalPages';
 
 // ── Payment result pages ──
 const PaymentSuccess: React.FC = () => (
@@ -259,6 +260,7 @@ const App: React.FC = () => {
         <Route path="/payment/success" element={<PaymentSuccess />} />
         <Route path="/payment/failure" element={<PaymentFailure />} />
         <Route path="/payment/pending" element={<PaymentPending />} />
+        <Route path="/legal" element={<LegalPages />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
