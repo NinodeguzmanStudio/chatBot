@@ -136,18 +136,6 @@ const App: React.FC = () => {
     if (initialized.current) return;
     initialized.current = true;
 
-    // ══════════════════════════════════════════════════════════
-    // FLUJO IMPLICIT — Simple y sin race conditions:
-    //
-    // 1. Supabase client (al crear el createClient) ya procesó
-    //    el #access_token del hash si venimos de Google.
-    //    Esto pasa SINCRÓNICAMENTE en la inicialización.
-    //
-    // 2. onAuthStateChange nos notifica de cualquier sesión.
-    //
-    // 3. Si no llega nada → mostrar AuthModal.
-    // ══════════════════════════════════════════════════════════
-
     let resolved = false;
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
@@ -156,7 +144,6 @@ const App: React.FC = () => {
       if (session?.user && !resolved) {
         resolved = true;
         try {
-          // Limpiar hash de la URL si venimos de OAuth
           if (window.location.hash.includes('access_token')) {
             window.history.replaceState({}, '', window.location.pathname);
           }
@@ -173,10 +160,11 @@ const App: React.FC = () => {
       if (event === 'SIGNED_OUT') {
         setUser(null);
         setAuthenticated(false);
+        localStorage.removeItem('aidark_authenticated');
       }
     });
 
-    // Safety: si onAuthStateChange no emite con sesión en 3s, mostrar login
+    // Safety fallback — 3s
     const fallback = setTimeout(async () => {
       if (resolved) return;
       console.log('[Auth] Fallback: verificando sesión directamente...');
@@ -199,7 +187,13 @@ const App: React.FC = () => {
         }
       }
 
-      // Limpiar URL
+      // Si NO hay sesión → limpiar estado persistido
+      if (!session?.user) {
+        setUser(null);
+        setAuthenticated(false);
+        localStorage.removeItem('aidark_authenticated');
+      }
+
       if (window.location.hash.includes('access_token') || window.location.search.includes('code')) {
         window.history.replaceState({}, '', window.location.pathname);
       }
