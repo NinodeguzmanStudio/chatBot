@@ -7,7 +7,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { Sidebar, Header, ChatArea, AgeGate, PricingModal, SettingsModal, PrivacyModal, AuthModal } from '@/components';
+import { Sidebar, Header, ChatArea, AgeGate, PricingModal, PromoModal, SettingsModal, PrivacyModal, AuthModal } from '@/components';
 import { useAuthStore, useChatStore } from '@/lib/store';
 import { supabase } from '@/lib/supabase';
 import { useIsMobile } from '@/hooks/useIsMobile';
@@ -46,6 +46,7 @@ const PaymentPending: React.FC = () => (
 const ChatLayout: React.FC = () => {
   const { sidebarOpen } = useChatStore();
   const [pricingOpen, setPricingOpen] = useState(false);
+  const [promoOpen, setPromoOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [privacyOpen, setPrivacyOpen] = useState(false);
   const isMobile = useIsMobile();
@@ -70,9 +71,10 @@ const ChatLayout: React.FC = () => {
       )}
       <main style={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100dvh', minWidth: 0 }}>
         <Header onOpenPricing={() => setPricingOpen(true)} />
-        <ChatArea onOpenPricing={() => setPricingOpen(true)} />
+        <ChatArea onOpenPricing={() => setPromoOpen(true)} />
       </main>
       <PricingModal isOpen={pricingOpen} onClose={() => setPricingOpen(false)} />
+      <PromoModal isOpen={promoOpen} onClose={() => setPromoOpen(false)} onOpenPricing={() => { setPromoOpen(false); setPricingOpen(true); }} />
       <SettingsModal isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} />
       <PrivacyModal isOpen={privacyOpen} onClose={() => setPrivacyOpen(false)} />
     </div>
