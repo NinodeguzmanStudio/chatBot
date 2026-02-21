@@ -8,6 +8,7 @@ export { LanguageSelector } from './chat/LanguageSelector';
 export { AgeGate } from './modals/AgeGate';
 export { AuthModal } from './modals/AuthModal';
 export { PricingModal } from './modals/PricingModal';
+export { PromoModal } from './modals/PromoModal';
 export { SettingsModal } from './modals/SettingsModal';
 export { PrivacyModal } from './modals/PrivacyModal';
 export { IntroAnimation } from './modals/IntroAnimation';
