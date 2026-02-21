@@ -79,3 +79,26 @@ export function isTempEmail(email: string): boolean {
   const domain = email.split('@')[1]?.toLowerCase() || '';
   return TEMP_DOMAINS.some((t) => domain.includes(t));
 }
+
+const BONUS_KEY = 'aidark_bonus_msgs';
+const BONUS_GIVEN_KEY = 'aidark_bonus_given';
+const BONUS_USED_KEY = 'aidark_bonus_used';
+
+export function wasBonusGiven(): boolean {
+  return localStorage.getItem(BONUS_GIVEN_KEY) === 'true';
+}
+
+export function giveBonusMessages(count: number): void {
+  localStorage.setItem(BONUS_GIVEN_KEY, 'true');
+  localStorage.setItem(BONUS_KEY, String(count));
+  localStorage.setItem(BONUS_USED_KEY, '0');
+}
+
+export function getBonusMessagesUsed(): number {
+  return Number(localStorage.getItem(BONUS_USED_KEY) || '0');
+}
+
+export function incrementBonusMessages(): void {
+  const current = getBonusMessagesUsed();
+  localStorage.setItem(BONUS_USED_KEY, String(current + 1));
+}
