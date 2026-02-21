@@ -80,14 +80,14 @@ const ChatLayout: React.FC = () => {
 // Helper: Buscar o crear profile
 // ══════════════════════════════════════════════════════════════════
 async function resolveUserProfile(userId: string, email: string) {
-  for (let attempt = 0; attempt < 3; attempt++) {
+  for (let attempt = 0; attempt < 2; attempt++) {
     const { data } = await supabase
       .from('profiles')
       .select('*')
       .eq('id', userId)
       .single();
     if (data) return data;
-    if (attempt < 2) await new Promise(r => setTimeout(r, 500));
+    if (attempt < 1) await new Promise(r => setTimeout(r, 400));
   }
   // Fallback: crear profile
   const newProfile = {
