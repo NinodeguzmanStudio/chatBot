@@ -5,7 +5,7 @@
 import { create } from 'zustand';
 import type { Message, ModelId, CharacterId, ChatSession, UserProfile } from '@/types';
 import { APP_CONFIG } from '@/lib/constants';
-import { getDeviceMessagesUsed, incrementDeviceMessages } from '@/lib/fingerprint';
+import { getDeviceMessagesUsed, incrementDeviceMessages, wasBonusGiven, giveBonusMessages, getBonusMessagesUsed, incrementBonusMessages } from '@/lib/fingerprint';
 import {
   loadUserSessions, createDbSession, saveMessage,
   updateDbSessionTitle, deleteDbSession, deleteAllDbSessions, cleanOldChats,
@@ -163,12 +163,15 @@ interface AuthState {
   canSendMessage: () => boolean;
   getRemainingMessages: () => number;
   resetMessages: () => void;
+  isInBonusMode: () => boolean;
+  shouldShowBonus: () => boolean;
+  activateBonus: () => void;
 }
 
 export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
   isLoading: true,
-  isAuthenticated: false,
+  isAuthenticated: false, // FIX: No leer de localStorage — la sesión real se verifica en App.tsx
   isAgeVerified: localStorage.getItem('aidark_age_verified') === 'true',
 
   setUser: (user) => {
@@ -188,29 +191,55 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   incrementMessages: () => {
-    // Solo incrementar localStorage para UX visual (referencia).
-    // El incremento REAL en DB lo hace el server (api/chat.ts) 
-    // para evitar doble conteo.
-    incrementDeviceMessages();
+    // Si está en modo bonus, incrementar bonus counter
+    if (get().isInBonusMode()) {
+      incrementBonusMessages();
+    } else {
+      incrementDeviceMessages();
+    }
   },
 
-  // CAMBIO: Sin backdoor. El server también valida, esto es solo UX.
   canSendMessage: () => {
     const { user } = get();
-    // Cualquier plan pagado = ilimitado
     if (user?.plan && user.plan !== 'free') return true;
-    // Free: check device limit (referencia visual, el server valida también)
+
+    // Si ya se dieron los bonus, verificar si quedan bonus
+    if (wasBonusGiven()) {
+      return getBonusMessagesUsed() < FREE_LIMIT;
+    }
+    // Normal: check device limit
     return getDeviceMessagesUsed() < FREE_LIMIT;
   },
 
-  // CAMBIO: Sin backdoor
   getRemainingMessages: () => {
     const { user } = get();
     if (user?.plan && user.plan !== 'free') return 999;
+
+    // Si está en modo bonus
+    if (wasBonusGiven()) {
+      return Math.max(0, FREE_LIMIT - getBonusMessagesUsed());
+    }
     return Math.max(0, FREE_LIMIT - getDeviceMessagesUsed());
   },
 
   resetMessages: () => {
     localStorage.setItem('aidark_fp_msgs', '0');
+  },
+
+  // ¿El usuario está usando los mensajes bonus?
+  isInBonusMode: () => {
+    return wasBonusGiven();
+  },
+
+  // ¿Se le acabaron los 5 normales y aún no recibió bonus?
+  shouldShowBonus: () => {
+    const { user } = get();
+    if (user?.plan && user.plan !== 'free') return false;
+    return getDeviceMessagesUsed() >= FREE_LIMIT && !wasBonusGiven();
+  },
+
+  // Activar los 5 mensajes bonus
+  activateBonus: () => {
+    giveBonusMessages();
   },
 }));
