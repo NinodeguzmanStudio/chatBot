@@ -1,6 +1,9 @@
 // ═══════════════════════════════════════
-// AIdark — Main App (v4 — IMPLICIT FLOW)
+// AIdark — Main App (v5 — ROBUST AUTH)
 // ═══════════════════════════════════════
+// FIX: Resuelve el bug donde la app se queda en pantalla de carga
+//      cuando hay tokens expirados/corruptos en localStorage.
+//      Ahora usa getSession() primero (rápido) + fallback de 1.5s.
 
 import React, { useState, useEffect, useRef } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
@@ -77,7 +80,7 @@ const ChatLayout: React.FC = () => {
 };
 
 // ══════════════════════════════════════════════════════════════════
-// Helper: Buscar o crear profile
+// Helper: Buscar o crear profile (max 2 intentos para no bloquear)
 // ══════════════════════════════════════════════════════════════════
 async function resolveUserProfile(userId: string, email: string) {
   for (let attempt = 0; attempt < 2; attempt++) {
@@ -104,7 +107,26 @@ async function resolveUserProfile(userId: string, email: string) {
 }
 
 // ══════════════════════════════════════════════════════════════════
-// Helper: Procesar sesión activa → cargar profile → marcar auth OK
+// Helper: Limpiar TODO el estado de auth (tokens corruptos incluidos)
+// ══════════════════════════════════════════════════════════════════
+function clearAllAuthState(setUser: any, setAuthenticated: any) {
+  setUser(null);
+  setAuthenticated(false);
+  localStorage.removeItem('aidark_authenticated');
+  // Limpiar tokens de Supabase que pueden estar corruptos/expirados
+  const keysToRemove: string[] = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (key && (key.startsWith('sb-') || key.includes('supabase'))) {
+      keysToRemove.push(key);
+    }
+  }
+  keysToRemove.forEach(k => localStorage.removeItem(k));
+  console.log('[Auth] Estado limpiado completamente');
+}
+
+// ══════════════════════════════════════════════════════════════════
+// Helper: Procesar sesión válida → cargar profile → marcar auth OK
 // ══════════════════════════════════════════════════════════════════
 async function processSession(
   session: any,
@@ -118,7 +140,8 @@ async function processSession(
   );
   setUser(profile as any);
   setAuthenticated(true);
-  await loadFromSupabase(session.user.id);
+  // Cargar chats en background — NO bloquea la UI
+  loadFromSupabase(session.user.id).catch(console.error);
 }
 
 // ── Root App ──
@@ -138,69 +161,141 @@ const App: React.FC = () => {
 
     let resolved = false;
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log('[Auth] onAuthStateChange →', event, session?.user?.email ?? 'sin sesión');
+    // ═══════════════════════════════════════════════════════════
+    // v5: Auth robusta contra cache/tokens corruptos
+    //
+    // ANTES: Dependía solo de onAuthStateChange que puede no
+    //        disparar si el token está corrupto → colgado 3+ seg
+    //
+    // AHORA:
+    // 1. getSession() PRIMERO → respuesta inmediata
+    // 2. Token expirado → refresh → si falla → limpia TODO
+    // 3. Sin sesión → limpia y muestra landing (instantáneo)
+    // 4. onAuthStateChange solo para eventos posteriores
+    // 5. Fallback agresivo 1.5s
+    // ═══════════════════════════════════════════════════════════
 
-      if (session?.user && !resolved) {
+    const initAuth = async () => {
+      try {
+        // Si viene de OAuth redirect, dar un momento para procesar el hash
+        if (window.location.hash.includes('access_token')) {
+          await new Promise(r => setTimeout(r, 300));
+          window.history.replaceState({}, '', window.location.pathname);
+        }
+
+        // ── Paso 1: Obtener sesión existente ──
+        const { data: { session }, error } = await supabase.auth.getSession();
+
+        if (error) {
+          console.error('[Auth] getSession error:', error.message);
+          clearAllAuthState(setUser, setAuthenticated);
+          resolved = true;
+          setAuthComplete(true);
+          setLoading(false);
+          return;
+        }
+
+        // ── Paso 2: Si hay sesión, verificar validez ──
+        if (session?.user) {
+          const expiresAt = session.expires_at ? session.expires_at * 1000 : 0;
+          const now = Date.now();
+
+          // Token expirado → intentar refresh
+          if (expiresAt > 0 && expiresAt < now) {
+            console.log('[Auth] Token expirado, refrescando...');
+            const { data: refreshed, error: refreshError } = await supabase.auth.refreshSession();
+
+            if (refreshError || !refreshed.session) {
+              console.warn('[Auth] Refresh falló:', refreshError?.message);
+              clearAllAuthState(setUser, setAuthenticated);
+              resolved = true;
+              setAuthComplete(true);
+              setLoading(false);
+              return;
+            }
+
+            // Refresh OK → procesar
+            resolved = true;
+            await processSession(refreshed.session, setUser, setAuthenticated, loadFromSupabase);
+            setAuthComplete(true);
+            setLoading(false);
+            return;
+          }
+
+          // Token válido → procesar directamente
+          resolved = true;
+          await processSession(session, setUser, setAuthenticated, loadFromSupabase);
+          setAuthComplete(true);
+          setLoading(false);
+          return;
+        }
+
+        // ── Paso 3: No hay sesión → mostrar landing ──
+        console.log('[Auth] Sin sesión activa');
+        clearAllAuthState(setUser, setAuthenticated);
+        resolved = true;
+        setAuthComplete(true);
+        setLoading(false);
+
+      } catch (err: any) {
+        console.error('[Auth] Error inesperado:', err);
+        clearAllAuthState(setUser, setAuthenticated);
+        resolved = true;
+        setAuthComplete(true);
+        setLoading(false);
+      }
+    };
+
+    // Ejecutar inmediatamente
+    initAuth();
+
+    // ── Listener para cambios POSTERIORES (login, logout, refresh) ──
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log('[Auth] onAuthStateChange →', event);
+
+      // Login exitoso (después de OAuth o email confirm)
+      if (event === 'SIGNED_IN' && session?.user && !resolved) {
         resolved = true;
         try {
           if (window.location.hash.includes('access_token')) {
             window.history.replaceState({}, '', window.location.pathname);
           }
           await processSession(session, setUser, setAuthenticated, loadFromSupabase);
-          setAuthComplete(true);
         } catch (err: any) {
           console.error('[Auth] Error procesando sesión:', err);
           setAuthError('Error al cargar tu perfil. Intenta de nuevo.');
-          setAuthComplete(true);
         }
+        setAuthComplete(true);
         setLoading(false);
       }
 
+      // Token refrescado silenciosamente
+      if (event === 'TOKEN_REFRESHED' && session?.user) {
+        try {
+          const profile = await resolveUserProfile(session.user.id, session.user.email || '');
+          setUser(profile as any);
+        } catch {
+          // No es crítico
+        }
+      }
+
+      // Logout
       if (event === 'SIGNED_OUT') {
-        setUser(null);
-        setAuthenticated(false);
-        localStorage.removeItem('aidark_authenticated');
+        clearAllAuthState(setUser, setAuthenticated);
+        setAuthComplete(true);
       }
     });
 
-    // Safety fallback — 3s
-    const fallback = setTimeout(async () => {
-      if (resolved) return;
-      console.log('[Auth] Fallback: verificando sesión directamente...');
-      
-      const { data: { session }, error } = await supabase.auth.getSession();
-      
-      if (error) {
-        console.error('[Auth] getSession error:', error.message);
-        if (error.message.includes('Invalid API key')) {
-          setAuthError('Error de configuración: API key de Supabase inválida.');
-        }
-      }
-      
-      if (session?.user && !resolved) {
+    // ── Safety fallback: 1.5s (reducido de 3s) ──
+    const fallback = setTimeout(() => {
+      if (!resolved) {
+        console.warn('[Auth] Fallback 1.5s activado — forzando resolución');
+        clearAllAuthState(setUser, setAuthenticated);
         resolved = true;
-        try {
-          await processSession(session, setUser, setAuthenticated, loadFromSupabase);
-        } catch (err: any) {
-          setAuthError('Error al cargar tu perfil.');
-        }
+        setAuthComplete(true);
+        setLoading(false);
       }
-
-      // Si NO hay sesión → limpiar estado persistido
-      if (!session?.user) {
-        setUser(null);
-        setAuthenticated(false);
-        localStorage.removeItem('aidark_authenticated');
-      }
-
-      if (window.location.hash.includes('access_token') || window.location.search.includes('code')) {
-        window.history.replaceState({}, '', window.location.pathname);
-      }
-
-      setAuthComplete(true);
-      setLoading(false);
-    }, 3000);
+    }, 1500);
 
     return () => {
       clearTimeout(fallback);
