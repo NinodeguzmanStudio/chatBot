@@ -168,7 +168,7 @@ interface AuthState {
 export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
   isLoading: true,
-  isAuthenticated: localStorage.getItem('aidark_authenticated') === 'true',
+  isAuthenticated: false,
   isAgeVerified: localStorage.getItem('aidark_age_verified') === 'true',
 
   setUser: (user) => {
