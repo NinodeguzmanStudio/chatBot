@@ -88,7 +88,7 @@ export function wasBonusGiven(): boolean {
   return localStorage.getItem(BONUS_GIVEN_KEY) === 'true';
 }
 
-export function giveBonusMessages(count: number): void {
+export function giveBonusMessages(count: number = 5): void {
   localStorage.setItem(BONUS_GIVEN_KEY, 'true');
   localStorage.setItem(BONUS_KEY, String(count));
   localStorage.setItem(BONUS_USED_KEY, '0');
