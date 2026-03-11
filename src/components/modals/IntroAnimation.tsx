@@ -3,10 +3,10 @@ import React, { useState, useEffect } from 'react';
 export const IntroAnimation: React.FC<{ onDone: () => void }> = ({ onDone }) => {
   const [phase, setPhase] = useState(0);
   useEffect(() => {
-    const t1 = setTimeout(() => setPhase(1), 300);
-    const t2 = setTimeout(() => setPhase(2), 1200);
-    const t3 = setTimeout(() => setPhase(3), 2200);
-    const t4 = setTimeout(() => onDone(), 3000);
+    const t1 = setTimeout(() => setPhase(1), 200);
+const t2 = setTimeout(() => setPhase(2), 600);
+const t3 = setTimeout(() => setPhase(3), 900);
+const t4 = setTimeout(() => onDone(), 1100);
     return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); clearTimeout(t4); };
   }, [onDone]);
 
