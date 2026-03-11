@@ -12,11 +12,12 @@ const IMAGE_STYLES = [
   'Watercolor', 'Oil Painting', 'Sketch', 'Low Poly',
 ];
 
+// DESPUÉS (IDs actuales válidos)
 const IMAGE_MODELS = [
-  { id: 'fluently-xl', label: 'Fluently XL (rápido)' },
-  { id: 'flux-dev', label: 'Flux Dev (calidad)' },
-  { id: 'pony-realism', label: 'Pony Realism (realista)' },
-  { id: 'flux-dev-uncensored', label: 'Flux Uncensored 🔞' },
+  { id: 'qwen-image', label: 'Qwen Image (rápido)' },
+  { id: 'lustify-sdxl', label: 'Lustify SDXL 🔞' },
+  { id: 'fluently-xl-final', label: 'Fluently XL Final' },
+  { id: 'z-image-turbo', label: 'Z-Image Turbo (veloz)' },
 ];
 
 const ASPECT_RATIOS = [
@@ -35,7 +36,7 @@ export const ImageGenerator: React.FC<ImageGeneratorProps> = ({ onOpenPricing })
   const [prompt, setPrompt] = useState('');
   const [negativePrompt, setNegativePrompt] = useState('');
   const [style, setStyle] = useState('Photographic');
-  const [model, setModel] = useState('fluently-xl');
+ const [model, setModel] = useState('qwen-image');
   const [ratio, setRatio] = useState(ASPECT_RATIOS[0]);
   const [loading, setLoading] = useState(false);
   const [images, setImages] = useState<string[]>([]);
