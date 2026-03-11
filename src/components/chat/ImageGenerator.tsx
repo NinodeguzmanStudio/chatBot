@@ -22,10 +22,10 @@ const IMAGE_MODELS = [
 
 const ASPECT_RATIOS = [
   { label: '1:1', w: 1024, h: 1024 },
-  { label: '16:9', w: 1344, h: 768 },
-  { label: '9:16', w: 768, h: 1344 },
-  { label: '4:3', w: 1152, h: 896 },
-  { label: '3:4', w: 896, h: 1152 },
+  { label: '16:9', w: 1280, h: 720 },
+  { label: '9:16', w: 720, h: 1280 },
+  { label: '4:3', w: 1024, h: 768 },
+  { label: '3:4', w: 768, h: 1024 },
 ];
 
 interface ImageGeneratorProps {
