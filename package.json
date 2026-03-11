@@ -16,12 +16,15 @@
     "react-dom": "^19.0.0",
     "react-markdown": "^9.0.0",
     "react-router-dom": "^7.1.0",
+    "react-syntax-highlighter": "^15.6.1",
+    "rehype-highlight": "^7.0.0",
     "zustand": "^5.0.0"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "@types/react-syntax-highlighter": "^15.5.13",
     "@vercel/node": "^5.6.3",
     "@vitejs/plugin-react": "^4.3.0",
     "tailwindcss": "^4.0.0",
