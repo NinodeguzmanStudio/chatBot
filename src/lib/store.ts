@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════
-// AIdark — Global Store (ANTI-ABUSE + PREMIUM)
+// AIdark — Global Store v2 (trimMessages + customInstructions)
 // ═══════════════════════════════════════
 
 import { create } from 'zustand';
@@ -23,17 +23,20 @@ interface ChatState {
   sidebarOpen: boolean;
   writerMode: boolean;
   sessionsLoaded: boolean;
+  customInstructions: string;
 
   setSelectedModel: (model: ModelId) => void;
   setSelectedCharacter: (char: CharacterId) => void;
   setSidebarOpen: (open: boolean) => void;
   setIsTyping: (typing: boolean) => void;
   setWriterMode: (mode: boolean) => void;
+  setCustomInstructions: (instructions: string) => void;
   createSession: () => string;
   deleteSession: (id: string) => void;
   setActiveSession: (id: string | null) => void;
   addMessage: (sessionId: string, message: Message) => void;
   clearSessionMessages: (sessionId: string) => void;
+  trimMessages: (sessionId: string, fromIndex: number) => void;
   updateSessionTitle: (sessionId: string, title: string) => void;
   renameSession: (id: string, title: string) => void;
   setSessions: (sessions: ChatSession[]) => void;
@@ -50,6 +53,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   sidebarOpen: true,
   writerMode: false,
   sessionsLoaded: false,
+  customInstructions: localStorage.getItem('aidark_custom_instructions') || '',
 
   setSelectedModel: (model) => set({ selectedModel: model }),
   setSelectedCharacter: (char) => set({ selectedCharacter: char }),
@@ -57,6 +61,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
   setIsTyping: (typing) => set({ isTyping: typing }),
   setWriterMode: (mode) => set({ writerMode: mode }),
   setSessions: (sessions) => set({ sessions }),
+
+  setCustomInstructions: (instructions) => {
+    localStorage.setItem('aidark_custom_instructions', instructions);
+    set({ customInstructions: instructions });
+  },
 
   loadFromSupabase: async (userId: string) => {
     try {
@@ -130,6 +139,16 @@ export const useChatStore = create<ChatState>((set, get) => ({
       ),
     })),
 
+  // Corta mensajes desde fromIndex en adelante (para editar y reenviar)
+  trimMessages: (sessionId: string, fromIndex: number) =>
+    set((state) => ({
+      sessions: state.sessions.map((s) =>
+        s.id === sessionId
+          ? { ...s, messages: s.messages.slice(0, fromIndex), updated_at: Date.now() }
+          : s
+      ),
+    })),
+
   updateSessionTitle: (sessionId, title) => {
     set((state) => ({
       sessions: state.sessions.map((s) => s.id === sessionId ? { ...s, title } : s),
@@ -146,9 +165,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
 }));
 
 // ── Auth Store ──
-// CAMBIO: Eliminados todos los backdoors (?dev=1)
-// CAMBIO: El límite real se valida en el server (api/chat.ts)
-//         El frontend solo muestra el contador como referencia visual
 interface AuthState {
   user: UserProfile | null;
   isLoading: boolean;
@@ -171,7 +187,7 @@ interface AuthState {
 export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
   isLoading: true,
-  isAuthenticated: false, // FIX: No leer de localStorage — la sesión real se verifica en App.tsx
+  isAuthenticated: false,
   isAgeVerified: localStorage.getItem('aidark_age_verified') === 'true',
 
   setUser: (user) => {
@@ -184,14 +200,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     localStorage.setItem('aidark_authenticated', String(auth));
     set({ isAuthenticated: auth });
   },
-
   setAgeVerified: (verified) => {
     localStorage.setItem('aidark_age_verified', String(verified));
     set({ isAgeVerified: verified });
   },
 
   incrementMessages: () => {
-    // Si está en modo bonus, incrementar bonus counter
     if (get().isInBonusMode()) {
       incrementBonusMessages();
     } else {
@@ -202,20 +216,15 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   canSendMessage: () => {
     const { user } = get();
     if (user?.plan && user.plan !== 'free') return true;
-
-    // Si ya se dieron los bonus, verificar si quedan bonus
     if (wasBonusGiven()) {
       return getBonusMessagesUsed() < FREE_LIMIT;
     }
-    // Normal: check device limit
     return getDeviceMessagesUsed() < FREE_LIMIT;
   },
 
   getRemainingMessages: () => {
     const { user } = get();
     if (user?.plan && user.plan !== 'free') return 999;
-
-    // Si está en modo bonus
     if (wasBonusGiven()) {
       return Math.max(0, FREE_LIMIT - getBonusMessagesUsed());
     }
@@ -226,19 +235,14 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     localStorage.setItem('aidark_fp_msgs', '0');
   },
 
-  // ¿El usuario está usando los mensajes bonus?
-  isInBonusMode: () => {
-    return wasBonusGiven();
-  },
+  isInBonusMode: () => wasBonusGiven(),
 
-  // ¿Se le acabaron los 5 normales y aún no recibió bonus?
   shouldShowBonus: () => {
     const { user } = get();
     if (user?.plan && user.plan !== 'free') return false;
     return getDeviceMessagesUsed() >= FREE_LIMIT && !wasBonusGiven();
   },
 
-  // Activar los 5 mensajes bonus
   activateBonus: () => {
     giveBonusMessages();
   },
