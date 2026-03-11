@@ -53,6 +53,20 @@
       gtag('config', 'G-LXKZY921F2');
     </script>
   </head>
+  <script>
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.getRegistrations().then(function(registrations) {
+      for (let registration of registrations) {
+        registration.unregister();
+      }
+    });
+    caches.keys().then(function(names) {
+      for (let name of names) {
+        caches.delete(name);
+      }
+    });
+  }
+</script>
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
