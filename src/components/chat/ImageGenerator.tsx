@@ -103,7 +103,7 @@ export const ImageGenerator: React.FC<ImageGeneratorProps> = ({ onOpenPricing })
             ✨ Generador de imágenes
           </h2>
           <p style={{ fontSize: 12, color: 'var(--txt-mut)' }}>
-            Powered by Venice AI · Sin censura · Privado
+            Powered by AIdark · Sin censura · Privado
           </p>
         </div>
 
@@ -229,7 +229,7 @@ export const ImageGenerator: React.FC<ImageGeneratorProps> = ({ onOpenPricing })
           ) : (
             <>
               <Sparkles size={14} />
-              Generar imagen · Ctrl+Enter
+              Generar imagen · 
             </>
           )}
         </button>
