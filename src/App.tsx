@@ -13,6 +13,14 @@ import { supabase } from '@/lib/supabase';
 import { useIsMobile } from '@/hooks/useIsMobile';
 import { LegalPages } from '@/components/LegalPages';
 import Landing from '@/components/Landing';
+import { InstallBanner } from '@/components/modals/InstallBanner';
+
+// ── Registrar Service Worker ──
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => {});
+  });
+}
 
 // ── Payment result pages ──
 const PaymentSuccess: React.FC = () => (
@@ -77,6 +85,7 @@ const ChatLayout: React.FC = () => {
       <PromoModal isOpen={promoOpen} onClose={() => setPromoOpen(false)} onOpenPricing={() => { setPromoOpen(false); setPricingOpen(true); }} />
       <SettingsModal isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} />
       <PrivacyModal isOpen={privacyOpen} onClose={() => setPrivacyOpen(false)} />
+      <InstallBanner />
     </div>
   );
 };
