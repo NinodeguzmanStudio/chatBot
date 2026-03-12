@@ -223,6 +223,8 @@ const basePlans: PlanConfig[] = [
       { icon: '🔒', text: 'Conversaciones privadas' },
       { icon: '⚡', text: 'Velocidad estándar' },
       { icon: '📅', text: 'Historial 7 días' },
+      { icon: '📸', text: '10 imágenes HD/día · Realista', highlight: true },
+      { icon: '🔞', text: 'Desnudos fotorrealistas (venice-sd35)', highlight: true },
     ],
   },
   {
@@ -235,6 +237,8 @@ const basePlans: PlanConfig[] = [
       { icon: '🔒', text: 'Conversaciones privadas' },
       { icon: '🚀', text: 'Velocidad prioritaria' },
       { icon: '📅', text: 'Historial 30 días' },
+      { icon: '📸', text: '25 imágenes HD/día · Realista + Anime', highlight: true },
+      { icon: '🎌', text: 'Hentai · Manhwa · Manga · Ecchi (lustify-sdxl)', highlight: true },
     ],
   },
   {
@@ -247,6 +251,8 @@ const basePlans: PlanConfig[] = [
       { icon: '🔐', text: 'Privacidad reforzada', highlight: true },
       { icon: '💨', text: 'Velocidad máxima' },
       { icon: '📅', text: 'Historial 90 días' },
+      { icon: '📸', text: '50 imágenes HD/día · Realista + Anime', highlight: true },
+      { icon: '🎌', text: 'Hentai · Manhwa · Manga · Ecchi · Todo desbloqueado', highlight: true },
       { icon: '🏅', text: 'Badge Fundador', highlight: true },
     ],
   },
