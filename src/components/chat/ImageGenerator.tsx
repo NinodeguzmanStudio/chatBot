@@ -1,9 +1,10 @@
 // ═══════════════════════════════════════
-// AIdark — Image Generator v2
+// AIdark — Image Generator v3
+// FIX: cupos al azar, tooltip ?, texto 10k miembros vs 500 simultáneos
 // ═══════════════════════════════════════
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Sparkles, Download, X, ChevronDown, AlertTriangle, Smartphone } from 'lucide-react';
+import { Sparkles, Download, X, ChevronDown, AlertTriangle, HelpCircle } from 'lucide-react';
 import { useAuthStore } from '@/lib/store';
 import { supabase } from '@/lib/supabase';
 import { useIsMobile } from '@/hooks/useIsMobile';
@@ -19,30 +20,35 @@ const ANIME_STYLES = [
   { id: 'ecchi',  label: '🌸 Ecchi / Fanservice' },
 ];
 const RATIOS = [
-  { label: '1:1', w: 1024, h: 1024 },
-  { label: '9:16', w: 720, h: 1280 },
-  { label: '16:9', w: 1280, h: 720 },
-  { label: '4:3', w: 1024, h: 768 },
+  { label: '1:1',  w: 1024, h: 1024 },
+  { label: '9:16', w: 720,  h: 1280 },
+  { label: '16:9', w: 1280, h: 720  },
+  { label: '4:3',  w: 1024, h: 768  },
 ];
 
-// ── Calcular cupos restantes (baja cada 2h desde launch) ──
-const LAUNCH = new Date('2026-02-17T00:00:00').getTime();
+// ── Cupos: bajan al azar entre 1-3 cada hora ──
 const BASE_CUPOS = 500;
+const LAUNCH = new Date('2026-02-17T00:00:00').getTime();
+
 function getCuposRestantes(): number {
   const hours = Math.max(0, (Date.now() - LAUNCH) / 3_600_000);
-  const dropped = Math.floor(hours / 2);
-  // Recuperar decremento de sesión
+  // Semilla fija por hora para que todos vean el mismo número base
+  const seed = Math.floor(hours);
+  const pseudoRandom = (seed * 9301 + 49297) % 233280;
+  const baseDropPerHour = 1 + (pseudoRandom % 3); // 1, 2 o 3 por hora
+  const totalDrop = Math.floor(hours) * baseDropPerHour;
   const sessionDrop = parseInt(sessionStorage.getItem('aidark_cupos_drop') || '0', 10);
-  return Math.max(12, BASE_CUPOS - dropped - sessionDrop);
-}
-function decrementSessionCupos() {
-  const current = parseInt(sessionStorage.getItem('aidark_cupos_drop') || '0', 10);
-  sessionStorage.setItem('aidark_cupos_drop', String(current + Math.floor(Math.random() * 2) + 1));
+  return Math.max(12, BASE_CUPOS - totalDrop - sessionDrop);
 }
 
-// ══════════════════════════════════════
-// Wave celeste agitada
-// ══════════════════════════════════════
+function decrementSessionCupos() {
+  const current = parseInt(sessionStorage.getItem('aidark_cupos_drop') || '0', 10);
+  // Al entrar baja 1 o 2 al azar
+  const drop = Math.floor(Math.random() * 2) + 1;
+  sessionStorage.setItem('aidark_cupos_drop', String(current + drop));
+}
+
+// ── Wave celeste agitada ──
 const Wave: React.FC<{ color: string; speed: number; amp: number; offset: number }> = ({ color, speed, amp, offset }) => (
   <svg viewBox="0 0 400 40" preserveAspectRatio="none"
     style={{ width: '115%', height: 35, position: 'absolute', top: -18, left: '-7%', overflow: 'visible' }}>
@@ -57,27 +63,68 @@ const Wave: React.FC<{ color: string; speed: number; amp: number; offset: number
   </svg>
 );
 
-// ── Gotas de salpicadura ──
-const SplashDrops: React.FC<{ color: string; active: boolean }> = ({ color, active }) => (
+// ── Gotas salpicadura ──
+const SplashDrops: React.FC<{ color: string }> = ({ color }) => (
   <>
     {[...Array(12)].map((_, i) => (
       <div key={i} style={{
-        position: 'absolute',
-        top: -2,
-        left: `${6 + i * 8}%`,
-        width: i % 3 === 0 ? 5 : 3,
-        height: i % 3 === 0 ? 5 : 3,
-        borderRadius: '50%',
-        background: color,
-        opacity: active ? 1 : 0,
-        animation: active ? `splash${i % 4} ${0.8 + (i % 3) * 0.3}s ease-out infinite` : 'none',
-        animationDelay: `${i * 0.12}s`,
-        pointerEvents: 'none',
-        zIndex: 20,
+        position: 'absolute', top: -2, left: `${6 + i * 8}%`,
+        width: i % 3 === 0 ? 5 : 3, height: i % 3 === 0 ? 5 : 3,
+        borderRadius: '50%', background: color,
+        animation: `splash${i % 4} ${0.8 + (i % 3) * 0.3}s ease-out infinite`,
+        animationDelay: `${i * 0.12}s`, pointerEvents: 'none', zIndex: 20,
       }} />
     ))}
   </>
 );
+
+// ══════════════════════════════════════
+// Tooltip de cupos — explicación
+// ══════════════════════════════════════
+const CuposTooltip: React.FC = () => {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    if (open) document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, [open]);
+
+  return (
+    <div ref={ref} style={{ position: 'relative', display: 'inline-flex' }}>
+      <button onClick={() => setOpen(!open)} style={{
+        background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+        display: 'flex', alignItems: 'center', color: '#ffffff44',
+      }}>
+        <HelpCircle size={13} />
+      </button>
+      {open && (
+        <div style={{
+          position: 'absolute', bottom: '110%', left: '50%', transform: 'translateX(-50%)',
+          width: 270, background: '#0f1620', border: '1px solid rgba(0,188,212,0.25)',
+          borderRadius: 12, padding: '14px 15px', zIndex: 200,
+          boxShadow: '0 8px 28px rgba(0,0,0,0.7)',
+          animation: 'fadeInTooltip 0.15s ease',
+        }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: '#45d4fa', marginBottom: 7 }}>
+            ¿Por qué hay límite de cupos?
+          </div>
+          <div style={{ fontSize: 11, color: '#ffffffaa', lineHeight: 1.65 }}>
+            AIdark admite hasta <strong style={{ color: '#fff' }}>10,000 miembros</strong> en total, pero el generador opera con acceso simultáneo limitado a <strong style={{ color: '#fff' }}>500 usuarios activos</strong>. Esto garantiza velocidad, privacidad y que cada imagen se procese a través de nuestro pipeline sin restricciones, fuera de las políticas de las plataformas convencionales. Cuando un cupo se libera, otro usuario puede acceder.
+          </div>
+          {/* Flecha */}
+          <div style={{
+            position: 'absolute', bottom: -6, left: '50%', transform: 'translateX(-50%)',
+            width: 10, height: 10, background: '#0f1620',
+            borderRight: '1px solid rgba(0,188,212,0.25)', borderBottom: '1px solid rgba(0,188,212,0.25)',
+            transform: 'translateX(-50%) rotate(45deg)',
+          }} />
+        </div>
+      )}
+    </div>
+  );
+};
 
 // ══════════════════════════════════════
 // Banner Premium compacto
@@ -87,11 +134,10 @@ const PremiumBanner: React.FC<{ onOpenPricing: () => void; onClose: () => void }
   const [minusAnim, setMinusAnim] = useState(false);
 
   useEffect(() => {
-    // Al entrar, bajar 1-2 cupos
     decrementSessionCupos();
     setCupos(getCuposRestantes());
 
-    // Bajar 1 cada 30s para sensación en vivo
+    // Bajar 1 cada 30s en vivo para sensación orgánica
     const interval = setInterval(() => {
       const drop = parseInt(sessionStorage.getItem('aidark_cupos_drop') || '0', 10);
       sessionStorage.setItem('aidark_cupos_drop', String(drop + 1));
@@ -102,7 +148,6 @@ const PremiumBanner: React.FC<{ onOpenPricing: () => void; onClose: () => void }
     return () => clearInterval(interval);
   }, []);
 
-  // Colores celeste
   const C = { main: '#00bcd4', light: '#45d4fa', dark: '#0097a7', mid: '#26c6da' };
   const fill = Math.min(97, ((BASE_CUPOS - cupos) / BASE_CUPOS) * 100 + 68);
   const isAlmostFull = cupos <= 80;
@@ -111,7 +156,7 @@ const PremiumBanner: React.FC<{ onOpenPricing: () => void; onClose: () => void }
     <div style={{ flex: 1, overflowY: 'auto', padding: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <div style={{ maxWidth: 440, width: '100%', position: 'relative' }}>
 
-        {/* X para cerrar */}
+        {/* X cerrar */}
         <button onClick={onClose} style={{
           position: 'absolute', top: -8, right: -8, zIndex: 50,
           width: 28, height: 28, borderRadius: '50%',
@@ -121,24 +166,18 @@ const PremiumBanner: React.FC<{ onOpenPricing: () => void; onClose: () => void }
           <X size={13} />
         </button>
 
-        {/* Card con agua */}
         <div style={{
           borderRadius: 14, overflow: 'hidden',
           border: `1px solid ${C.main}55`,
           boxShadow: `0 0 30px ${C.main}22, inset 0 0 30px ${C.main}08`,
-          position: 'relative', minHeight: 420,
-          background: '#080e14',
+          position: 'relative', minHeight: 420, background: '#080e14',
         }}>
-          {/* AGUA — ocupa todo el fondo */}
+          {/* Agua */}
           <div style={{
             position: 'absolute', bottom: 0, left: 0, right: 0,
-            height: `${fill}%`, transition: 'height 4s ease', zIndex: 1,
-            overflow: 'visible',
+            height: `${fill}%`, transition: 'height 4s ease', zIndex: 1, overflow: 'visible',
           }}>
-            {/* Gotas salpicando */}
-            <SplashDrops color={C.light} active={true} />
-
-            {/* Wave principal agitada */}
+            <SplashDrops color={C.light} />
             <div style={{ position: 'relative' }}>
               <Wave color={`${C.light}77`} speed={0.9} amp={18} offset={4} />
               <div style={{ position: 'absolute', top: 5, left: '-7%', width: '115%' }}>
@@ -148,22 +187,14 @@ const PremiumBanner: React.FC<{ onOpenPricing: () => void; onClose: () => void }
                 <Wave color={`${C.dark}44`} speed={0.7} amp={20} offset={6} />
               </div>
             </div>
-
-            {/* Cuerpo del agua */}
             <div style={{
               position: 'absolute', top: 18, left: 0, right: 0, bottom: 0,
               background: `linear-gradient(180deg, ${C.light}55 0%, ${C.main}44 40%, ${C.dark}66 100%)`,
             }} />
-
-            {/* Burbujas */}
             {[...Array(10)].map((_, i) => (
               <div key={i} style={{
-                position: 'absolute',
-                bottom: `${4 + i * 9}%`,
-                left: `${5 + i * 9}%`,
-                width: 2 + (i % 3) * 2,
-                height: 2 + (i % 3) * 2,
-                borderRadius: '50%',
+                position: 'absolute', bottom: `${4 + i * 9}%`, left: `${5 + i * 9}%`,
+                width: 2 + (i % 3) * 2, height: 2 + (i % 3) * 2, borderRadius: '50%',
                 background: `${C.light}66`,
                 animation: `bubbleRise ${1.2 + i * 0.4}s ease-in-out infinite`,
                 animationDelay: `${i * 0.3}s`,
@@ -178,10 +209,9 @@ const PremiumBanner: React.FC<{ onOpenPricing: () => void; onClose: () => void }
             zIndex: 5, pointerEvents: 'none',
           }} />
 
-          {/* CONTENIDO encima del agua */}
+          {/* Contenido */}
           <div style={{ position: 'relative', zIndex: 10, padding: '20px 18px 18px' }}>
 
-            {/* Título */}
             <div style={{ textAlign: 'center', marginBottom: 14 }}>
               <div style={{ fontSize: 26, marginBottom: 6 }}>🔒</div>
               <h2 style={{ fontSize: 17, fontWeight: 800, color: '#fff', margin: '0 0 3px', letterSpacing: -0.3 }}>
@@ -192,12 +222,10 @@ const PremiumBanner: React.FC<{ onOpenPricing: () => void; onClose: () => void }
               </p>
             </div>
 
-            {/* Lista compacta */}
             <div style={{
               background: 'rgba(0,0,0,0.45)', borderRadius: 10,
               padding: '12px 14px', marginBottom: 14,
-              backdropFilter: 'blur(10px)',
-              border: '1px solid rgba(255,255,255,0.06)',
+              backdropFilter: 'blur(10px)', border: '1px solid rgba(255,255,255,0.06)',
             }}>
               {[
                 { icon: '📸', text: 'Desnudos fotorrealistas HD', tag: 'Mensual+' },
@@ -219,10 +247,13 @@ const PremiumBanner: React.FC<{ onOpenPricing: () => void; onClose: () => void }
               ))}
             </div>
 
-            {/* Contador cupos */}
+            {/* Contador cupos con tooltip */}
             <div style={{ textAlign: 'center', marginBottom: 14 }}>
-              <div style={{ fontSize: 10, color: '#ffffff55', marginBottom: 4 }}>
-                {isAlmostFull ? '🔴 Cupos casi agotados — en tiempo real' : '🟡 Cupos disponibles — actualizando'}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, marginBottom: 4 }}>
+                <span style={{ fontSize: 10, color: '#ffffff55' }}>
+                  {isAlmostFull ? '🔴 Cupos casi agotados' : '🟡 Cupos disponibles — en tiempo real'}
+                </span>
+                <CuposTooltip />
               </div>
               <div style={{ position: 'relative', display: 'inline-block' }}>
                 <span style={{ color: C.light, fontWeight: 900, fontSize: 28, letterSpacing: -1 }}>
@@ -243,12 +274,13 @@ const PremiumBanner: React.FC<{ onOpenPricing: () => void; onClose: () => void }
                   height: '100%', borderRadius: 3,
                   width: `${Math.min(97, 100 - (cupos / BASE_CUPOS) * 100)}%`,
                   background: `linear-gradient(90deg, ${C.dark}, ${C.main}, ${C.light})`,
-                  transition: 'width 1s ease',
-                  boxShadow: `0 0 8px ${C.main}`,
+                  transition: 'width 1s ease', boxShadow: `0 0 8px ${C.main}`,
                 }} />
               </div>
               <div style={{ fontSize: 9, color: isAlmostFull ? '#ff9800' : '#ffffff33', marginTop: 5, fontWeight: isAlmostFull ? 700 : 400 }}>
-                {isAlmostFull ? `⚡ Quedan solo ${cupos} lugares disponibles` : `${BASE_CUPOS - cupos} usuarios ya se suscribieron`}
+                {isAlmostFull
+                  ? `⚡ Quedan solo ${cupos} lugares disponibles`
+                  : `${BASE_CUPOS - cupos} de 10,000 miembros ya se suscribieron`}
               </div>
             </div>
 
@@ -278,14 +310,13 @@ const PremiumBanner: React.FC<{ onOpenPricing: () => void; onClose: () => void }
         @keyframes bubbleRise { 0%{transform:translateY(0) scale(1);opacity:.7} 50%{transform:translateY(-20px) scale(1.1);opacity:.3} 100%{transform:translateY(-40px) scale(.7);opacity:0} }
         @keyframes glowCyan { 0%,100%{box-shadow:0 4px 20px rgba(0,188,212,.5)} 50%{box-shadow:0 4px 35px rgba(0,188,212,.85)} }
         @keyframes minusFloat { 0%{opacity:1;transform:translateY(0)} 100%{opacity:0;transform:translateY(-22px)} }
+        @keyframes fadeInTooltip { from{opacity:0;transform:translateY(4px)} to{opacity:1;transform:translateY(0)} }
       `}</style>
     </div>
   );
 };
 
-// ══════════════════════════════════════
-// Toast al cerrar sin descargar
-// ══════════════════════════════════════
+// ── Toast al cerrar ──
 const CloseToast: React.FC<{ cupos: number; onOpenPricing: () => void }> = ({ cupos, onOpenPricing }) => (
   <div style={{
     position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)',
@@ -304,9 +335,7 @@ const CloseToast: React.FC<{ cupos: number; onOpenPricing: () => void }> = ({ cu
   </div>
 );
 
-// ══════════════════════════════════════
-// Modal advertencia imagen sin descargar
-// ══════════════════════════════════════
+// ── Warning eliminar imagen ──
 const LoseImageWarning: React.FC<{ onConfirm: () => void; onCancel: () => void }> = ({ onConfirm, onCancel }) => (
   <div style={{
     position: 'fixed', inset: 0, zIndex: 500,
@@ -340,10 +369,9 @@ const LoseImageWarning: React.FC<{ onConfirm: () => void; onCancel: () => void }
 // ══════════════════════════════════════
 // MAIN
 // ══════════════════════════════════════
-interface ImageGeneratorProps { onOpenPricing: () => void; }
 interface GeneratedImage { src: string; prompt: string; category: string; id: string; }
 
-export const ImageGenerator: React.FC<ImageGeneratorProps> = ({ onOpenPricing }) => {
+export const ImageGenerator: React.FC<{ onOpenPricing: () => void }> = ({ onOpenPricing }) => {
   const { user } = useAuthStore();
   const isMobile = useIsMobile();
 
@@ -411,7 +439,6 @@ export const ImageGenerator: React.FC<ImageGeneratorProps> = ({ onOpenPricing })
     a.href = img.src; a.download = `aidark-${img.category}-${Date.now()}.webp`; a.click();
   };
 
-  // Mostrar banner si es free o si eligió verlo
   if (!isPremium && showBanner) {
     return (
       <>
@@ -452,15 +479,13 @@ export const ImageGenerator: React.FC<ImageGeneratorProps> = ({ onOpenPricing })
             ].map(c => {
               const locked = c.id === 'anime' && !canAnime;
               return (
-                <button key={c.id}
-                  onClick={() => { if (locked) { onOpenPricing(); return; } setCategory(c.id as any); }}
-                  style={{
-                    flex: 1, padding: '10px 12px', borderRadius: 10, textAlign: 'left',
-                    background: category === c.id ? 'var(--bg-el)' : 'transparent',
-                    border: `1px solid ${category === c.id ? 'var(--border-str)' : 'var(--border-sub)'}`,
-                    color: category === c.id ? 'var(--txt-pri)' : 'var(--txt-mut)',
-                    cursor: 'pointer', transition: 'all 0.15s', fontFamily: 'inherit', opacity: locked ? 0.7 : 1,
-                  }}>
+                <button key={c.id} onClick={() => { if (locked) { onOpenPricing(); return; } setCategory(c.id as any); }} style={{
+                  flex: 1, padding: '10px 12px', borderRadius: 10, textAlign: 'left',
+                  background: category === c.id ? 'var(--bg-el)' : 'transparent',
+                  border: `1px solid ${category === c.id ? 'var(--border-str)' : 'var(--border-sub)'}`,
+                  color: category === c.id ? 'var(--txt-pri)' : 'var(--txt-mut)',
+                  cursor: 'pointer', transition: 'all 0.15s', fontFamily: 'inherit', opacity: locked ? 0.7 : 1,
+                }}>
                   <div style={{ fontSize: 12, fontWeight: 600 }}>{c.label} {locked && '🔒'}</div>
                   <div style={{ fontSize: 10, color: 'var(--txt-ter)', marginTop: 2 }}>{c.desc}</div>
                 </button>
@@ -547,7 +572,8 @@ export const ImageGenerator: React.FC<ImageGeneratorProps> = ({ onOpenPricing })
           width: '100%', padding: '12px 0', borderRadius: 10, border: 'none',
           background: prompt.trim() && !loading && remaining > 0 ? 'var(--border-str)' : 'var(--bg-el)',
           color: prompt.trim() && !loading && remaining > 0 ? 'var(--txt-pri)' : 'var(--txt-mut)',
-          fontSize: 13, fontWeight: 600, cursor: prompt.trim() && !loading && remaining > 0 ? 'pointer' : 'default',
+          fontSize: 13, fontWeight: 600,
+          cursor: prompt.trim() && !loading && remaining > 0 ? 'pointer' : 'default',
           fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
         }}>
           {loading
