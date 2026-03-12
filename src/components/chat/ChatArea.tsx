@@ -10,7 +10,6 @@ import { sendMessageStream, sendMessage } from '@/services/venice';
 import { generateId } from '@/lib/utils';
 import { APP_CONFIG, AI_CHARACTERS } from '@/lib/constants';
 import { MessageBubble } from './MessageBubble';
-import { ModelSelector } from './ModelSelector';
 import { CharacterSelector } from './CharacterSelector';
 import { TypingParticles } from './TypingParticles';
 import { ImageGenerator } from './ImageGenerator';
@@ -418,7 +417,6 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
                       )}
                     </div>
 
-                    <ModelSelector />
                     <CharacterSelector />
                     {!isMobile && messages.length > 0 && (
                       <button onClick={() => setWriterMode(!writerMode)} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '5px 10px', border: `1px solid ${writerMode ? 'var(--border-str)' : 'var(--border-sub)'}`, borderRadius: 16, background: writerMode ? 'var(--bg-hover)' : 'transparent', color: writerMode ? 'var(--txt-pri)' : 'var(--txt-mut)', fontSize: 11, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.15s' }}>
