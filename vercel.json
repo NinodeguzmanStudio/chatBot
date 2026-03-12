@@ -6,7 +6,7 @@
   "crons": [
     {
       "path": "/api/push-send",
-      "schedule": "0 1,13 * * *"
+      "schedule": "0 13 * * *"
     }
   ],
   "headers": [
