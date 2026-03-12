@@ -3,6 +3,12 @@
     { "source": "/api/(.*)", "destination": "/api/$1" },
     { "source": "/(.*)", "destination": "/index.html" }
   ],
+  "crons": [
+    {
+      "path": "/api/push-send",
+      "schedule": "0 1,13 * * *"
+    }
+  ],
   "headers": [
     {
       "source": "/assets/(.*)",
@@ -22,6 +28,13 @@
       "source": "/manifest.json",
       "headers": [
         { "key": "Cache-Control", "value": "no-cache, must-revalidate" }
+      ]
+    },
+    {
+      "source": "/sw.js",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-cache, must-revalidate" },
+        { "key": "Service-Worker-Allowed", "value": "/" }
       ]
     },
     {
