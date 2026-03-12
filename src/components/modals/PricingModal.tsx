@@ -353,7 +353,7 @@ export const PricingModal: React.FC<{ isOpen: boolean; onClose: () => void }> = 
         width: '100%', maxWidth: 860, background: '#0a0a14',
         border: '1px solid rgba(255,255,255,0.08)', borderRadius: 20,
         padding: isMobile ? '20px 12px' : '28px 24px',
-        maxHeight: '95vh', overflowY: 'auto',
+        maxHeight: '90dvh', overflowY: 'auto',
         animation: 'fadeUp 0.3s ease',
       }}>
         <style>{`
