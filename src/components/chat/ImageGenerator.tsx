@@ -115,7 +115,7 @@ const CuposTooltip: React.FC = () => {
           </div>
           {/* Flecha */}
           <div style={{
-            position: 'absolute', bottom: -6, left: '50%', transform: 'translateX(-50%)',
+            position: 'absolute', bottom: -6, left: '50%',
             width: 10, height: 10, background: '#0f1620',
             borderRight: '1px solid rgba(0,188,212,0.25)', borderBottom: '1px solid rgba(0,188,212,0.25)',
             transform: 'translateX(-50%) rotate(45deg)',
