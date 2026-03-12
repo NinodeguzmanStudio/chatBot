@@ -6,7 +6,7 @@ import type { Model, PricingPlan, Project, AICharacter, PromptItem } from '@/typ
 
 // ── Models ──
 export const MODELS: Model[] = [
-  { id: 'venice', name: 'AIdark sincensura', description: 'Sin filtros · Venice AI', primary: true },
+  { id: 'venice', name: 'AIdark', description: 'Sin filtros · Sin censura', primary: true },
   { id: 'dark-grok', name: 'DARK-GROK', description: 'Humor negro y rebeldía', primary: false },
   { id: 'void-x', name: 'VOID-X', description: 'Respuestas ultra rápidas', primary: false },
 ];
