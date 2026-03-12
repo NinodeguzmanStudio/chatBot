@@ -125,7 +125,7 @@ async function resolveUserProfile(userId: string, email: string) {
   }
   // Fallback: profile mínimo sin bloquear
   const newProfile = { id: userId, email, plan: 'free', created_at: new Date().toISOString(), messages_used: 0, messages_limit: 5, plan_expires_at: null };
-  supabase.from('profiles').upsert(newProfile, { onConflict: 'id' }).then().catch(console.error);
+  void (async () => { try { await supabase.from('profiles').upsert(newProfile, { onConflict: 'id' }); } catch { /* no crítico */ } })();
   return newProfile;
 }
 
