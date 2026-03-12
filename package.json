@@ -18,7 +18,8 @@
     "react-router-dom": "^7.1.0",
     "react-syntax-highlighter": "^15.6.1",
     "rehype-highlight": "^7.0.0",
-    "zustand": "^5.0.0"
+    "zustand": "^5.0.0",
+    "web-push": "^3.6.7"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.0.0",
@@ -29,6 +30,7 @@
     "@vitejs/plugin-react": "^4.3.0",
     "tailwindcss": "^4.0.0",
     "typescript": "~5.7.0",
-    "vite": "^6.0.0"
+    "vite": "^6.0.0",
+    "@types/web-push": "^3.6.4"
   }
 }
