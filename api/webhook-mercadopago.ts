@@ -2,11 +2,6 @@
 // AIdark — MercadoPago Webhook (HARDENED)
 // api/webhook-mercadopago.ts
 // ═══════════════════════════════════════
-// CAMBIOS:
-// - Escribe el plan_id real (basic_monthly, etc.) en vez de 'premium'
-// - Eliminado Set en memoria (no funciona en serverless)
-// - Solo usa DB para dedup (confiable)
-
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient } from '@supabase/supabase-js';
 import crypto from 'crypto';
@@ -18,7 +13,6 @@ const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
-// CAMBIO: IDs alineados con frontend y create-payment.ts
 const PLAN_MONTHS: Record<string, number> = {
   basic_monthly: 1,
   pro_quarterly: 3,
@@ -31,7 +25,6 @@ const PLAN_PRICES: Record<string, number> = {
   ultra_annual: 99.99,
 };
 
-// Verify MercadoPago webhook signature
 function verifySignature(req: VercelRequest): boolean {
   if (!MP_WEBHOOK_SECRET) {
     console.warn('[Webhook] No MP_WEBHOOK_SECRET configured — skipping verification');
@@ -89,7 +82,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!paymentId) return res.status(200).json({ received: true });
     const paymentKey = String(paymentId);
 
-    // ── Dedup solo via DB (confiable en serverless) ──
     const { data: existingPayment } = await supabase
       .from('payments')
       .select('id')
@@ -101,7 +93,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json({ received: true, duplicate: true });
     }
 
-    // ── Fetch payment details from MercadoPago ──
     const mpRes = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
       headers: { Authorization: `Bearer ${MP_ACCESS_TOKEN}` },
     });
@@ -111,14 +102,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json({ received: true });
     }
 
-    const payment = await mpRes.json();
+    // ✅ FIX: agregado "as any" para evitar errores TS2339
+    const payment = await mpRes.json() as any;
 
     if (payment.status !== 'approved') {
       console.log(`[Webhook] Payment ${paymentId} status: ${payment.status} — skipping`);
       return res.status(200).json({ received: true });
     }
 
-    // ── Extract user data ──
     let userId: string | null = null;
     let userEmail: string | null = null;
     let planId: string = 'basic_monthly';
@@ -145,7 +136,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json({ received: true });
     }
 
-    // ── Verify amount ──
     const expectedPrice = PLAN_PRICES[planId];
     if (expectedPrice) {
       const paidAmount = payment.transaction_amount;
@@ -156,17 +146,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     }
 
-    // ── Calculate expiration ──
     const months = PLAN_MONTHS[planId];
     const now = new Date();
     const expiresAt = new Date(now);
     expiresAt.setMonth(expiresAt.getMonth() + months);
 
-    // ── CAMBIO: Escribir el planId real, NO 'premium' genérico ──
     const { error: updateError } = await supabase
       .from('profiles')
       .update({
-        plan: planId,                           // ← basic_monthly | pro_quarterly | ultra_annual
+        plan: planId,
         plan_id: planId,
         plan_expires_at: expiresAt.toISOString(),
         plan_activated_at: now.toISOString(),
@@ -190,7 +178,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     }
 
-    // ── Log payment ──
     await supabase.from('payments').insert({
       user_id: userId,
       email: userEmail || payment.payer?.email,
