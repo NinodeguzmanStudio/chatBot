@@ -1,12 +1,6 @@
 // ═══════════════════════════════════════
 // AIdark — Image API (PREMIUM ONLY)
 // ═══════════════════════════════════════
-// · Solo usuarios premium pueden generar imágenes
-// · Límite diario por plan: monthly=10, quarterly=25, annual=50
-// · Anime/Hentai solo en quarterly y annual
-// · Modelos: venice-sd35 (realista) | lustify-sdxl (anime/hentai)
-// · Prompt enhancer automático por categoría
-
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient } from '@supabase/supabase-js';
 
@@ -15,17 +9,14 @@ const SUPABASE_URL = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL!;
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
-// ── Límites diarios por plan ──
 const DAILY_LIMITS: Record<string, number> = {
   premium_monthly:   10,
   premium_quarterly: 25,
   premium_annual:    50,
 };
 
-// ── Planes con acceso a anime/hentai ──
 const ANIME_PLANS = new Set(['premium_quarterly', 'premium_annual']);
 
-// ── Prompt enhancers ──
 const ENHANCE_REALISTIC = 'photorealistic, hyperrealistic, 8K resolution, sharp focus, cinematic lighting, professional photography, detailed skin texture, bokeh background, studio quality, RAW photo, high dynamic range';
 const ENHANCE_ANIME    = 'hentai art style, highly detailed anime illustration, uncensored, vibrant colors, clean lineart, masterpiece, best quality, detailed anatomy, professional illustration';
 const ENHANCE_MANHWA   = 'manhwa art style, webtoon aesthetic, korean comic style, clean lineart, soft cel shading, detailed, high quality, professional manhwa illustration, uncensored';
@@ -48,7 +39,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
   if (!VENICE_API_KEY) return res.status(500).json({ error: 'API key no configurada' });
 
-  // 1. AUTENTICACIÓN
   const authHeader = req.headers.authorization;
   if (!authHeader?.startsWith('Bearer ')) {
     return res.status(401).json({ error: 'No autorizado. Inicia sesión.', code: 'UNAUTHORIZED' });
@@ -59,7 +49,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(401).json({ error: 'Sesión inválida.', code: 'UNAUTHORIZED' });
   }
 
-  // 2. PLAN
   const { data: profile, error: profileError } = await supabase
     .from('profiles')
     .select('plan, plan_expires_at, images_today, images_date')
@@ -77,7 +66,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(403).json({ error: 'Tu plan premium ha expirado.', code: 'PLAN_EXPIRED' });
   }
 
-  // 3. LÍMITE DIARIO
   const today = new Date().toISOString().slice(0, 10);
   const lastDate = profile.images_date?.slice(0, 10);
   const usedToday = lastDate === today ? (profile.images_today || 0) : 0;
@@ -90,7 +78,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
   }
 
-  // 4. REQUEST
   const { prompt, negative_prompt = '', category = 'realistic', style = 'hentai', width = 1024, height = 1024 } = req.body;
 
   if (!prompt?.trim()) return res.status(400).json({ error: 'El prompt es requerido.' });
@@ -102,13 +89,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
   }
 
-  // 5. PROMPT MEJORADO
   const enhancer = getEnhancer(category, style);
   const model = category === 'anime' ? 'lustify-sdxl' : 'venice-sd35';
   const safePrompt = `${prompt.trim().slice(0, 1000)}, ${enhancer}`;
   const safeNegative = `${NEGATIVE_BASE}${negative_prompt ? ', ' + negative_prompt : ''}`;
 
-  // 6. GENERAR
   try {
     const veniceRes = await fetch('https://api.venice.ai/api/v1/image/generate', {
       method: 'POST',
@@ -132,9 +117,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
 
-    const data = await veniceRes.json();
+    // ✅ FIX: agregado "as any" para evitar error TS2339
+    const data = await veniceRes.json() as any;
 
-    // 7. ACTUALIZAR CONTADOR
     await supabase.from('profiles').update({
       images_today: usedToday + 1,
       images_date: new Date().toISOString(),
