@@ -95,7 +95,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(500).json({ error: 'Error al crear el pago.' });
     }
 
-    const data = await mpRes.json();
+    const data = await response.json() as any;
     return res.status(200).json({
       init_point: data.init_point,
       sandbox_init_point: data.sandbox_init_point,
