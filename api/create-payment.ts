@@ -2,7 +2,6 @@
 // AIdark — Create MercadoPago Payment
 // ═══════════════════════════════════════
 // Incluye planes promo (50% OFF) con precios reales
-
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
 const PLANS: Record<string, { title: string; price: number; period: string; months: number; plan_id: string }> = {
@@ -19,7 +18,6 @@ const PLANS: Record<string, { title: string; price: number; period: string; mont
     title: 'AIdark Ultra - Plan anual',
     price: 99.99, period: 'annual', months: 12, plan_id: 'premium_annual',
   },
-
   // ── Planes promo 50% OFF ──
   basic_monthly_promo: {
     title: 'AIdark Basic - Plan mensual (Oferta 50%)',
@@ -95,7 +93,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(500).json({ error: 'Error al crear el pago.' });
     }
 
-    const data = await response.json() as any;
+    const data = await mpRes.json() as any;  // ✅ corregido
     return res.status(200).json({
       init_point: data.init_point,
       sandbox_init_point: data.sandbox_init_point,
