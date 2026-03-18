@@ -1,6 +1,8 @@
 // ═══════════════════════════════════════
-// AIdark — Message Bubble v3
-// Features: copy, edit, regenerate, thumbs up/down, syntax highlighting
+// AIdark — Message Bubble (FIXED)
+// src/components/chat/MessageBubble.tsx
+// FIX: acciones movidas DEBAJO del contenido (estilo Venice)
+//      antes estaban arriba en el header — no se veían bien
 // ═══════════════════════════════════════
 
 import React, { useState } from 'react';
@@ -25,12 +27,12 @@ interface MessageBubbleProps {
 export const MessageBubble: React.FC<MessageBubbleProps> = ({
   message, index, isLast = false, onEdit, onRegenerate,
 }) => {
-  const isUser = message.role === 'user';
-  const [copied, setCopied] = useState(false);
+  const isUser    = message.role === 'user';
+  const [copied, setCopied]         = useState(false);
   const [codeCopied, setCodeCopied] = useState<string | null>(null);
-  const [hovered, setHovered] = useState(false);
-  const [feedback, setFeedback] = useState<'up' | 'down' | null>(null);
-  const isMobile = useIsMobile();
+  const [hovered, setHovered]       = useState(false);
+  const [feedback, setFeedback]     = useState<'up' | 'down' | null>(null);
+  const isMobile  = useIsMobile();
   const character = AI_CHARACTERS.find((c) => c.id === (message.character || 'default')) || AI_CHARACTERS[0];
 
   const handleCopy = () => {
@@ -45,94 +47,48 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
     setTimeout(() => setCodeCopied(null), 1500);
   };
 
-  const btn = (active = false, danger = false): React.CSSProperties => ({
+  // Estilo de botón de acción
+  const actionBtn = (active = false, danger = false): React.CSSProperties => ({
     display: 'flex', alignItems: 'center', gap: 4,
-    padding: '3px 8px', borderRadius: 5, border: 'none',
+    padding: '4px 8px', borderRadius: 6, border: 'none',
     background: active
       ? danger ? 'rgba(180,80,80,0.15)' : 'rgba(100,180,100,0.12)'
       : 'transparent',
-    color: active ? (danger ? '#c66' : '#6b8') : 'var(--txt-mut)',
-    fontSize: 10, fontWeight: 500, cursor: 'pointer', transition: 'all 0.15s',
+    color: active
+      ? (danger ? '#c66' : '#6b8')
+      : 'var(--txt-mut)',
+    fontSize: 11, fontWeight: 500, cursor: 'pointer',
+    transition: 'all 0.15s',
   });
 
   return (
     <div
-      style={{ marginBottom: 24, animation: 'fadeUp 0.35s ease both', animationDelay: `${Math.min(index * 0.04, 0.3)}s` }}
+      style={{ marginBottom: 28, animation: 'fadeUp 0.35s ease both', animationDelay: `${Math.min(index * 0.04, 0.3)}s` }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <div style={{
-            width: 26, height: 26, borderRadius: '50%',
-            background: isUser ? 'var(--bg-hover)' : 'var(--bg-el)',
-            border: `1.5px solid ${isUser ? 'var(--border-def)' : character.color + '55'}`,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 11, fontWeight: 600,
-            color: isUser ? 'var(--txt-sec)' : character.color,
-          }}>
-            {isUser ? 'T' : character.avatar}
-          </div>
-          <span style={{ fontSize: 13, fontWeight: 600, color: isUser ? 'var(--txt-sec)' : character.color }}>
-            {isUser ? t('chat.you') : character.name}
-          </span>
-          <span style={{ fontSize: 11, color: 'var(--txt-mut)' }}>{formatTime(message.timestamp)}</span>
-        </div>
-
-        {/* Action buttons — visible on hover or mobile */}
+      {/* ── Header: avatar + nombre + hora ── */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
         <div style={{
-          display: 'flex', alignItems: 'center', gap: 2,
-          opacity: hovered || isMobile ? 1 : 0,
-          transition: 'opacity 0.18s',
-          pointerEvents: hovered || isMobile ? 'auto' : 'none',
+          width: 26, height: 26, borderRadius: '50%',
+          background: isUser ? 'var(--bg-hover)' : 'var(--bg-el)',
+          border: `1.5px solid ${isUser ? 'var(--border-def)' : character.color + '55'}`,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: 11, fontWeight: 600,
+          color: isUser ? 'var(--txt-sec)' : character.color,
+          flexShrink: 0,
         }}>
-          {/* Copy — todos */}
-          <button onClick={handleCopy} style={btn(copied)} title="Copiar">
-            {copied ? <Check size={11} /> : <Copy size={11} />}
-            <span>{copied ? t('chat.copied') : t('chat.copy')}</span>
-          </button>
-
-          {/* Edit — solo usuario */}
-          {isUser && onEdit && (
-            <button onClick={() => onEdit(message.content, index)} style={btn()} title="Editar y reenviar">
-              <Pencil size={11} />
-              <span>Editar</span>
-            </button>
-          )}
-
-          {/* Regenerar — solo último mensaje IA */}
-          {!isUser && isLast && onRegenerate && (
-            <button onClick={onRegenerate} style={btn()} title="Regenerar respuesta">
-              <RotateCcw size={11} />
-              <span>Regenerar</span>
-            </button>
-          )}
-
-          {/* Thumbs — solo IA */}
-          {!isUser && (
-            <>
-              <button
-                onClick={() => setFeedback(feedback === 'up' ? null : 'up')}
-                style={btn(feedback === 'up')}
-                title="Buena respuesta"
-              >
-                <ThumbsUp size={11} />
-              </button>
-              <button
-                onClick={() => setFeedback(feedback === 'down' ? null : 'down')}
-                style={btn(feedback === 'down', true)}
-                title="Mala respuesta"
-              >
-                <ThumbsDown size={11} />
-              </button>
-            </>
-          )}
+          {isUser ? 'T' : character.avatar}
         </div>
+        <span style={{ fontSize: 13, fontWeight: 600, color: isUser ? 'var(--txt-sec)' : character.color }}>
+          {isUser ? t('chat.you') : character.name}
+        </span>
+        <span style={{ fontSize: 11, color: 'var(--txt-mut)' }}>{formatTime(message.timestamp)}</span>
       </div>
 
-      {/* Content */}
+      {/* ── Contenido ── */}
       <div style={{ paddingLeft: isMobile ? 0 : 34 }}>
+
         {/* Attachment */}
         {message.attachment && (
           <div style={{ marginBottom: 8 }}>
@@ -160,9 +116,9 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
           </div>
         )}
 
-        {/* Text */}
+        {/* Texto */}
         {isUser ? (
-          <p style={{ fontSize: isMobile ? 13 : 14, lineHeight: 1.8, color: 'var(--txt-sec)', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+          <p style={{ fontSize: isMobile ? 13 : 14, lineHeight: 1.8, color: 'var(--txt-sec)', whiteSpace: 'pre-wrap', wordBreak: 'break-word', margin: 0 }}>
             {message.content}
           </p>
         ) : (
@@ -170,9 +126,9 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
             <ReactMarkdown
               components={{
                 code({ node, className, children, ...props }: any) {
-                  const match = /language-(\w+)/.exec(className || '');
+                  const match      = /language-(\w+)/.exec(className || '');
                   const codeString = String(children).replace(/\n$/, '');
-                  const isInline = !match && !codeString.includes('\n');
+                  const isInline   = !match && !codeString.includes('\n');
 
                   if (isInline) {
                     return (
@@ -186,49 +142,33 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                     );
                   }
 
-                  const lang = match ? match[1] : 'text';
+                  const lang     = match ? match[1] : 'text';
                   const isCopied = codeCopied === codeString;
 
                   return (
                     <div style={{ position: 'relative', marginBottom: 12 }}>
-                      {/* Code block header */}
                       <div style={{
                         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                         background: 'rgba(0,0,0,0.4)', padding: '6px 12px',
                         borderRadius: '8px 8px 0 0',
-                        border: '1px solid rgba(255,255,255,0.08)',
-                        borderBottom: 'none',
+                        border: '1px solid rgba(255,255,255,0.08)', borderBottom: 'none',
                       }}>
                         <span style={{ fontSize: 10, color: 'var(--txt-mut)', fontFamily: 'monospace', textTransform: 'uppercase', letterSpacing: 1 }}>
                           {lang}
                         </span>
                         <button
                           onClick={() => handleCodeCopy(codeString)}
-                          style={{
-                            display: 'flex', alignItems: 'center', gap: 4,
-                            background: 'none', border: 'none',
-                            color: isCopied ? '#6b8' : 'var(--txt-mut)',
-                            fontSize: 10, cursor: 'pointer', padding: '2px 6px',
-                            borderRadius: 4,
-                          }}
+                          style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'none', border: 'none', color: isCopied ? '#6b8' : 'var(--txt-mut)', fontSize: 10, cursor: 'pointer', padding: '2px 6px', borderRadius: 4 }}
                         >
                           {isCopied ? <Check size={10} /> : <Copy size={10} />}
                           {isCopied ? 'Copiado' : 'Copiar'}
                         </button>
                       </div>
-
-                      {/* Syntax highlighted code */}
                       <SyntaxHighlighter
                         style={oneDark}
                         language={lang}
                         PreTag="div"
-                        customStyle={{
-                          margin: 0,
-                          borderRadius: '0 0 8px 8px',
-                          border: '1px solid rgba(255,255,255,0.08)',
-                          fontSize: 12,
-                          lineHeight: 1.6,
-                        }}
+                        customStyle={{ margin: 0, borderRadius: '0 0 8px 8px', border: '1px solid rgba(255,255,255,0.08)', fontSize: 12, lineHeight: 1.6 }}
                         {...props}
                       >
                         {codeString}
@@ -242,6 +182,60 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
             </ReactMarkdown>
           </div>
         )}
+
+        {/* ── Acciones DEBAJO del contenido (estilo Venice) ── */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 2,
+          marginTop: 8,
+          // En desktop: visible solo en hover. En mobile: siempre visible.
+          opacity: hovered || isMobile ? 1 : 0,
+          transition: 'opacity 0.18s',
+          pointerEvents: hovered || isMobile ? 'auto' : 'none',
+        }}>
+          {/* Copiar — todos los mensajes */}
+          <button onClick={handleCopy} style={actionBtn(copied)} title="Copiar">
+            {copied ? <Check size={12} /> : <Copy size={12} />}
+            <span>{copied ? (t('chat.copied') || 'Copiado') : (t('chat.copy') || 'Copiar')}</span>
+          </button>
+
+          {/* Editar — solo mensajes del usuario */}
+          {isUser && onEdit && (
+            <button onClick={() => onEdit(message.content, index)} style={actionBtn()} title="Editar y reenviar">
+              <Pencil size={12} />
+              <span>Editar</span>
+            </button>
+          )}
+
+          {/* Regenerar — solo último mensaje de la IA */}
+          {!isUser && isLast && onRegenerate && (
+            <button onClick={onRegenerate} style={actionBtn()} title="Regenerar respuesta">
+              <RotateCcw size={12} />
+              <span>Regenerar</span>
+            </button>
+          )}
+
+          {/* Thumbs — solo mensajes de la IA */}
+          {!isUser && (
+            <>
+              <button
+                onClick={() => setFeedback(feedback === 'up' ? null : 'up')}
+                style={actionBtn(feedback === 'up')}
+                title="Buena respuesta"
+              >
+                <ThumbsUp size={12} />
+              </button>
+              <button
+                onClick={() => setFeedback(feedback === 'down' ? null : 'down')}
+                style={actionBtn(feedback === 'down', true)}
+                title="Mala respuesta"
+              >
+                <ThumbsDown size={12} />
+              </button>
+            </>
+          )}
+        </div>
       </div>
     </div>
   );
