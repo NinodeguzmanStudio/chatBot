@@ -1,12 +1,14 @@
 // ═══════════════════════════════════════
 // AIdark — Chat Area
 // src/components/chat/ChatArea.tsx
+// FIX: error de límite en mobile ahora se detecta por código ApiError
+//      streamTrigger para activar partículas durante respuesta de IA
 // ═══════════════════════════════════════
 
 import React, { useRef, useEffect, useState } from 'react';
-import { Send, Maximize2, Minimize2, Square, Plus, X, Image, FileText, Sparkles } from 'lucide-react';
+import { Send, Maximize2, Minimize2, Square, Plus, X, Image, FileText, Sparkles, Download } from 'lucide-react';
 import { useChatStore, useAuthStore } from '@/lib/store';
-import { sendMessageStream, sendMessage } from '@/services/venice';
+import { sendMessageStream, sendMessage, ApiError } from '@/services/venice';
 import { generateId } from '@/lib/utils';
 import { APP_CONFIG, AI_CHARACTERS } from '@/lib/constants';
 import { MessageBubble } from './MessageBubble';
@@ -17,52 +19,40 @@ import { useIsMobile } from '@/hooks/useIsMobile';
 import { t } from '@/lib/i18n';
 import type { Message, Attachment } from '@/types';
 
-const MAX_FILE_SIZE         = 3 * 1024 * 1024;
-const ALLOWED_IMAGE_TYPES   = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
-const ALLOWED_PDF_TYPES     = ['application/pdf'];
-const ALLOWED_TYPES         = [...ALLOWED_IMAGE_TYPES, ...ALLOWED_PDF_TYPES];
-const FREE_LIMIT            = APP_CONFIG.freeMessageLimit;
+const MAX_FILE_SIZE       = 3 * 1024 * 1024;
+const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+const ALLOWED_PDF_TYPES   = ['application/pdf'];
+const ALLOWED_TYPES       = [...ALLOWED_IMAGE_TYPES, ...ALLOWED_PDF_TYPES];
+const FREE_LIMIT          = APP_CONFIG.freeMessageLimit;
+const MEMORY_KEY          = 'aidark_memory';
+
+// Mensajes que indican límite alcanzado — para detectar en cualquier idioma/formato
+const LIMIT_CODES = new Set(['FREE_LIMIT_REACHED', 'PLAN_EXPIRED', 'PREMIUM_REQUIRED']);
+const LIMIT_KEYWORDS = ['límite', 'limite', 'limit', 'plan', 'upgrade', 'actualiza', 'gratuito'];
+
+function isLimitError(err: unknown): boolean {
+  if (err instanceof ApiError) return LIMIT_CODES.has(err.code);
+  if (err instanceof Error) return LIMIT_KEYWORDS.some(k => err.message.toLowerCase().includes(k));
+  return false;
+}
 
 interface ChatAreaProps {
   onOpenPricing: () => void;
 }
 
-const MessageProgressCircle: React.FC<{
-  remaining: number;
-  total: number;
-  onClick: () => void;
-}> = ({ remaining, total, onClick }) => {
-  const size       = 32;
-  const stroke     = 2.5;
-  const radius     = (size - stroke) / 2;
-  const circ       = 2 * Math.PI * radius;
-  const used       = total - remaining;
-  const progress   = Math.min(used / total, 1);
-  const dashOffset = circ * (1 - progress);
-  const color =
-    remaining <= 2 ? '#e05555' :
-    remaining <= 5 ? '#c9944a' :
-    '#6b8a5e';
-
+const MessageProgressCircle: React.FC<{ remaining: number; total: number; onClick: () => void }> = ({ remaining, total, onClick }) => {
+  const size = 32, stroke = 2.5;
+  const radius = (size - stroke) / 2;
+  const circ   = 2 * Math.PI * radius;
+  const offset = circ * (1 - Math.min((total - remaining) / total, 1));
+  const color  = remaining <= 2 ? '#e05555' : remaining <= 5 ? '#c9944a' : '#6b8a5e';
   return (
-    <button
-      onClick={onClick}
-      title={`${remaining} mensajes restantes hoy`}
-      style={{
-        position: 'relative', width: size, height: size,
-        background: 'none', border: 'none', cursor: 'pointer',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        padding: 0, flexShrink: 0,
-      }}
-    >
+    <button onClick={onClick} title={`${remaining} mensajes restantes hoy`}
+      style={{ position: 'relative', width: size, height: size, background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, flexShrink: 0 }}>
       <svg width={size} height={size} style={{ transform: 'rotate(-90deg)' }}>
         <circle cx={size/2} cy={size/2} r={radius} fill="none" stroke="var(--border-sub)" strokeWidth={stroke} />
-        <circle
-          cx={size/2} cy={size/2} r={radius} fill="none"
-          stroke={color} strokeWidth={stroke} strokeLinecap="round"
-          strokeDasharray={circ} strokeDashoffset={dashOffset}
-          style={{ transition: 'stroke-dashoffset 0.4s ease, stroke 0.3s ease' }}
-        />
+        <circle cx={size/2} cy={size/2} r={radius} fill="none" stroke={color} strokeWidth={stroke} strokeLinecap="round"
+          strokeDasharray={circ} strokeDashoffset={offset} style={{ transition: 'stroke-dashoffset 0.4s ease, stroke 0.3s ease' }} />
       </svg>
       <span style={{ position: 'absolute', fontSize: remaining >= 10 ? 9 : 10, fontWeight: 600, color, lineHeight: 1, userSelect: 'none' }}>
         {remaining}
@@ -70,6 +60,19 @@ const MessageProgressCircle: React.FC<{
     </button>
   );
 };
+
+const ThinkingDots: React.FC<{ color: string; name: string }> = ({ color, name }) => (
+  <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '14px 0' }}>
+    <div style={{ display: 'flex', gap: 5 }}>
+      {[0, 1, 2].map((i) => (
+        <div key={i} style={{ width: 7, height: 7, borderRadius: '50%', background: color, animation: `dotPulse 1.8s ease-in-out ${i * 0.25}s infinite`, boxShadow: `0 0 6px ${color}88` }} />
+      ))}
+    </div>
+    <span style={{ fontSize: 12, color: 'var(--txt-ter)', fontWeight: 500, fontStyle: 'italic' }}>
+      {name} pensando...
+    </span>
+  </div>
+);
 
 export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
   const {
@@ -82,6 +85,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
   const [input, setInput]               = useState('');
   const [streamingContent, setStreaming] = useState('');
   const [keystrokeCount, setKeystrokes]  = useState(0);
+  const [streamChunkCount, setStreamChunks] = useState(0); // FIX: trigger partículas durante streaming
   const [attachment, setAttachment]      = useState<Attachment | null>(null);
   const [showAttachMenu, setAttachMenu]  = useState(false);
   const [activeTab, setActiveTab]        = useState<'chat' | 'image'>('chat');
@@ -126,6 +130,23 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
     if (abortRef.current) { abortRef.current.abort(); abortRef.current = null; setIsTyping(false); }
   };
 
+  const handleExport = () => {
+    if (!messages.length) return;
+    const title   = activeSession?.title || 'chat';
+    const date    = new Date().toLocaleDateString('es-AR');
+    const content = messages.map((m) => {
+      const who  = m.role === 'user' ? 'Tú' : character.name;
+      const time = new Date(m.timestamp).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+      return `[${time}] ${who}:\n${m.content}\n`;
+    }).join('\n---\n\n');
+    const full = `AIdark — ${title}\nFecha: ${date}\n${'='.repeat(40)}\n\n${content}`;
+    const blob = new Blob([full], { type: 'text/plain;charset=utf-8' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href = url; a.download = `${title.replace(/[^a-zA-Z0-9\s]/g, '').trim() || 'chat'}-aidark.txt`;
+    a.click(); URL.revokeObjectURL(url);
+  };
+
   const handleFileSelect = (accept: string) => {
     if (!canAttach) { onOpenPricing(); return; }
     setAttachMenu(false);
@@ -151,8 +172,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
         canvas.width = w; canvas.height = h;
         canvas.getContext('2d')!.drawImage(img, 0, 0, w, h);
         const compressed = canvas.toDataURL('image/jpeg', 0.82);
-        const base64 = compressed.split(',')[1];
-        setAttachment({ type: 'image', data: base64, name: file.name, mimeType: 'image/jpeg', preview: compressed });
+        setAttachment({ type: 'image', data: compressed.split(',')[1], name: file.name, mimeType: 'image/jpeg', preview: compressed });
       };
       img.src = objectUrl;
     } else if (file.type === 'application/pdf') {
@@ -167,25 +187,20 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
 
   const extractPdfText = (buffer: ArrayBuffer): string => {
     try {
-      const bytes = new Uint8Array(buffer);
-      const text  = new TextDecoder('latin1').decode(bytes);
+      const text = new TextDecoder('latin1').decode(new Uint8Array(buffer));
       const matches: string[] = [];
       const btRegex = /BT\s([\s\S]*?)ET/g;
       let m;
       while ((m = btRegex.exec(text)) !== null) {
-        const block = m[1];
-        const strRegex = /\(([^)]*)\)/g;
-        let sm;
-        while ((sm = strRegex.exec(block)) !== null) {
-          const s = sm[1].replace(/\\n/g, '\n').replace(/\\\(/g, '(').replace(/\\\)/g, ')');
+        const strRegex = /\(([^)]*)\)/g; let sm;
+        while ((sm = strRegex.exec(m[1])) !== null) {
+          const s = sm[1].replace(/\\n/g,'\n').replace(/\\\(/,'(').replace(/\\\)/,')');
           if (s.trim()) matches.push(s.trim());
         }
       }
       if (matches.length > 0) return matches.join(' ').slice(0, 8000);
-      const plain    = text.replace(/[^\x20-\x7E\n]/g, ' ').replace(/\s+/g, ' ').trim();
-      const readable = plain.match(/[a-zA-Z]{3,}/g);
-      if (readable && readable.length > 20) return readable.join(' ').slice(0, 8000);
-      return '';
+      const readable = text.replace(/[^\x20-\x7E\n]/g,' ').replace(/\s+/g,' ').trim().match(/[a-zA-Z]{3,}/g);
+      return readable && readable.length > 20 ? readable.join(' ').slice(0, 8000) : '';
     } catch { return ''; }
   };
 
@@ -197,7 +212,9 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
     let sessionId = activeSessionId;
     if (!sessionId) sessionId = createSession();
 
-    const baseMessages = overrideMessages || messages;
+    const baseMessages  = overrideMessages || messages;
+    const savedMemory   = localStorage.getItem(MEMORY_KEY)?.trim();
+
     const userMsg: Message = {
       id: generateId(), role: 'user',
       content: textToSend.trim() || (attachment ? `[${attachment.name}]` : ''),
@@ -210,17 +227,36 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
     setAttachment(null);
     setIsTyping(true);
     setStreaming('');
+    setStreamChunks(0);
     incrementMessages();
 
     const controller = new AbortController();
     abortRef.current = controller;
-    const msgsToSend = [...baseMessages, userMsg];
+
+    let msgsToSend = [...baseMessages, userMsg];
+    const contextParts: string[] = [];
+    if (customInstructions?.trim()) contextParts.push(`Instrucciones del usuario: ${customInstructions.trim()}`);
+    if (savedMemory) contextParts.push(`Memoria persistente (recordar siempre): ${savedMemory}`);
+    if (contextParts.length > 0) {
+      msgsToSend = [
+        { id: generateId(), role: 'user', content: `[CONTEXTO PRIVADO — no mencionar al usuario]\n${contextParts.join('\n\n')}`, timestamp: Date.now() - 1 } as Message,
+        ...msgsToSend,
+      ];
+    }
 
     try {
-      let fullResponse = '';
+      let fullResponse  = '';
+      let chunkCounter  = 0;
+
       await sendMessageStream(
         msgsToSend, selectedModel, selectedCharacter,
-        (chunk) => { fullResponse += chunk; setStreaming(fullResponse); },
+        (chunk) => {
+          fullResponse += chunk;
+          setStreaming(fullResponse);
+          // FIX: disparar partículas cada 3 chunks para no saturar
+          chunkCounter++;
+          if (chunkCounter % 3 === 0) setStreamChunks(c => c + 1);
+        },
         () => {
           addMessage(sessionId!, {
             id: generateId(), role: 'assistant', content: fullResponse,
@@ -231,18 +267,30 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
         },
         controller.signal
       );
-    } catch (error: any) {
-      if (error.name !== 'AbortError') {
-        try {
-          const response = await sendMessage(msgsToSend, selectedModel, selectedCharacter);
-          addMessage(sessionId!, { id: generateId(), role: 'assistant', content: response, timestamp: Date.now(), model: selectedModel, character: selectedCharacter });
-        } catch (err: any) {
-          const errorMsg = (err as any)?.message?.includes('límite')
-            ? 'Has alcanzado el límite de mensajes. Actualiza tu plan para continuar.'
-            : t('chat.error');
-          addMessage(sessionId!, { id: generateId(), role: 'assistant', content: errorMsg, timestamp: Date.now() });
-        }
+    } catch (error: unknown) {
+      if (error instanceof Error && error.name === 'AbortError') {
+        setStreaming(''); setIsTyping(false); return;
       }
+
+      // FIX: detectar límite alcanzado ANTES de intentar el fallback
+      if (isLimitError(error)) {
+        const limitMsg = 'Has alcanzado el límite de mensajes. Actualiza tu plan para continuar.';
+        addMessage(sessionId!, { id: generateId(), role: 'assistant', content: limitMsg, timestamp: Date.now() });
+        setStreaming(''); setIsTyping(false);
+        return;
+      }
+
+      // Fallback: intentar sin streaming
+      try {
+        const response = await sendMessage(msgsToSend, selectedModel, selectedCharacter);
+        addMessage(sessionId!, { id: generateId(), role: 'assistant', content: response, timestamp: Date.now(), model: selectedModel, character: selectedCharacter });
+      } catch (err: unknown) {
+        const errorMsg = isLimitError(err)
+          ? 'Has alcanzado el límite de mensajes. Actualiza tu plan para continuar.'
+          : t('chat.error');
+        addMessage(sessionId!, { id: generateId(), role: 'assistant', content: errorMsg, timestamp: Date.now() });
+      }
+
       setStreaming('');
       setIsTyping(false);
     } finally {
@@ -274,24 +322,32 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
   };
 
   const tabStyle = (active: boolean): React.CSSProperties => ({
-    display: 'flex', alignItems: 'center', gap: 5,
-    padding: '6px 14px', borderRadius: 20,
+    display: 'flex', alignItems: 'center', gap: 5, padding: '6px 14px', borderRadius: 20,
     background: active ? 'var(--bg-el)' : 'transparent',
     border: `1px solid ${active ? 'var(--border-str)' : 'transparent'}`,
     color: active ? 'var(--txt-pri)' : 'var(--txt-mut)',
-    fontSize: 12, fontWeight: active ? 600 : 400,
-    cursor: 'pointer', transition: 'all 0.15s',
+    fontSize: 12, fontWeight: active ? 600 : 400, cursor: 'pointer', transition: 'all 0.15s',
   });
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, height: '100%', position: 'relative', overflow: 'hidden' }}>
-      <TypingParticles trigger={keystrokeCount} />
+      {/* FIX: streamChunkCount pasa las partículas al streaming */}
+      <TypingParticles trigger={keystrokeCount} streamTrigger={streamChunkCount} />
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: isMobile ? '10px 14px 0' : '12px 20px 0', flexShrink: 0 }}>
         <button style={tabStyle(activeTab === 'chat')} onClick={() => setActiveTab('chat')}>💬 Chat</button>
         <button style={tabStyle(activeTab === 'image')} onClick={() => setActiveTab('image')}>
           <Sparkles size={12} /> Generar imagen
         </button>
+        {messages.length > 0 && activeTab === 'chat' && (
+          <button onClick={handleExport} title="Exportar chat como .txt"
+            style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 4, padding: '5px 10px', borderRadius: 16, background: 'transparent', border: '1px solid var(--border-sub)', color: 'var(--txt-mut)', fontSize: 11, cursor: 'pointer', transition: 'all 0.15s' }}
+            onMouseEnter={e => { e.currentTarget.style.borderColor='var(--border-str)'; e.currentTarget.style.color='var(--txt-sec)'; }}
+            onMouseLeave={e => { e.currentTarget.style.borderColor='var(--border-sub)'; e.currentTarget.style.color='var(--txt-mut)'; }}
+          >
+            <Download size={11} /> Exportar
+          </button>
+        )}
       </div>
 
       <input ref={fileInputRef} type="file" style={{ display: 'none' }}
@@ -316,9 +372,10 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
                 <p style={{ fontSize: 13, color: 'var(--txt-mut)', marginTop: 14, textAlign: 'center', maxWidth: 300, lineHeight: 1.7, animation: 'fadeIn 1.6s ease' }}>
                   {t('app.privacy')}
                 </p>
-                {customInstructions && (
-                  <div style={{ marginTop: 12, padding: '6px 12px', borderRadius: 8, background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border-sub)' }}>
-                    <span style={{ fontSize: 10, color: 'var(--txt-mut)' }}>📌 Instrucciones personalizadas activas</span>
+                {(customInstructions || localStorage.getItem(MEMORY_KEY)) && (
+                  <div style={{ marginTop: 12, padding: '6px 12px', borderRadius: 8, background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border-sub)', display: 'flex', gap: 10 }}>
+                    {customInstructions && <span style={{ fontSize: 10, color: 'var(--txt-mut)' }}>📌 Instrucciones activas</span>}
+                    {localStorage.getItem(MEMORY_KEY) && <span style={{ fontSize: 10, color: 'var(--txt-mut)' }}>🧠 Memoria activa</span>}
                   </div>
                 )}
               </div>
@@ -343,16 +400,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
                 )}
                 {isTyping && !streamingContent && (
                   <div style={{ paddingLeft: isMobile ? 0 : 34, marginBottom: 24 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '14px 0' }}>
-                      <div style={{ display: 'flex', gap: 5 }}>
-                        {[0, 1, 2].map((i) => (
-                          <div key={i} style={{ width: 6, height: 6, borderRadius: '50%', background: character.color, animation: `dotPulse 1.4s ease-in-out ${i * 0.16}s infinite` }} />
-                        ))}
-                      </div>
-                      <span style={{ fontSize: 12, color: 'var(--txt-ter)', fontWeight: 500 }}>
-                        {character.name} {t('chat.typing')}
-                      </span>
-                    </div>
+                    <ThinkingDots color={character.color} name={character.name} />
                   </div>
                 )}
               </div>
@@ -398,7 +446,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
                   onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
                   placeholder={`${t('chat.write_to')} ${character.name}...`}
                   rows={1}
-                  style={{ width: '100%', background: 'transparent', border: 'none', resize: 'none', fontFamily: 'inherit', fontSize: 14, color: 'var(--txt-pri)', lineHeight: 1.6, minHeight: 24, maxHeight: 160, overflowY: 'auto', overflowX: 'hidden', wordWrap: 'break-word', whiteSpace: 'pre-wrap' }}
+                  style={{ width: '100%', background: 'transparent', border: 'none', resize: 'none', fontFamily: 'inherit', fontSize: 14, color: 'var(--txt-pri)', lineHeight: 1.6, minHeight: 24, maxHeight: 160, overflowY: 'auto', overflowX: 'hidden', wordWrap: 'break-word', whiteSpace: 'pre-wrap', caretColor: 'var(--accent)' }}
                 />
 
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 8, gap: 6 }}>
@@ -442,11 +490,9 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
                     <span style={{ fontSize: 10, color: input.length > charLimit * 0.9 ? 'var(--danger)' : 'var(--txt-mut)' }}>
                       {input.length}/{charLimit}
                     </span>
-
                     {isFree && remaining < 999 && (
                       <MessageProgressCircle remaining={remaining} total={FREE_LIMIT} onClick={onOpenPricing} />
                     )}
-
                     {isTyping ? (
                       <button onClick={stopGeneration} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 34, height: 34, background: 'var(--danger)', border: 'none', borderRadius: '50%', cursor: 'pointer' }}>
                         <Square size={12} fill="#fff" color="#fff" />
@@ -465,9 +511,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
                 {isFree && remaining <= 3 && (
                   <span style={{ fontSize: 10, color: 'var(--danger)', fontWeight: 500 }}>
                     {remaining === 0 ? 'Sin mensajes — ' : `${remaining} restantes — `}
-                    <span onClick={onOpenPricing} style={{ textDecoration: 'underline', cursor: 'pointer' }}>
-                      Obtener más
-                    </span>
+                    <span onClick={onOpenPricing} style={{ textDecoration: 'underline', cursor: 'pointer' }}>Obtener más</span>
                   </span>
                 )}
               </div>
