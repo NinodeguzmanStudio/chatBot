@@ -1,9 +1,10 @@
 /* ═══════════════════════════════════════
-   AIdark — Global Styles (FIXED)
+   AIdark — Global Styles
+   FIX: --keyboard-height para que el teclado mobile no tape el input
    ═══════════════════════════════════════ */
 
 @import "tailwindcss";
-@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300 ;400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&display=swap');
 
 /* ── Theme Variables ── */
 :root {
@@ -42,6 +43,9 @@
   --accent: #8b7355;
   --accent-hover: #a0896a;
   --danger: #a0513b;
+
+  /* FIX: variable para compensar altura del teclado virtual en mobile */
+  --keyboard-height: 0px;
 }
 
 /* ── Base ── */
@@ -135,6 +139,12 @@ body {
 @keyframes spin {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
+}
+
+@keyframes slideLoad {
+  0% { transform: translateX(-100%); }
+  50% { transform: translateX(100%); }
+  100% { transform: translateX(300%); }
 }
 
 .animate-fade-up {
@@ -287,9 +297,4 @@ textarea::placeholder {
 ::selection {
   background: rgba(139, 115, 85, 0.3);
   color: var(--txt-pri);
-}
-@keyframes slideLoad {
-  0% { transform: translateX(-100%); }
-  50% { transform: translateX(100%); }
-  100% { transform: translateX(300%); }
 }
