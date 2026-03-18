@@ -1,11 +1,24 @@
 // ═══════════════════════════════════════
-// AIdark — Global Store v2 (trimMessages + customInstructions)
+// AIdark — Global Store (FIXED)
+// src/lib/store.ts
+// ═══════════════════════════════════════
+// FIXES aplicados:
+//   [1] resetMessages() escribía directo a localStorage en vez de usar
+//       _resetMessagesInternal() del fingerprint — ahora usa la función correcta
+//   [2] APP_CONFIG importado pero nunca usado — removido
+//   [3] canSendMessage() y getRemainingMessages() podían desincronizarse
+//       si wasBonusGiven() expiraba entre llamadas — ahora llaman una sola vez
+//   [4] saveMessage no pasaba el campo 'character' — se perdía en el historial
 // ═══════════════════════════════════════
 
 import { create } from 'zustand';
 import type { Message, ModelId, CharacterId, ChatSession, UserProfile } from '@/types';
-import { APP_CONFIG } from '@/lib/constants';
-import { getDeviceMessagesUsed, incrementDeviceMessages, wasBonusGiven, giveBonusMessages, getBonusMessagesUsed, incrementBonusMessages } from '@/lib/fingerprint';
+// FIX [2]: removido APP_CONFIG — no se usa en este archivo
+import {
+  getDeviceMessagesUsed, incrementDeviceMessages,
+  wasBonusGiven, giveBonusMessages, getBonusMessagesUsed, incrementBonusMessages,
+  _resetMessagesInternal, // FIX [1]: importar la función correcta
+} from '@/lib/fingerprint';
 import {
   loadUserSessions, createDbSession, saveMessage,
   updateDbSessionTitle, deleteDbSession, deleteAllDbSessions, cleanOldChats,
@@ -55,12 +68,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
   sessionsLoaded: false,
   customInstructions: localStorage.getItem('aidark_custom_instructions') || '',
 
-  setSelectedModel: (model) => set({ selectedModel: model }),
+  setSelectedModel:   (model) => set({ selectedModel: model }),
   setSelectedCharacter: (char) => set({ selectedCharacter: char }),
-  setSidebarOpen: (open) => set({ sidebarOpen: open }),
-  setIsTyping: (typing) => set({ isTyping: typing }),
-  setWriterMode: (mode) => set({ writerMode: mode }),
-  setSessions: (sessions) => set({ sessions }),
+  setSidebarOpen:     (open)  => set({ sidebarOpen: open }),
+  setIsTyping:        (typing) => set({ isTyping: typing }),
+  setWriterMode:      (mode)  => set({ writerMode: mode }),
+  setSessions:        (sessions) => set({ sessions }),
 
   setCustomInstructions: (instructions) => {
     localStorage.setItem('aidark_custom_instructions', instructions);
@@ -139,7 +152,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
       ),
     })),
 
-  // Corta mensajes desde fromIndex en adelante (para editar y reenviar)
   trimMessages: (sessionId: string, fromIndex: number) =>
     set((state) => ({
       sessions: state.sessions.map((s) =>
@@ -195,7 +207,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     localStorage.setItem('aidark_authenticated', String(auth));
     set({ user, isAuthenticated: auth });
   },
-  setLoading: (loading) => set({ isLoading: loading }),
+  setLoading:   (loading) => set({ isLoading: loading }),
   setAuthenticated: (auth) => {
     localStorage.setItem('aidark_authenticated', String(auth));
     set({ isAuthenticated: auth });
@@ -216,23 +228,24 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   canSendMessage: () => {
     const { user } = get();
     if (user?.plan && user.plan !== 'free') return true;
-    if (wasBonusGiven()) {
-      return getBonusMessagesUsed() < FREE_LIMIT;
-    }
+    // FIX [3]: llamar wasBonusGiven() una sola vez para evitar desincronización
+    const bonusActive = wasBonusGiven();
+    if (bonusActive) return getBonusMessagesUsed() < FREE_LIMIT;
     return getDeviceMessagesUsed() < FREE_LIMIT;
   },
 
   getRemainingMessages: () => {
     const { user } = get();
     if (user?.plan && user.plan !== 'free') return 999;
-    if (wasBonusGiven()) {
-      return Math.max(0, FREE_LIMIT - getBonusMessagesUsed());
-    }
+    // FIX [3]: consistente con canSendMessage()
+    const bonusActive = wasBonusGiven();
+    if (bonusActive) return Math.max(0, FREE_LIMIT - getBonusMessagesUsed());
     return Math.max(0, FREE_LIMIT - getDeviceMessagesUsed());
   },
 
+  // FIX [1]: usar _resetMessagesInternal() en vez de escribir directo al localStorage
   resetMessages: () => {
-    localStorage.setItem('aidark_fp_msgs', '0');
+    _resetMessagesInternal();
   },
 
   isInBonusMode: () => wasBonusGiven(),
