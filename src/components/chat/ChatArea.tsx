@@ -163,7 +163,37 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
   };
 
   const processFile = async (file: File) => {
-    if (file.size > MAX_FILE_SIZE) { alert('Archivo muy grande. Máximo 5MB.'); return; }
+  if (file.size > MAX_FILE_SIZE) { alert('Archivo muy grande. Máximo 3MB.'); return; }
+  if (!ALLOWED_TYPES.includes(file.type)) { alert('Formato no soportado. Usa JPG, PNG, WEBP o PDF.'); return; }
+
+  if (ALLOWED_IMAGE_TYPES.includes(file.type)) {
+    const img = new window.Image();
+    const objectUrl = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(objectUrl);
+      const MAX_DIM = 1024;
+      let w = img.width, h = img.height;
+      if (w > MAX_DIM || h > MAX_DIM) {
+        if (w > h) { h = Math.round(h * MAX_DIM / w); w = MAX_DIM; }
+        else       { w = Math.round(w * MAX_DIM / h); h = MAX_DIM; }
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d')!.drawImage(img, 0, 0, w, h);
+      const compressed = canvas.toDataURL('image/jpeg', 0.82);
+      const base64 = compressed.split(',')[1];
+      setAttachment({ type: 'image', data: base64, name: file.name, mimeType: 'image/jpeg', preview: compressed });
+    };
+    img.src = objectUrl;
+  } else if (file.type === 'application/pdf') {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const text = extractPdfText(reader.result as ArrayBuffer);
+      setAttachment({ type: 'pdf', data: text || `[PDF: ${file.name}]`, name: file.name, mimeType: file.type });
+    };
+    reader.readAsArrayBuffer(file);
+  }
+};
     if (!ALLOWED_TYPES.includes(file.type)) { alert('Formato no soportado. Usa JPG, PNG, WEBP o PDF.'); return; }
 
     if (ALLOWED_IMAGE_TYPES.includes(file.type)) {
