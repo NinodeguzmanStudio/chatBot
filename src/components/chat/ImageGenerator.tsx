@@ -1,6 +1,6 @@
 // ═══════════════════════════════════════
 // AIdark — Image Generator v3
-// FIX: cupos al azar, tooltip ?, texto 10k miembros vs 500 simultáneos
+// FIX: ultra_annual, basic_monthly, pro_quarterly agregados a DAILY_LIMITS y ANIME_PLANS
 // ═══════════════════════════════════════
 
 import React, { useState, useEffect, useRef } from 'react';
@@ -9,10 +9,22 @@ import { useAuthStore } from '@/lib/store';
 import { supabase } from '@/lib/supabase';
 import { useIsMobile } from '@/hooks/useIsMobile';
 
-const ANIME_PLANS = new Set(['premium_quarterly', 'premium_annual']);
+// FIX: agregados ultra_annual y pro_quarterly
+const ANIME_PLANS = new Set([
+  'premium_quarterly', 'premium_annual',
+  'pro_quarterly', 'ultra_annual',
+]);
+
+// FIX: agregados basic_monthly, pro_quarterly, ultra_annual
 const DAILY_LIMITS: Record<string, number> = {
-  premium_monthly: 10, premium_quarterly: 25, premium_annual: 50,
+  premium_monthly:   10,
+  premium_quarterly: 25,
+  premium_annual:    50,
+  basic_monthly:     10,
+  pro_quarterly:     25,
+  ultra_annual:      50,
 };
+
 const ANIME_STYLES = [
   { id: 'hentai', label: '🔥 Hentai clásico' },
   { id: 'manhwa', label: '🎌 Manhwa coreano' },
@@ -26,16 +38,14 @@ const RATIOS = [
   { label: '4:3',  w: 1024, h: 768  },
 ];
 
-// ── Cupos: bajan al azar entre 1-3 cada hora ──
 const BASE_CUPOS = 500;
 const LAUNCH = new Date('2026-02-17T00:00:00').getTime();
 
 function getCuposRestantes(): number {
   const hours = Math.max(0, (Date.now() - LAUNCH) / 3_600_000);
-  // Semilla fija por hora para que todos vean el mismo número base
   const seed = Math.floor(hours);
   const pseudoRandom = (seed * 9301 + 49297) % 233280;
-  const baseDropPerHour = 1 + (pseudoRandom % 3); // 1, 2 o 3 por hora
+  const baseDropPerHour = 1 + (pseudoRandom % 3);
   const totalDrop = Math.floor(hours) * baseDropPerHour;
   const sessionDrop = parseInt(sessionStorage.getItem('aidark_cupos_drop') || '0', 10);
   return Math.max(12, BASE_CUPOS - totalDrop - sessionDrop);
@@ -43,12 +53,10 @@ function getCuposRestantes(): number {
 
 function decrementSessionCupos() {
   const current = parseInt(sessionStorage.getItem('aidark_cupos_drop') || '0', 10);
-  // Al entrar baja 1 o 2 al azar
   const drop = Math.floor(Math.random() * 2) + 1;
   sessionStorage.setItem('aidark_cupos_drop', String(current + drop));
 }
 
-// ── Wave celeste agitada ──
 const Wave: React.FC<{ color: string; speed: number; amp: number; offset: number }> = ({ color, speed, amp, offset }) => (
   <svg viewBox="0 0 400 40" preserveAspectRatio="none"
     style={{ width: '115%', height: 35, position: 'absolute', top: -18, left: '-7%', overflow: 'visible' }}>
@@ -63,7 +71,6 @@ const Wave: React.FC<{ color: string; speed: number; amp: number; offset: number
   </svg>
 );
 
-// ── Gotas salpicadura ──
 const SplashDrops: React.FC<{ color: string }> = ({ color }) => (
   <>
     {[...Array(12)].map((_, i) => (
@@ -78,9 +85,6 @@ const SplashDrops: React.FC<{ color: string }> = ({ color }) => (
   </>
 );
 
-// ══════════════════════════════════════
-// Tooltip de cupos — explicación
-// ══════════════════════════════════════
 const CuposTooltip: React.FC = () => {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -111,9 +115,8 @@ const CuposTooltip: React.FC = () => {
             ¿Por qué hay límite de cupos?
           </div>
           <div style={{ fontSize: 11, color: '#ffffffaa', lineHeight: 1.65 }}>
-            AIdark admite hasta <strong style={{ color: '#fff' }}>10,000 miembros</strong> en total, pero el generador opera con acceso simultáneo limitado a <strong style={{ color: '#fff' }}>500 usuarios activos</strong>. Esto garantiza velocidad, privacidad y que cada imagen se procese a través de nuestro pipeline sin restricciones, fuera de las políticas de las plataformas convencionales. Cuando un cupo se libera, otro usuario puede acceder.
+            AIdark admite hasta <strong style={{ color: '#fff' }}>10,000 miembros</strong> en total, pero el generador opera con acceso simultáneo limitado a <strong style={{ color: '#fff' }}>500 usuarios activos</strong>. Esto garantiza velocidad, privacidad y que cada imagen se procese a través de nuestro pipeline sin restricciones, fuera de las políticas de las plataformas convencionales.
           </div>
-          {/* Flecha */}
           <div style={{
             position: 'absolute', bottom: -6, left: '50%',
             width: 10, height: 10, background: '#0f1620',
@@ -126,9 +129,6 @@ const CuposTooltip: React.FC = () => {
   );
 };
 
-// ══════════════════════════════════════
-// Banner Premium compacto
-// ══════════════════════════════════════
 const PremiumBanner: React.FC<{ onOpenPricing: () => void; onClose: () => void }> = ({ onOpenPricing, onClose }) => {
   const [cupos, setCupos] = useState(getCuposRestantes());
   const [minusAnim, setMinusAnim] = useState(false);
@@ -136,8 +136,6 @@ const PremiumBanner: React.FC<{ onOpenPricing: () => void; onClose: () => void }
   useEffect(() => {
     decrementSessionCupos();
     setCupos(getCuposRestantes());
-
-    // Bajar 1 cada 30s en vivo para sensación orgánica
     const interval = setInterval(() => {
       const drop = parseInt(sessionStorage.getItem('aidark_cupos_drop') || '0', 10);
       sessionStorage.setItem('aidark_cupos_drop', String(drop + 1));
@@ -155,8 +153,6 @@ const PremiumBanner: React.FC<{ onOpenPricing: () => void; onClose: () => void }
   return (
     <div style={{ flex: 1, overflowY: 'auto', padding: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <div style={{ maxWidth: 440, width: '100%', position: 'relative' }}>
-
-        {/* X cerrar */}
         <button onClick={onClose} style={{
           position: 'absolute', top: -8, right: -8, zIndex: 50,
           width: 28, height: 28, borderRadius: '50%',
@@ -172,7 +168,6 @@ const PremiumBanner: React.FC<{ onOpenPricing: () => void; onClose: () => void }
           boxShadow: `0 0 30px ${C.main}22, inset 0 0 30px ${C.main}08`,
           position: 'relative', minHeight: 420, background: '#080e14',
         }}>
-          {/* Agua */}
           <div style={{
             position: 'absolute', bottom: 0, left: 0, right: 0,
             height: `${fill}%`, transition: 'height 4s ease', zIndex: 1, overflow: 'visible',
@@ -202,16 +197,13 @@ const PremiumBanner: React.FC<{ onOpenPricing: () => void; onClose: () => void }
             ))}
           </div>
 
-          {/* Reflejo superior */}
           <div style={{
             position: 'absolute', top: 0, left: 0, right: 0, height: '35%',
             background: 'linear-gradient(180deg, rgba(0,188,212,0.04) 0%, transparent 100%)',
             zIndex: 5, pointerEvents: 'none',
           }} />
 
-          {/* Contenido */}
           <div style={{ position: 'relative', zIndex: 10, padding: '20px 18px 18px' }}>
-
             <div style={{ textAlign: 'center', marginBottom: 14 }}>
               <div style={{ fontSize: 26, marginBottom: 6 }}>🔒</div>
               <h2 style={{ fontSize: 17, fontWeight: 800, color: '#fff', margin: '0 0 3px', letterSpacing: -0.3 }}>
@@ -228,10 +220,10 @@ const PremiumBanner: React.FC<{ onOpenPricing: () => void; onClose: () => void }
               backdropFilter: 'blur(10px)', border: '1px solid rgba(255,255,255,0.06)',
             }}>
               {[
-                { icon: '📸', text: 'Desnudos fotorrealistas HD', tag: 'Mensual+' },
-                { icon: '💋', text: 'Escenas íntimas explícitas', tag: 'Mensual+' },
-                { icon: '🔥', text: 'Hentai clásico sin censura', tag: 'Trimestral+' },
-                { icon: '🎌', text: 'Manhwa coreano adulto', tag: 'Trimestral+' },
+                { icon: '📸', text: 'Desnudos fotorrealistas HD',    tag: 'Mensual+' },
+                { icon: '💋', text: 'Escenas íntimas explícitas',    tag: 'Mensual+' },
+                { icon: '🔥', text: 'Hentai clásico sin censura',    tag: 'Trimestral+' },
+                { icon: '🎌', text: 'Manhwa coreano adulto',         tag: 'Trimestral+' },
                 { icon: '✨', text: 'Calidad 8K · AIdark GIX2209 · Lustify SDXL', tag: 'Todos' },
               ].map((item, i) => (
                 <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: i < 4 ? 7 : 0 }}>
@@ -247,7 +239,6 @@ const PremiumBanner: React.FC<{ onOpenPricing: () => void; onClose: () => void }
               ))}
             </div>
 
-            {/* Contador cupos con tooltip */}
             <div style={{ textAlign: 'center', marginBottom: 14 }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, marginBottom: 4 }}>
                 <span style={{ fontSize: 10, color: '#ffffff55' }}>
@@ -256,9 +247,7 @@ const PremiumBanner: React.FC<{ onOpenPricing: () => void; onClose: () => void }
                 <CuposTooltip />
               </div>
               <div style={{ position: 'relative', display: 'inline-block' }}>
-                <span style={{ color: C.light, fontWeight: 900, fontSize: 28, letterSpacing: -1 }}>
-                  {cupos}
-                </span>
+                <span style={{ color: C.light, fontWeight: 900, fontSize: 28, letterSpacing: -1 }}>{cupos}</span>
                 <span style={{ color: '#ffffff55', fontSize: 12 }}> cupos restantes</span>
                 {minusAnim && (
                   <span style={{
@@ -268,7 +257,6 @@ const PremiumBanner: React.FC<{ onOpenPricing: () => void; onClose: () => void }
                   }}>-1</span>
                 )}
               </div>
-              {/* Barra */}
               <div style={{ height: 5, borderRadius: 3, background: 'rgba(255,255,255,0.08)', marginTop: 8, overflow: 'hidden' }}>
                 <div style={{
                   height: '100%', borderRadius: 3,
@@ -284,7 +272,6 @@ const PremiumBanner: React.FC<{ onOpenPricing: () => void; onClose: () => void }
               </div>
             </div>
 
-            {/* CTA */}
             <button onClick={onOpenPricing} style={{
               width: '100%', padding: '13px 0', borderRadius: 11, border: 'none',
               background: `linear-gradient(135deg, ${C.main}, ${C.dark})`,
@@ -316,7 +303,6 @@ const PremiumBanner: React.FC<{ onOpenPricing: () => void; onClose: () => void }
   );
 };
 
-// ── Toast al cerrar ──
 const CloseToast: React.FC<{ cupos: number; onOpenPricing: () => void }> = ({ cupos, onOpenPricing }) => (
   <div style={{
     position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)',
@@ -335,7 +321,6 @@ const CloseToast: React.FC<{ cupos: number; onOpenPricing: () => void }> = ({ cu
   </div>
 );
 
-// ── Warning eliminar imagen ──
 const LoseImageWarning: React.FC<{ onConfirm: () => void; onCancel: () => void }> = ({ onConfirm, onCancel }) => (
   <div style={{
     position: 'fixed', inset: 0, zIndex: 500,
@@ -366,33 +351,30 @@ const LoseImageWarning: React.FC<{ onConfirm: () => void; onCancel: () => void }
   </div>
 );
 
-// ══════════════════════════════════════
-// MAIN
-// ══════════════════════════════════════
 interface GeneratedImage { src: string; prompt: string; category: string; id: string; }
 
 export const ImageGenerator: React.FC<{ onOpenPricing: () => void }> = ({ onOpenPricing }) => {
   const { user } = useAuthStore();
   const isMobile = useIsMobile();
 
-  const plan = (user as any)?.plan || 'free';
-  const isPremium = plan !== 'free';
-  const canAnime = ANIME_PLANS.has(plan);
+  const plan       = (user as any)?.plan || 'free';
+  const isPremium  = plan !== 'free';
+  const canAnime   = ANIME_PLANS.has(plan);
   const dailyLimit = DAILY_LIMITS[plan] || 0;
 
   const [showBanner, setShowBanner] = useState(true);
-  const [showToast, setShowToast] = useState(false);
-  const [category, setCategory] = useState<'realistic' | 'anime'>('realistic');
+  const [showToast, setShowToast]   = useState(false);
+  const [category, setCategory]     = useState<'realistic' | 'anime'>('realistic');
   const [animeStyle, setAnimeStyle] = useState('hentai');
-  const [prompt, setPrompt] = useState('');
+  const [prompt, setPrompt]         = useState('');
   const [negativePrompt, setNegativePrompt] = useState('');
-  const [ratio, setRatio] = useState(RATIOS[0]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [gallery, setGallery] = useState<GeneratedImage[]>([]);
-  const [usedToday, setUsedToday] = useState(0);
+  const [ratio, setRatio]           = useState(RATIOS[0]);
+  const [loading, setLoading]       = useState(false);
+  const [error, setError]           = useState('');
+  const [gallery, setGallery]       = useState<GeneratedImage[]>([]);
+  const [usedToday, setUsedToday]   = useState(0);
   const [showAdvanced, setShowAdvanced] = useState(false);
-  const [warnClose, setWarnClose] = useState<string | null>(null);
+  const [warnClose, setWarnClose]   = useState<string | null>(null);
 
   const handleCloseBanner = () => {
     setShowBanner(false);
@@ -409,7 +391,12 @@ export const ImageGenerator: React.FC<{ onOpenPricing: () => void }> = ({ onOpen
       const res = await fetch('/api/image', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
-        body: JSON.stringify({ prompt: prompt.trim(), negative_prompt: negativePrompt.trim() || undefined, category, style: animeStyle, width: ratio.w, height: ratio.h }),
+        body: JSON.stringify({
+          prompt: prompt.trim(),
+          negative_prompt: negativePrompt.trim() || undefined,
+          category, style: animeStyle,
+          width: ratio.w, height: ratio.h,
+        }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -457,7 +444,6 @@ export const ImageGenerator: React.FC<{ onOpenPricing: () => void }> = ({ onOpen
 
       <div style={{ maxWidth: 700, margin: '0 auto' }}>
 
-        {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
           <div>
             <h2 style={{ fontSize: 16, fontWeight: 700, color: 'var(--txt-pri)', margin: 0 }}>✨ Generador de imágenes</h2>
@@ -469,12 +455,11 @@ export const ImageGenerator: React.FC<{ onOpenPricing: () => void }> = ({ onOpen
           </div>
         </div>
 
-        {/* Categoría */}
         <div style={{ marginBottom: 14 }}>
           <label style={{ fontSize: 10, color: 'var(--txt-ter)', marginBottom: 7, display: 'block', textTransform: 'uppercase', letterSpacing: 0.5 }}>Categoría</label>
           <div style={{ display: 'flex', gap: 8 }}>
             {[
-              { id: 'realistic', label: '📸 Realista', desc: 'AIdark GIX2209 · Foto HD' },
+              { id: 'realistic', label: '📸 Realista',       desc: 'AIdark GIX2209 · Foto HD' },
               { id: 'anime',     label: '🎌 Anime / Hentai', desc: 'Lustify SDXL' + (!canAnime ? ' · Plan Trimestral' : '') },
             ].map(c => {
               const locked = c.id === 'anime' && !canAnime;
@@ -494,7 +479,6 @@ export const ImageGenerator: React.FC<{ onOpenPricing: () => void }> = ({ onOpen
           </div>
         </div>
 
-        {/* Sub-estilos anime */}
         {category === 'anime' && canAnime && (
           <div style={{ marginBottom: 12 }}>
             <label style={{ fontSize: 10, color: 'var(--txt-ter)', marginBottom: 7, display: 'block', textTransform: 'uppercase', letterSpacing: 0.5 }}>Estilo</label>
@@ -512,7 +496,6 @@ export const ImageGenerator: React.FC<{ onOpenPricing: () => void }> = ({ onOpen
           </div>
         )}
 
-        {/* Prompt */}
         <div style={{ marginBottom: 8 }}>
           <label style={{ fontSize: 10, color: 'var(--txt-ter)', marginBottom: 6, display: 'block', textTransform: 'uppercase', letterSpacing: 0.5 }}>
             Descripción · <span style={{ color: prompt.length > 900 ? '#e67e22' : 'var(--txt-ter)' }}>{prompt.length}/1000</span>
@@ -533,7 +516,6 @@ export const ImageGenerator: React.FC<{ onOpenPricing: () => void }> = ({ onOpen
           </p>
         </div>
 
-        {/* Avanzado */}
         <button onClick={() => setShowAdvanced(!showAdvanced)} style={{
           display: 'flex', alignItems: 'center', gap: 4, background: 'none', border: 'none',
           color: 'var(--txt-mut)', fontSize: 11, cursor: 'pointer', marginBottom: 10, padding: 0,
@@ -567,7 +549,6 @@ export const ImageGenerator: React.FC<{ onOpenPricing: () => void }> = ({ onOpen
           </div>
         )}
 
-        {/* Generar */}
         <button onClick={handleGenerate} disabled={!prompt.trim() || loading || remaining <= 0} style={{
           width: '100%', padding: '12px 0', borderRadius: 10, border: 'none',
           background: prompt.trim() && !loading && remaining > 0 ? 'var(--border-str)' : 'var(--bg-el)',
@@ -590,7 +571,6 @@ export const ImageGenerator: React.FC<{ onOpenPricing: () => void }> = ({ onOpen
           </div>
         )}
 
-        {/* Galería sesión */}
         {gallery.length > 0 && (
           <div style={{ marginTop: 20 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
