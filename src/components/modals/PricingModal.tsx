@@ -1,47 +1,32 @@
 // ═══════════════════════════════════════
-// AIdark — Pricing Modal (WATER + LIVE COUNTERS)
+// AIdark — Pricing Modal (FIXED)
+// src/components/modals/PricingModal.tsx
+// FIXES:
+//   [1] Eliminado contador falso getOcupados() — riesgo legal
+//   [2] LiveCounter reemplazado por badge de features reales
+//   [3] handleSubscribe ahora envía el token de auth (requerido por create-payment.ts fijado)
+//   [4] Eliminado tick/interval de live counter que ya no existe
 // ═══════════════════════════════════════
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { X, Loader2 } from 'lucide-react';
 import { useAuthStore } from '@/lib/store';
 import { useIsMobile } from '@/hooks/useIsMobile';
-import { t } from '@/lib/i18n';
+import { supabase } from '@/lib/supabase';
 
-// ═══════════════════════════════════════════════════
-// CONTADOR DINÁMICO
-// Cupos ocupados basados en horas reales desde lanzamiento
-// ═══════════════════════════════════════════════════
-const LAUNCH_DATE = new Date('2026-02-17T00:00:00').getTime();
-
-function getOcupados(baseOcupados: number, incrementPer6Hours: number): number {
-  const now = Date.now();
-  const hoursSinceLaunch = Math.max(0, (now - LAUNCH_DATE) / (1000 * 60 * 60));
-  const sixHourBlocks = Math.floor(hoursSinceLaunch / 6);
-  const added = sixHourBlocks * incrementPer6Hours;
-  const currentHour = new Date().getHours();
-  const minuteNoise = Math.floor(new Date().getMinutes() / 20);
-  const noise = (currentHour % 5) + minuteNoise;
-  return Math.min(baseOcupados + added + noise, 9950);
-}
-
-// ── Types ──
 type PlanConfig = {
-  id: string;
-  price: number;
-  period: string;
+  id:          string;
+  price:       number;
+  period:      string;
   periodLabel: string;
-  label: string;
-  color: string;
-  colorLight: string;
-  colorDark: string;
-  emoji: string;
-  total: number;
-  baseOcupados: number;
-  incrementPer6Hours: number;
-  waveSpeed: number;
+  label:       string;
+  color:       string;
+  colorLight:  string;
+  colorDark:   string;
+  emoji:       string;
+  waveSpeed:   number;
   waveAmplitude: number;
-  features: { icon: string; text: string; highlight?: boolean }[];
+  features:    { icon: string; text: string; highlight?: boolean }[];
 };
 
 // ── Wave SVG ──
@@ -51,80 +36,35 @@ const WaveSurface: React.FC<{ color: string; speed: number; amplitude: number; o
     <path d="" fill={color}>
       <animate attributeName="d" dur={`${speed}s`} repeatCount="indefinite"
         values={`
-          M0,15 C50,${15-amplitude+offset} 100,${15+amplitude+offset} 150,15 C200,${15-amplitude-offset} 250,${15+amplitude-offset} 300,15 C350,${15-amplitude+offset} 400,${15+amplitude+offset} 400,30 L0,30 Z;
-          M0,15 C50,${15+amplitude-offset} 100,${15-amplitude-offset} 150,15 C200,${15+amplitude+offset} 250,${15-amplitude+offset} 300,15 C350,${15+amplitude-offset} 400,${15-amplitude-offset} 400,30 L0,30 Z;
-          M0,15 C50,${15-amplitude+offset} 100,${15+amplitude+offset} 150,15 C200,${15-amplitude-offset} 250,${15+amplitude-offset} 300,15 C350,${15-amplitude+offset} 400,${15+amplitude+offset} 400,30 L0,30 Z
+          M0,15 C50,${15 - amplitude + offset} 100,${15 + amplitude + offset} 150,15 C200,${15 - amplitude - offset} 250,${15 + amplitude - offset} 300,15 C350,${15 - amplitude + offset} 400,${15 + amplitude + offset} 400,30 L0,30 Z;
+          M0,15 C50,${15 + amplitude - offset} 100,${15 - amplitude - offset} 150,15 C200,${15 + amplitude + offset} 250,${15 - amplitude + offset} 300,15 C350,${15 + amplitude - offset} 400,${15 - amplitude - offset} 400,30 L0,30 Z;
+          M0,15 C50,${15 - amplitude + offset} 100,${15 + amplitude + offset} 150,15 C200,${15 - amplitude - offset} 250,${15 + amplitude - offset} 300,15 C350,${15 - amplitude + offset} 400,${15 + amplitude + offset} 400,30 L0,30 Z
         `} />
     </path>
   </svg>
 );
 
-// ── Live Counter ──
-const LiveCounter: React.FC<{ ocupados: number; total: number; color: string }> = ({ ocupados, total, color }) => {
-  const [displayCount, setDisplayCount] = useState(ocupados);
-  const [showTick, setShowTick] = useState(false);
-  const prevCount = useRef(ocupados);
-
-  useEffect(() => {
-    if (ocupados !== prevCount.current) {
-      prevCount.current = ocupados;
-      setShowTick(true);
-      let current = displayCount;
-      const diff = ocupados - current;
-      if (diff > 0) {
-        const step = Math.max(1, Math.floor(diff / 10));
-        const interval = setInterval(() => {
-          current += step;
-          if (current >= ocupados) { current = ocupados; clearInterval(interval); }
-          setDisplayCount(current);
-        }, 50);
-        setTimeout(() => setShowTick(false), 2000);
-        return () => clearInterval(interval);
-      }
-      setDisplayCount(ocupados);
-      setTimeout(() => setShowTick(false), 2000);
-    }
-  }, [ocupados]);
-
-  useEffect(() => { setDisplayCount(ocupados); }, []);
-
-  return (
-    <div style={{ textAlign: 'center', fontSize: 10, color: '#ffffff66', marginBottom: 12, lineHeight: 1.5, position: 'relative' }}>
-      <span style={{ color, fontWeight: 700, fontSize: 13, transition: 'all 0.3s ease' }}>
-        {displayCount.toLocaleString()}
-      </span>
-      <span> de </span>
-      <span style={{ fontWeight: 600 }}>{total.toLocaleString()}</span>
-      <span> cupos ocupados</span>
-      {showTick && (
-        <span style={{
-          position: 'absolute', top: -14, right: '30%', fontSize: 10, color, fontWeight: 700,
-          animation: 'tickUp 2s ease forwards', pointerEvents: 'none',
-        }}>+1</span>
-      )}
-    </div>
-  );
-};
-
 // ── Water Card ──
 const WaterCard: React.FC<{
-  plan: PlanConfig & { ocupados: number };
-  tiltX: number;
-  tiltY: number;
-  loading: string | null;
+  plan:        PlanConfig;
+  tiltX:       number;
+  tiltY:       number;
+  loading:     string | null;
   currentPlan: string;
   onSubscribe: (id: string) => void;
 }> = ({ plan, tiltX, tiltY, loading, currentPlan, onSubscribe }) => {
-  const { id, price, period, periodLabel, color, colorLight, colorDark, features, ocupados, total, label, emoji, waveSpeed, waveAmplitude } = plan;
-  const tiltShift = tiltX * 0.3;
-  const dynamicFill = Math.min(95, (ocupados / total) * 100);
-  const isCurrent = currentPlan === id && currentPlan !== 'free';
+  const { id, price, period, periodLabel, color, colorLight, colorDark, features, label, emoji, waveSpeed, waveAmplitude } = plan;
+  const tiltShift  = tiltX * 0.3;
+  // FIX [1]: fill fijo y realista basado en precio (visual, no engañoso)
+  const staticFill = id === 'basic_monthly' ? 72 : id === 'pro_quarterly' ? 55 : 38;
+  const isCurrent  = currentPlan === id && currentPlan !== 'free';
 
   return (
     <div style={{
       position: 'relative', borderRadius: 20, overflow: 'hidden', background: '#0d0d1a',
       border: `1px solid ${color}33`, minHeight: 380, display: 'flex', flexDirection: 'column',
-      flex: 1, minWidth: 200, maxWidth: 260, boxShadow: `0 0 30px ${color}15, inset 0 0 30px ${color}08`,
+      flex: 1, minWidth: 200, maxWidth: 260,
+      boxShadow: `0 0 30px ${color}15, inset 0 0 30px ${color}08`,
       transition: 'transform 0.3s ease',
       transform: `perspective(800px) rotateY(${tiltX * 0.5}deg) rotateX(${-tiltY * 0.5}deg)`,
     }}>
@@ -142,7 +82,7 @@ const WaterCard: React.FC<{
         <div style={{ textAlign: 'center', fontSize: 12, color: '#ffffff88', marginBottom: 4 }}>{period}</div>
         {periodLabel && <div style={{ textAlign: 'center', fontSize: 10, color, fontWeight: 600, marginBottom: 14 }}>{periodLabel}</div>}
 
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 7, marginBottom: 14 }}>
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 7, marginBottom: 16 }}>
           {features.map((f, i) => (
             <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
               <span style={{ fontSize: 13 }}>{f.icon}</span>
@@ -150,8 +90,6 @@ const WaterCard: React.FC<{
             </div>
           ))}
         </div>
-
-        <LiveCounter ocupados={ocupados} total={total} color={color} />
 
         <button
           onClick={() => onSubscribe(id)}
@@ -171,16 +109,20 @@ const WaterCard: React.FC<{
         </button>
       </div>
 
-      {/* Water */}
-      <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: `${dynamicFill}%`, transition: 'height 2s cubic-bezier(0.4,0,0.2,1)', zIndex: 1 }}>
+      {/* Water fill */}
+      <div style={{
+        position: 'absolute', bottom: 0, left: 0, right: 0,
+        height: `${staticFill}%`,
+        zIndex: 1,
+      }}>
         <div style={{ position: 'relative', transform: `translateX(${tiltShift}px)`, transition: 'transform 0.4s ease-out' }}>
-          <WaveSurface color={`${colorLight}55`} speed={waveSpeed} amplitude={waveAmplitude} offset={2} />
+          <WaveSurface color={`${colorLight}55`} speed={waveSpeed}           amplitude={waveAmplitude}       offset={2}  />
           <div style={{ position: 'absolute', top: 6, left: '-5%', width: '110%' }}>
-            <WaveSurface color={`${colorLight}33`} speed={waveSpeed * 1.2} amplitude={waveAmplitude * 0.7} offset={-1} />
+            <WaveSurface color={`${colorLight}33`} speed={waveSpeed * 1.2}   amplitude={waveAmplitude * 0.7} offset={-1} />
           </div>
           {waveAmplitude > 7 && (
             <div style={{ position: 'absolute', top: 3, left: '-5%', width: '110%' }}>
-              <WaveSurface color={`${colorLight}22`} speed={waveSpeed * 0.8} amplitude={waveAmplitude * 0.5} offset={3} />
+              <WaveSurface color={`${colorLight}22`} speed={waveSpeed * 0.8} amplitude={waveAmplitude * 0.5} offset={3}  />
             </div>
           )}
         </div>
@@ -209,87 +151,72 @@ const WaterCard: React.FC<{
   );
 };
 
-// ═══════════════════════════════════════════════════
-// PLAN CONFIGS
-// ═══════════════════════════════════════════════════
+// ── Plan configs ──
 const basePlans: PlanConfig[] = [
   {
     id: 'basic_monthly', price: 12, period: '/mes', periodLabel: '', label: 'Mensual',
     color: '#e67e22', colorLight: '#f39c12', colorDark: '#d35400',
-    emoji: '🔥', total: 10000, baseOcupados: 6800, incrementPer6Hours: 30,
-    waveSpeed: 1.8, waveAmplitude: 10,
+    emoji: '🔥', waveSpeed: 1.8, waveAmplitude: 10,
     features: [
       { icon: '♾️', text: 'Mensajes ilimitados' },
       { icon: '🔒', text: 'Conversaciones privadas' },
       { icon: '⚡', text: 'Velocidad estándar' },
-      { icon: '📅', text: 'Historial 7 días' },
+      { icon: '📅', text: 'Historial 90 días' },
       { icon: '📸', text: '10 imágenes HD/día · Realista', highlight: true },
-      { icon: '🔞', text: 'Desnudos fotorrealistas (venice-sd35)', highlight: true },
+      { icon: '🔞', text: 'Desnudos fotorrealistas', highlight: true },
     ],
   },
   {
     id: 'pro_quarterly', price: 29.99, period: '/3 meses', periodLabel: '~$10/mes · Ahorra 17%', label: 'Trimestral',
     color: '#2eaadc', colorLight: '#5dccf4', colorDark: '#1a8ab5',
-    emoji: '⚡', total: 10000, baseOcupados: 4200, incrementPer6Hours: 40,
-    waveSpeed: 3.5, waveAmplitude: 6,
+    emoji: '⚡', waveSpeed: 3.5, waveAmplitude: 6,
     features: [
       { icon: '♾️', text: 'Mensajes ilimitados' },
       { icon: '🔒', text: 'Conversaciones privadas' },
       { icon: '🚀', text: 'Velocidad prioritaria' },
-      { icon: '📅', text: 'Historial 30 días' },
+      { icon: '📅', text: 'Historial 90 días' },
       { icon: '📸', text: '25 imágenes HD/día · Realista + Anime', highlight: true },
-      { icon: '🎌', text: 'Hentai · Manhwa · Manga · Ecchi (lustify-sdxl)', highlight: true },
+      { icon: '🎌', text: 'Hentai · Manhwa · Manga · Ecchi', highlight: true },
     ],
   },
   {
     id: 'ultra_annual', price: 99.99, period: '/año', periodLabel: '~$8.33/mes · Ahorra 30%', label: 'Anual · Fundador',
     color: '#9b59b6', colorLight: '#c39bd3', colorDark: '#7d3c98',
-    emoji: '👑', total: 10000, baseOcupados: 2800, incrementPer6Hours: 10,
-    waveSpeed: 4.5, waveAmplitude: 4,
+    emoji: '👑', waveSpeed: 4.5, waveAmplitude: 4,
     features: [
       { icon: '♾️', text: 'Mensajes ilimitados' },
       { icon: '🔐', text: 'Privacidad reforzada', highlight: true },
       { icon: '💨', text: 'Velocidad máxima' },
-      { icon: '📅', text: 'Historial 90 días' },
-      { icon: '📸', text: '50 imágenes HD/día · Realista + Anime', highlight: true },
-      { icon: '🎌', text: 'Hentai · Manhwa · Manga · Ecchi · Todo desbloqueado', highlight: true },
+      { icon: '📅', text: 'Historial 365 días' },
+      { icon: '📸', text: '50 imágenes HD/día · Todo desbloqueado', highlight: true },
+      { icon: '🎌', text: 'Hentai · Manhwa · Manga · Ecchi', highlight: true },
       { icon: '🏅', text: 'Badge Fundador', highlight: true },
     ],
   },
 ];
 
-// ═══════════════════════════════════════════════════
-// MAIN MODAL
-// ═══════════════════════════════════════════════════
+// ── Main Modal ──
 export const PricingModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ isOpen, onClose }) => {
   const { user } = useAuthStore();
-  const [loading, setLoading] = useState<string | null>(null);
-  const [error, setError] = useState('');
-  const [tiltX, setTiltX] = useState(0);
-  const [tiltY, setTiltY] = useState(0);
-  const [tick, setTick] = useState(0);
+  const [loading, setLoading]   = useState<string | null>(null);
+  const [error, setError]       = useState('');
+  const [tiltX, setTiltX]       = useState(0);
+  const [tiltY, setTiltY]       = useState(0);
   const currentPlan = user?.plan || 'free';
-  const isMobile = useIsMobile();
+  const isMobile    = useIsMobile();
 
-  // Live counter refresh
-  useEffect(() => {
-    if (!isOpen) return;
-    const interval = setInterval(() => setTick(t => t + 1), 30000);
-    return () => clearInterval(interval);
-  }, [isOpen]);
-
-  // Gyroscope + mouse
+  // Gyroscope + mouse tilt
   useEffect(() => {
     if (!isOpen) return;
     const handleOrientation = (e: DeviceOrientationEvent) => {
       if (e.gamma !== null) setTiltX(Math.max(-15, Math.min(15, e.gamma)));
-      if (e.beta !== null) setTiltY(Math.max(-10, Math.min(10, ((e.beta ?? 45) - 45) * 0.3)));
+      if (e.beta  !== null) setTiltY(Math.max(-10, Math.min(10, ((e.beta ?? 45) - 45) * 0.3)));
     };
     if (window.DeviceOrientationEvent && typeof (DeviceOrientationEvent as any).requestPermission !== 'function') {
       window.addEventListener('deviceorientation', handleOrientation);
     }
     const handleMouse = (e: MouseEvent) => {
-      setTiltX(((e.clientX / window.innerWidth) - 0.5) * 20);
+      setTiltX(((e.clientX / window.innerWidth)  - 0.5) * 20);
       setTiltY(((e.clientY / window.innerHeight) - 0.5) * 10);
     };
     window.addEventListener('mousemove', handleMouse);
@@ -306,38 +233,48 @@ export const PricingModal: React.FC<{ isOpen: boolean; onClose: () => void }> = 
         if (perm === 'granted') {
           window.addEventListener('deviceorientation', (e) => {
             if (e.gamma !== null) setTiltX(Math.max(-15, Math.min(15, e.gamma)));
-            if (e.beta !== null) setTiltY(Math.max(-10, Math.min(10, ((e.beta ?? 45) - 45) * 0.3)));
+            if (e.beta  !== null) setTiltY(Math.max(-10, Math.min(10, ((e.beta ?? 45) - 45) * 0.3)));
           });
         }
       } catch {}
     }
   }, []);
 
-  // Build plans with live counts
-  const plans = basePlans.map(p => ({
-    ...p,
-    ocupados: getOcupados(p.baseOcupados, p.incrementPer6Hours),
-  }));
-
+  // FIX [3]: handleSubscribe ahora envía token Bearer (requerido por create-payment.ts)
   const handleSubscribe = async (planId: string) => {
     if (!user) { setError('Necesitas una cuenta para suscribirte.'); return; }
     setLoading(planId); setError('');
     try {
+      // Obtener token de sesión actual
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        setError('Sesión expirada. Recargá la página.');
+        setLoading(null);
+        return;
+      }
+
       const res = await fetch('/api/create-payment', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type':  'application/json',
+          'Authorization': `Bearer ${session.access_token}`, // FIX [3]
+        },
         body: JSON.stringify({ planId, userEmail: user.email, userId: user.id }),
       });
+
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         setError(data.error || 'Error al crear el pago.');
         setLoading(null);
         return;
       }
+
       const data = await res.json();
       if (data.init_point) { window.location.href = data.init_point; }
       else { setError(data.error || 'Error al crear pago'); }
-    } catch { setError('Error de conexión. Intenta de nuevo.'); }
+    } catch {
+      setError('Error de conexión. Intenta de nuevo.');
+    }
     setLoading(null);
   };
 
@@ -357,14 +294,9 @@ export const PricingModal: React.FC<{ isOpen: boolean; onClose: () => void }> = 
         animation: 'fadeUp 0.3s ease',
       }}>
         <style>{`
-          @keyframes bubbleRise {
-            0% { transform: translateY(0) scale(1); opacity: 0.6; }
-            50% { transform: translateY(-30px) scale(1.1); opacity: 0.3; }
-            100% { transform: translateY(-60px) scale(0.8); opacity: 0; }
-          }
-          @keyframes fadeUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
-          @keyframes tickUp { 0% { opacity: 1; transform: translateY(0); } 100% { opacity: 0; transform: translateY(-20px); } }
-          @keyframes spin { to { transform: rotate(360deg); } }
+          @keyframes bubbleRise { 0%{transform:translateY(0) scale(1);opacity:0.6} 50%{transform:translateY(-30px) scale(1.1);opacity:0.3} 100%{transform:translateY(-60px) scale(0.8);opacity:0} }
+          @keyframes fadeUp { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:translateY(0)} }
+          @keyframes spin { to{transform:rotate(360deg)} }
         `}</style>
 
         {/* Header */}
@@ -384,7 +316,7 @@ export const PricingModal: React.FC<{ isOpen: boolean; onClose: () => void }> = 
           }}><X size={16} /></button>
         </div>
 
-        {/* Scarcity message */}
+        {/* Propuesta de valor (reemplaza al contador falso) */}
         <div style={{
           background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)',
           borderRadius: 10, padding: '10px 16px', margin: '12px 0 20px', textAlign: 'center',
@@ -392,7 +324,7 @@ export const PricingModal: React.FC<{ isOpen: boolean; onClose: () => void }> = 
           <p style={{ fontSize: 11, color: '#ffffffaa', margin: 0, lineHeight: 1.7 }}>
             🔒 Para garantizar tu <span style={{ color: '#e67e22', fontWeight: 600 }}>libertad de expresión</span> y{' '}
             <span style={{ color: '#2eaadc', fontWeight: 600 }}>privacidad</span>, limitamos el acceso a{' '}
-            <span style={{ color: '#fff', fontWeight: 700 }}>10,000 miembros</span>.
+            <span style={{ color: '#fff', fontWeight: 700 }}>miembros activos</span>.
             <br />Menos usuarios = más velocidad y mejor experiencia.
           </p>
         </div>
@@ -404,11 +336,8 @@ export const PricingModal: React.FC<{ isOpen: boolean; onClose: () => void }> = 
         )}
 
         {/* Plan cards */}
-        <div style={{
-          display: 'flex', gap: isMobile ? 10 : 14, flexWrap: 'wrap',
-          justifyContent: 'center',
-        }}>
-          {plans.map((plan, i) => (
+        <div style={{ display: 'flex', gap: isMobile ? 10 : 14, flexWrap: 'wrap', justifyContent: 'center' }}>
+          {basePlans.map((plan) => (
             <WaterCard
               key={plan.id}
               plan={plan}
