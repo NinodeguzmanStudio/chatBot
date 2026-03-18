@@ -1,6 +1,8 @@
 // ═══════════════════════════════════════
-// AIdark — Chat Area v7
-// Features: edit+resend, regenerate, image generation tab
+// AIdark — Chat Area (FIXED)
+// src/components/chat/ChatArea.tsx
+// FIX: círculo de progreso de mensajes para usuarios free
+//      se muestra junto al botón de enviar
 // ═══════════════════════════════════════
 
 import React, { useRef, useEffect, useState } from 'react';
@@ -17,14 +19,82 @@ import { useIsMobile } from '@/hooks/useIsMobile';
 import { t } from '@/lib/i18n';
 import type { Message, Attachment } from '@/types';
 
-const MAX_FILE_SIZE = 5 * 1024 * 1024;
-const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
-const ALLOWED_PDF_TYPES = ['application/pdf'];
-const ALLOWED_TYPES = [...ALLOWED_IMAGE_TYPES, ...ALLOWED_PDF_TYPES];
+const MAX_FILE_SIZE         = 5 * 1024 * 1024;
+const ALLOWED_IMAGE_TYPES   = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+const ALLOWED_PDF_TYPES     = ['application/pdf'];
+const ALLOWED_TYPES         = [...ALLOWED_IMAGE_TYPES, ...ALLOWED_PDF_TYPES];
+const FREE_LIMIT            = APP_CONFIG.freeMessageLimit; // 12
 
 interface ChatAreaProps {
   onOpenPricing: () => void;
 }
+
+// ── Círculo de progreso SVG ──
+// Muestra cuántos mensajes quedan. Solo para usuarios free.
+const MessageProgressCircle: React.FC<{
+  remaining: number;
+  total: number;
+  onClick: () => void;
+}> = ({ remaining, total, onClick }) => {
+  const size       = 32;
+  const stroke     = 2.5;
+  const radius     = (size - stroke) / 2;
+  const circ       = 2 * Math.PI * radius;
+  const used       = total - remaining;
+  const progress   = Math.min(used / total, 1);
+  const dashOffset = circ * (1 - progress);
+
+  // Color según cuánto queda
+  const color =
+    remaining <= 2 ? '#e05555' :
+    remaining <= 5 ? '#c9944a' :
+    '#6b8a5e';
+
+  return (
+    <button
+      onClick={onClick}
+      title={`${remaining} mensajes restantes hoy`}
+      style={{
+        position: 'relative', width: size, height: size,
+        background: 'none', border: 'none', cursor: 'pointer',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: 0, flexShrink: 0,
+      }}
+    >
+      <svg width={size} height={size} style={{ transform: 'rotate(-90deg)' }}>
+        {/* Track */}
+        <circle
+          cx={size / 2} cy={size / 2} r={radius}
+          fill="none"
+          stroke="var(--border-sub)"
+          strokeWidth={stroke}
+        />
+        {/* Progreso */}
+        <circle
+          cx={size / 2} cy={size / 2} r={radius}
+          fill="none"
+          stroke={color}
+          strokeWidth={stroke}
+          strokeLinecap="round"
+          strokeDasharray={circ}
+          strokeDashoffset={dashOffset}
+          style={{ transition: 'stroke-dashoffset 0.4s ease, stroke 0.3s ease' }}
+        />
+      </svg>
+      {/* Número en el centro */}
+      <span style={{
+        position: 'absolute',
+        fontSize: remaining >= 10 ? 9 : 10,
+        fontWeight: 600,
+        color,
+        lineHeight: 1,
+        userSelect: 'none',
+      }}>
+        {remaining}
+      </span>
+    </button>
+  );
+};
 
 export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
   const {
@@ -34,27 +104,28 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
   } = useChatStore();
   const { canSendMessage, incrementMessages, getRemainingMessages, user } = useAuthStore();
 
-  const [input, setInput] = useState('');
-  const [streamingContent, setStreamingContent] = useState('');
-  const [keystrokeCount, setKeystrokeCount] = useState(0);
-  const [attachment, setAttachment] = useState<Attachment | null>(null);
-  const [showAttachMenu, setShowAttachMenu] = useState(false);
-  const [activeTab, setActiveTab] = useState<'chat' | 'image'>('chat');
+  const [input, setInput]               = useState('');
+  const [streamingContent, setStreaming] = useState('');
+  const [keystrokeCount, setKeystrokes]  = useState(0);
+  const [attachment, setAttachment]      = useState<Attachment | null>(null);
+  const [showAttachMenu, setAttachMenu]  = useState(false);
+  const [activeTab, setActiveTab]        = useState<'chat' | 'image'>('chat');
 
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const abortRef = useRef<AbortController | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const scrollRef     = useRef<HTMLDivElement>(null);
+  const textareaRef   = useRef<HTMLTextAreaElement>(null);
+  const abortRef      = useRef<AbortController | null>(null);
+  const fileInputRef  = useRef<HTMLInputElement>(null);
   const attachMenuRef = useRef<HTMLDivElement>(null);
-  const isMobile = useIsMobile();
+  const isMobile      = useIsMobile();
 
   const activeSession = sessions.find((s) => s.id === activeSessionId);
-  const messages = activeSession?.messages || [];
-  const charLimit = APP_CONFIG.freeCharLimit;
-  const remaining = getRemainingMessages();
-  const character = AI_CHARACTERS.find((c) => c.id === selectedCharacter) || AI_CHARACTERS[0];
-  const userPlan = user?.plan || 'free';
-  const canAttach = userPlan !== 'free';
+  const messages      = activeSession?.messages || [];
+  const charLimit     = APP_CONFIG.freeCharLimit;
+  const remaining     = getRemainingMessages();
+  const character     = AI_CHARACTERS.find((c) => c.id === selectedCharacter) || AI_CHARACTERS[0];
+  const userPlan      = user?.plan || 'free';
+  const isFree        = !user?.plan || user.plan === 'free';
+  const canAttach     = userPlan !== 'free';
 
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
@@ -74,7 +145,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
     if (!showAttachMenu) return;
     const handle = (e: MouseEvent) => {
       if (attachMenuRef.current && !attachMenuRef.current.contains(e.target as Node)) {
-        setShowAttachMenu(false);
+        setAttachMenu(false);
       }
     };
     document.addEventListener('mousedown', handle);
@@ -82,21 +153,13 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
   }, [showAttachMenu]);
 
   const stopGeneration = () => {
-    if (abortRef.current) {
-      abortRef.current.abort();
-      abortRef.current = null;
-      setIsTyping(false);
-    }
+    if (abortRef.current) { abortRef.current.abort(); abortRef.current = null; setIsTyping(false); }
   };
 
-  // ── File handling ──
   const handleFileSelect = (accept: string) => {
     if (!canAttach) { onOpenPricing(); return; }
-    setShowAttachMenu(false);
-    if (fileInputRef.current) {
-      fileInputRef.current.accept = accept;
-      fileInputRef.current.click();
-    }
+    setAttachMenu(false);
+    if (fileInputRef.current) { fileInputRef.current.accept = accept; fileInputRef.current.click(); }
   };
 
   const processFile = async (file: File) => {
@@ -114,11 +177,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
       const reader = new FileReader();
       reader.onload = () => {
         const text = extractPdfText(reader.result as ArrayBuffer);
-        setAttachment({
-          type: 'pdf',
-          data: text || `[PDF: ${file.name} — No se pudo extraer texto.]`,
-          name: file.name, mimeType: file.type,
-        });
+        setAttachment({ type: 'pdf', data: text || `[PDF: ${file.name}]`, name: file.name, mimeType: file.type });
       };
       reader.readAsArrayBuffer(file);
     }
@@ -127,28 +186,27 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
   const extractPdfText = (buffer: ArrayBuffer): string => {
     try {
       const bytes = new Uint8Array(buffer);
-      const text = new TextDecoder('latin1').decode(bytes);
-      const textMatches: string[] = [];
+      const text  = new TextDecoder('latin1').decode(bytes);
+      const matches: string[] = [];
       const btRegex = /BT\s([\s\S]*?)ET/g;
-      let match;
-      while ((match = btRegex.exec(text)) !== null) {
-        const block = match[1];
+      let m;
+      while ((m = btRegex.exec(text)) !== null) {
+        const block = m[1];
         const strRegex = /\(([^)]*)\)/g;
-        let strMatch;
-        while ((strMatch = strRegex.exec(block)) !== null) {
-          const str = strMatch[1].replace(/\\n/g, '\n').replace(/\\\(/g, '(').replace(/\\\)/g, ')');
-          if (str.trim()) textMatches.push(str.trim());
+        let sm;
+        while ((sm = strRegex.exec(block)) !== null) {
+          const s = sm[1].replace(/\\n/g, '\n').replace(/\\\(/g, '(').replace(/\\\)/g, ')');
+          if (s.trim()) matches.push(s.trim());
         }
       }
-      if (textMatches.length > 0) return textMatches.join(' ').slice(0, 8000);
-      const plainText = text.replace(/[^\x20-\x7E\n]/g, ' ').replace(/\s+/g, ' ').trim();
-      const readable = plainText.match(/[a-zA-Z]{3,}/g);
+      if (matches.length > 0) return matches.join(' ').slice(0, 8000);
+      const plain   = text.replace(/[^\x20-\x7E\n]/g, ' ').replace(/\s+/g, ' ').trim();
+      const readable = plain.match(/[a-zA-Z]{3,}/g);
       if (readable && readable.length > 20) return readable.join(' ').slice(0, 8000);
       return '';
     } catch { return ''; }
   };
 
-  // ── Send message (normal or after edit) ──
   const doSend = async (overrideMessages?: Message[], overrideInput?: string) => {
     const textToSend = overrideInput !== undefined ? overrideInput : input;
     if ((!textToSend.trim() && !attachment) || isTyping) return;
@@ -158,7 +216,6 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
     if (!sessionId) sessionId = createSession();
 
     const baseMessages = overrideMessages || messages;
-
     const userMsg: Message = {
       id: generateId(), role: 'user',
       content: textToSend.trim() || (attachment ? `[${attachment.name}]` : ''),
@@ -170,26 +227,24 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
     if (!overrideMessages) setInput('');
     setAttachment(null);
     setIsTyping(true);
-    setStreamingContent('');
+    setStreaming('');
     incrementMessages();
 
-    const controller = new AbortController();
-    abortRef.current = controller;
-
-    // Prepend custom instructions as a system-like user message if set
-    const msgsToSend = [...baseMessages, userMsg];
+    const controller  = new AbortController();
+    abortRef.current  = controller;
+    const msgsToSend  = [...baseMessages, userMsg];
 
     try {
       let fullResponse = '';
       await sendMessageStream(
         msgsToSend, selectedModel, selectedCharacter,
-        (chunk) => { fullResponse += chunk; setStreamingContent(fullResponse); },
+        (chunk) => { fullResponse += chunk; setStreaming(fullResponse); },
         () => {
           addMessage(sessionId!, {
             id: generateId(), role: 'assistant', content: fullResponse,
             timestamp: Date.now(), model: selectedModel, character: selectedCharacter,
           });
-          setStreamingContent('');
+          setStreaming('');
           setIsTyping(false);
         },
         controller.signal
@@ -206,7 +261,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
           addMessage(sessionId!, { id: generateId(), role: 'assistant', content: errorMsg, timestamp: Date.now() });
         }
       }
-      setStreamingContent('');
+      setStreaming('');
       setIsTyping(false);
     } finally {
       abortRef.current = null;
@@ -215,7 +270,6 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
 
   const handleSend = () => doSend();
 
-  // ── Edit message: cut history to that point and resend ──
   const handleEdit = (content: string, msgIndex: number) => {
     if (!activeSessionId || isTyping) return;
     trimMessages(activeSessionId, msgIndex);
@@ -223,27 +277,23 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
     setTimeout(() => textareaRef.current?.focus(), 50);
   };
 
-  // ── Regenerate: remove last AI message and resend ──
   const handleRegenerate = () => {
     if (!activeSessionId || isTyping || messages.length < 2) return;
-    // Remove last assistant message
-    const lastAssistantIdx = messages.length - 1;
-    if (messages[lastAssistantIdx].role !== 'assistant') return;
-    const trimmedMsgs = messages.slice(0, lastAssistantIdx);
-    trimMessages(activeSessionId, lastAssistantIdx);
-    // Resend with trimmed history (last user msg is already included in trimmedMsgs)
-    doSend(trimmedMsgs.slice(0, -1), trimmedMsgs[trimmedMsgs.length - 1]?.content || '');
+    const lastIdx = messages.length - 1;
+    if (messages[lastIdx].role !== 'assistant') return;
+    const trimmed = messages.slice(0, lastIdx);
+    trimMessages(activeSessionId, lastIdx);
+    doSend(trimmed.slice(0, -1), trimmed[trimmed.length - 1]?.content || '');
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const val = e.target.value;
     if (val.length <= charLimit) {
       setInput(val);
-      setKeystrokeCount((k) => k + 1);
+      setKeystrokes((k) => k + 1);
     }
   };
 
-  // Tab styles
   const tabStyle = (active: boolean): React.CSSProperties => ({
     display: 'flex', alignItems: 'center', gap: 5,
     padding: '6px 14px', borderRadius: 20,
@@ -268,20 +318,15 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
         </button>
       </div>
 
-      {/* Hidden file input */}
       <input ref={fileInputRef} type="file" style={{ display: 'none' }}
         onChange={(e) => { const file = e.target.files?.[0]; if (file) processFile(file); e.target.value = ''; }}
       />
 
-      {/* IMAGE TAB */}
-      {activeTab === 'image' && (
-        <ImageGenerator onOpenPricing={onOpenPricing} />
-      )}
+      {activeTab === 'image' && <ImageGenerator onOpenPricing={onOpenPricing} />}
 
-      {/* CHAT TAB */}
       {activeTab === 'chat' && (
         <>
-          {/* Messages */}
+          {/* Mensajes */}
           <div ref={scrollRef} style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', position: 'relative', zIndex: 2 }}>
             {messages.length === 0 && !streamingContent ? (
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
@@ -306,7 +351,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
               <div style={{ maxWidth: writerMode ? 900 : 720, width: '100%', margin: '0 auto', padding: isMobile ? '16px 14px' : '24px 20px', flex: 1 }}>
                 {messages.map((msg, idx) => {
                   const isLastMsg = idx === messages.length - 1;
-                  const isLastAI = isLastMsg && msg.role === 'assistant';
+                  const isLastAI  = isLastMsg && msg.role === 'assistant';
                   return (
                     <MessageBubble
                       key={msg.id}
@@ -325,7 +370,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
                   />
                 )}
                 {isTyping && !streamingContent && (
-                  <div style={{ paddingLeft: isMobile ? 0 : 32, marginBottom: 24 }}>
+                  <div style={{ paddingLeft: isMobile ? 0 : 34, marginBottom: 24 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '14px 0' }}>
                       <div style={{ display: 'flex', gap: 5 }}>
                         {[0, 1, 2].map((i) => (
@@ -350,7 +395,8 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
             display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0, position: 'relative', zIndex: 2,
           }}>
             <div style={{ maxWidth: writerMode ? 900 : 720, width: '100%' }}>
-              {/* Attachment Preview */}
+
+              {/* Attachment preview */}
               {attachment && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', marginBottom: 6, background: 'var(--bg-el)', borderRadius: 10, border: '1px solid var(--border-sub)' }}>
                   {attachment.type === 'image' && attachment.preview ? (
@@ -364,16 +410,15 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
                     <div style={{ fontSize: 11, color: 'var(--txt-pri)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{attachment.name}</div>
                     <div style={{ fontSize: 9, color: 'var(--txt-mut)' }}>{attachment.type === 'image' ? 'Imagen' : 'PDF'}</div>
                   </div>
-                  <button onClick={() => setAttachment(null)} style={{ width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'none', border: 'none', color: 'var(--txt-mut)', cursor: 'pointer', borderRadius: 4 }}
-                    onMouseEnter={e => e.currentTarget.style.color = 'var(--danger)'}
-                    onMouseLeave={e => e.currentTarget.style.color = 'var(--txt-mut)'}
-                  >
+                  <button onClick={() => setAttachment(null)} style={{ width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'none', border: 'none', color: 'var(--txt-mut)', cursor: 'pointer', borderRadius: 4 }}>
                     <X size={14} />
                   </button>
                 </div>
               )}
 
-              <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-sub)', borderRadius: isMobile ? 12 : 14, padding: isMobile ? '10px 12px 8px' : '12px 16px 8px', transition: 'border-color 0.2s' }}
+              {/* Textarea box */}
+              <div
+                style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-sub)', borderRadius: isMobile ? 12 : 14, padding: isMobile ? '10px 12px 8px' : '12px 16px 8px', transition: 'border-color 0.2s' }}
                 onFocus={e => e.currentTarget.style.borderColor = 'var(--border-def)'}
                 onBlur={e => e.currentTarget.style.borderColor = 'var(--border-sub)'}
               >
@@ -389,13 +434,11 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
 
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 8, gap: 6 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                    {/* Attach button */}
+                    {/* Attach */}
                     <div style={{ position: 'relative' }} ref={attachMenuRef}>
                       <button
-                        onClick={() => { if (!canAttach) { onOpenPricing(); return; } setShowAttachMenu(!showAttachMenu); }}
+                        onClick={() => { if (!canAttach) { onOpenPricing(); return; } setAttachMenu(!showAttachMenu); }}
                         style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 30, height: 30, borderRadius: 8, background: showAttachMenu ? 'var(--bg-hover)' : 'transparent', border: '1px solid var(--border-sub)', color: canAttach ? 'var(--txt-sec)' : 'var(--txt-ghost)', cursor: 'pointer', transition: 'all 0.15s' }}
-                        onMouseEnter={e => { if (canAttach) e.currentTarget.style.borderColor = 'var(--border-str)'; }}
-                        onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border-sub)'}
                       >
                         <Plus size={15} />
                       </button>
@@ -418,6 +461,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
                     </div>
 
                     <CharacterSelector />
+
                     {!isMobile && messages.length > 0 && (
                       <button onClick={() => setWriterMode(!writerMode)} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '5px 10px', border: `1px solid ${writerMode ? 'var(--border-str)' : 'var(--border-sub)'}`, borderRadius: 16, background: writerMode ? 'var(--bg-hover)' : 'transparent', color: writerMode ? 'var(--txt-pri)' : 'var(--txt-mut)', fontSize: 11, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.15s' }}>
                         {writerMode ? <Minimize2 size={11} /> : <Maximize2 size={11} />}
@@ -426,10 +470,20 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
                     )}
                   </div>
 
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                     <span style={{ fontSize: 10, color: input.length > charLimit * 0.9 ? 'var(--danger)' : 'var(--txt-mut)' }}>
                       {input.length}/{charLimit}
                     </span>
+
+                    {/* Círculo de progreso — solo usuarios free */}
+                    {isFree && remaining < 999 && (
+                      <MessageProgressCircle
+                        remaining={remaining}
+                        total={FREE_LIMIT}
+                        onClick={onOpenPricing}
+                      />
+                    )}
+
                     {isTyping ? (
                       <button onClick={stopGeneration} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 34, height: 34, background: 'var(--danger)', border: 'none', borderRadius: '50%', cursor: 'pointer' }}>
                         <Square size={12} fill="#fff" color="#fff" />
@@ -445,9 +499,18 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
 
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 6, padding: '0 4px' }}>
                 <span style={{ fontSize: 10, color: 'var(--txt-ghost)' }}>{t('app.chats_private')}</span>
-                <span style={{ fontSize: 10, color: remaining <= 2 ? 'var(--danger)' : 'var(--txt-ghost)' }}>
-                  {remaining >= 999 ? t('app.unlimited') : remaining} {t('app.msgs_remaining')}
-                </span>
+                {/* Texto de mensajes restantes solo cuando queda poco */}
+                {isFree && remaining <= 3 && (
+                  <span style={{ fontSize: 10, color: 'var(--danger)', fontWeight: 500 }}>
+                    {remaining === 0 ? 'Sin mensajes — ' : `${remaining} restantes — `}
+                    <span
+                      onClick={onOpenPricing}
+                      style={{ textDecoration: 'underline', cursor: 'pointer' }}
+                    >
+                      Obtener más
+                    </span>
+                  </span>
+                )}
               </div>
             </div>
           </div>
