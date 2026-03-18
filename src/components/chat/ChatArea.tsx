@@ -112,6 +112,30 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
 
   useEffect(() => { textareaRef.current?.focus(); }, [activeSessionId]);
 
+  // FIX: teclado mobile no tapa el input
+  useEffect(() => {
+    if (!isMobile) return;
+    const vv = window.visualViewport;
+    if (!vv) return;
+
+    const onResize = () => {
+      const offset = window.innerHeight - vv.height - vv.offsetTop;
+      document.documentElement.style.setProperty(
+        '--keyboard-height',
+        `${Math.max(0, offset)}px`
+      );
+    };
+
+    vv.addEventListener('resize', onResize);
+    vv.addEventListener('scroll', onResize);
+    onResize();
+    return () => {
+      vv.removeEventListener('resize', onResize);
+      vv.removeEventListener('scroll', onResize);
+      document.documentElement.style.setProperty('--keyboard-height', '0px');
+    };
+  }, [isMobile]);
+
   useEffect(() => {
     const el = textareaRef.current;
     if (el) { el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 160) + 'px'; }
@@ -411,6 +435,9 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
             padding: messages.length === 0
               ? (isMobile ? '0 12px 24px' : '0 20px 40px')
               : (isMobile ? '0 12px 14px' : '0 20px 20px'),
+            paddingBottom: isMobile
+              ? `calc(${messages.length === 0 ? '24px' : '14px'} + var(--keyboard-height, 0px))`
+              : undefined,
             display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0, position: 'relative', zIndex: 2,
           }}>
             <div style={{ maxWidth: writerMode ? 900 : 720, width: '100%' }}>
