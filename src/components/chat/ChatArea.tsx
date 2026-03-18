@@ -1,8 +1,10 @@
 // ═══════════════════════════════════════
 // AIdark — Chat Area
 // src/components/chat/ChatArea.tsx
-// FIX: error de límite en mobile ahora se detecta por código ApiError
-//      streamTrigger para activar partículas durante respuesta de IA
+// FIXES:
+//   [1] Límite en mobile detectado por código ApiError
+//   [2] streamTrigger para partículas durante streaming
+//   [3] TECLADO MOBILE FIX — visualViewport API para que el input no quede tapado
 // ═══════════════════════════════════════
 
 import React, { useRef, useEffect, useState } from 'react';
@@ -26,8 +28,7 @@ const ALLOWED_TYPES       = [...ALLOWED_IMAGE_TYPES, ...ALLOWED_PDF_TYPES];
 const FREE_LIMIT          = APP_CONFIG.freeMessageLimit;
 const MEMORY_KEY          = 'aidark_memory';
 
-// Mensajes que indican límite alcanzado — para detectar en cualquier idioma/formato
-const LIMIT_CODES = new Set(['FREE_LIMIT_REACHED', 'PLAN_EXPIRED', 'PREMIUM_REQUIRED']);
+const LIMIT_CODES    = new Set(['FREE_LIMIT_REACHED', 'PLAN_EXPIRED', 'PREMIUM_REQUIRED']);
 const LIMIT_KEYWORDS = ['límite', 'limite', 'limit', 'plan', 'upgrade', 'actualiza', 'gratuito'];
 
 function isLimitError(err: unknown): boolean {
@@ -85,7 +86,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
   const [input, setInput]               = useState('');
   const [streamingContent, setStreaming] = useState('');
   const [keystrokeCount, setKeystrokes]  = useState(0);
-  const [streamChunkCount, setStreamChunks] = useState(0); // FIX: trigger partículas durante streaming
+  const [streamChunkCount, setStreamChunks] = useState(0);
   const [attachment, setAttachment]      = useState<Attachment | null>(null);
   const [showAttachMenu, setAttachMenu]  = useState(false);
   const [activeTab, setActiveTab]        = useState<'chat' | 'image'>('chat');
@@ -112,7 +113,21 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
 
   useEffect(() => { textareaRef.current?.focus(); }, [activeSessionId]);
 
-  // FIX: teclado mobile no tapa el input
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (el) { el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 160) + 'px'; }
+  }, [input]);
+
+  useEffect(() => {
+    if (!showAttachMenu) return;
+    const handle = (e: MouseEvent) => {
+      if (attachMenuRef.current && !attachMenuRef.current.contains(e.target as Node)) setAttachMenu(false);
+    };
+    document.addEventListener('mousedown', handle);
+    return () => document.removeEventListener('mousedown', handle);
+  }, [showAttachMenu]);
+
+  // FIX [3]: teclado mobile — ajustar padding con visualViewport API
   useEffect(() => {
     if (!isMobile) return;
     const vv = window.visualViewport;
@@ -129,26 +144,13 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
     vv.addEventListener('resize', onResize);
     vv.addEventListener('scroll', onResize);
     onResize();
+
     return () => {
       vv.removeEventListener('resize', onResize);
       vv.removeEventListener('scroll', onResize);
       document.documentElement.style.setProperty('--keyboard-height', '0px');
     };
   }, [isMobile]);
-
-  useEffect(() => {
-    const el = textareaRef.current;
-    if (el) { el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 160) + 'px'; }
-  }, [input]);
-
-  useEffect(() => {
-    if (!showAttachMenu) return;
-    const handle = (e: MouseEvent) => {
-      if (attachMenuRef.current && !attachMenuRef.current.contains(e.target as Node)) setAttachMenu(false);
-    };
-    document.addEventListener('mousedown', handle);
-    return () => document.removeEventListener('mousedown', handle);
-  }, [showAttachMenu]);
 
   const stopGeneration = () => {
     if (abortRef.current) { abortRef.current.abort(); abortRef.current = null; setIsTyping(false); }
@@ -277,7 +279,6 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
         (chunk) => {
           fullResponse += chunk;
           setStreaming(fullResponse);
-          // FIX: disparar partículas cada 3 chunks para no saturar
           chunkCounter++;
           if (chunkCounter % 3 === 0) setStreamChunks(c => c + 1);
         },
@@ -296,7 +297,6 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
         setStreaming(''); setIsTyping(false); return;
       }
 
-      // FIX: detectar límite alcanzado ANTES de intentar el fallback
       if (isLimitError(error)) {
         const limitMsg = 'Has alcanzado el límite de mensajes. Actualiza tu plan para continuar.';
         addMessage(sessionId!, { id: generateId(), role: 'assistant', content: limitMsg, timestamp: Date.now() });
@@ -304,7 +304,6 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
         return;
       }
 
-      // Fallback: intentar sin streaming
       try {
         const response = await sendMessage(msgsToSend, selectedModel, selectedCharacter);
         addMessage(sessionId!, { id: generateId(), role: 'assistant', content: response, timestamp: Date.now(), model: selectedModel, character: selectedCharacter });
@@ -355,7 +354,6 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, height: '100%', position: 'relative', overflow: 'hidden' }}>
-      {/* FIX: streamChunkCount pasa las partículas al streaming */}
       <TypingParticles trigger={keystrokeCount} streamTrigger={streamChunkCount} />
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: isMobile ? '10px 14px 0' : '12px 20px 0', flexShrink: 0 }}>
@@ -431,6 +429,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
             )}
           </div>
 
+          {/* FIX [3]: paddingBottom dinámico para compensar el teclado virtual */}
           <div style={{
             padding: messages.length === 0
               ? (isMobile ? '0 12px 24px' : '0 20px 40px')
