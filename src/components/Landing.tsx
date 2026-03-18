@@ -84,6 +84,11 @@ const useCases = [
   { icon: I.flame, text: "Contenido adulto y erótico sin censura" },
 ];
 
+// FIX: función para scroll suave a la sección de precios
+function scrollToPricing() {
+  document.getElementById('pricing-section')?.scrollIntoView({ behavior: 'smooth' });
+}
+
 export default function Landing({ onStart }: { onStart?: () => void }) {
   const [currentPhrase, setCurrentPhrase] = useState(0);
   const [displayText, setDisplayText] = useState("");
@@ -186,15 +191,18 @@ export default function Landing({ onStart }: { onStart?: () => void }) {
             fontSize: 15, fontWeight: 700, cursor: "pointer", letterSpacing: 0.5,
             boxShadow: "0 4px 20px rgba(139,115,85,0.3)",
           }} onClick={onStart}>Empezar gratis →</button>
+
+          {/* FIX: Ver planes ahora hace scroll a la sección de precios */}
           <button style={{
             padding: "14px 32px", borderRadius: 10,
             border: "1px solid #333", background: "transparent", color: "#999",
             fontSize: 15, fontWeight: 500, cursor: "pointer",
-          }}>Ver planes</button>
+          }} onClick={scrollToPricing}>Ver planes</button>
         </div>
 
+        {/* FIX: 5 → 12 mensajes gratis */}
         <p style={{ fontSize: 11, color: "#ffffff33", marginTop: 16 }}>
-          +18 · No requiere tarjeta · 
+          +18 · No requiere tarjeta · 12 mensajes gratis
         </p>
 
         <div style={{
@@ -282,8 +290,8 @@ export default function Landing({ onStart }: { onStart?: () => void }) {
         </div>
       </section>
 
-      {/* ═══ SCARCITY ═══ */}
-      <section style={{
+      {/* ═══ SCARCITY + PRICING — FIX: id="pricing-section" para scroll ═══ */}
+      <section id="pricing-section" style={{
         padding: "60px 20px", textAlign: "center", position: "relative", zIndex: 1,
         background: "linear-gradient(180deg, transparent, #0d0a0722, transparent)",
       }}>
@@ -320,8 +328,9 @@ export default function Landing({ onStart }: { onStart?: () => void }) {
           fontSize: 16, fontWeight: 700, cursor: "pointer",
           boxShadow: "0 4px 30px rgba(139,115,85,0.3)",
         }} onClick={onStart}>Obtener acceso ahora →</button>
+        {/* FIX: 5 → 12 mensajes gratis */}
         <p style={{ fontSize: 11, color: "#ffffff33", marginTop: 12 }}>
-           · No requiere tarjeta · Cancela cuando quieras
+          12 mensajes gratis · No requiere tarjeta · Cancela cuando quieras
         </p>
       </section>
 
