@@ -1,9 +1,18 @@
 // ═══════════════════════════════════════
-// AIdark — Type Definitions (+ ATTACHMENTS)
+// AIdark — Type Definitions
+// src/types/index.ts
+// MEJORA: ModelId expandido con más modelos Venice
 // ═══════════════════════════════════════
 
 // ── Chat ──
-export type ModelId = 'venice' | 'dark-grok' | 'void-x';
+export type ModelId =
+  | 'venice'
+  | 'dark-grok'
+  | 'void-x'
+  | 'llama-fast'
+  | 'llama-pro'
+  | 'mistral';
+
 export type CharacterId = 'default' | 'dark-grok' | 'void-x' | 'seductora' | 'detective';
 
 export interface Model {
@@ -11,6 +20,8 @@ export interface Model {
   name: string;
   description: string;
   primary: boolean;
+  badge?: string;
+  premium?: boolean;
 }
 
 export interface AICharacter {
@@ -32,10 +43,10 @@ export interface PromptItem {
 // ── Attachment (imagen o PDF) ──
 export interface Attachment {
   type: 'image' | 'pdf';
-  data: string;       // base64 para imágenes, texto extraído para PDFs
-  name: string;        // nombre del archivo
-  mimeType: string;    // image/jpeg, image/png, application/pdf, etc.
-  preview?: string;    // base64 thumbnail para mostrar en el chat
+  data: string;
+  name: string;
+  mimeType: string;
+  preview?: string;
 }
 
 export interface Message {
@@ -58,7 +69,6 @@ export interface ChatSession {
 }
 
 // ── Auth & User ──
-// CAMBIO: IDs alineados con backend (create-payment.ts y webhook)
 export type PlanType = 'free' | 'basic_monthly' | 'pro_quarterly' | 'ultra_annual';
 
 export interface UserProfile {
@@ -78,7 +88,6 @@ export interface VeniceRequest {
   stream?: boolean;
 }
 
-// Venice/OpenAI multimodal content parts
 export type VeniceContentPart =
   | { type: 'text'; text: string }
   | { type: 'image_url'; image_url: { url: string } };
