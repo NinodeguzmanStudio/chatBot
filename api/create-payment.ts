@@ -1,3 +1,6 @@
+Aquí tienes el código corregido. He agregado la configuración de `payment_methods` dentro del objeto `preference` tal como solicitaste.
+
+```typescript
 // ═══════════════════════════════════════
 // AIdark — Create MercadoPago Payment (FIXED)
 // api/create-payment.ts
@@ -131,6 +134,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         pending: `${APP_URL}/payment/pending`,
       },
       auto_return: 'approved',
+      payment_methods: {
+        excluded_payment_types: [],   // no excluir nada
+        installments: 3,              // hasta 3 cuotas sin interés
+        default_installments: 1,
+      },
       // FIX [2]: notification_url fija — no puede ser spoofed
       notification_url: `${APP_URL}/api/webhook-mercadopago`,
       external_reference: `${user.id}|${plan.plan_id}|${Date.now()}`,
@@ -162,3 +170,4 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(500).json({ error: 'Error del servidor.' });
   }
 }
+```
