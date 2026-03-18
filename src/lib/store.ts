@@ -1,32 +1,24 @@
 // ═══════════════════════════════════════
-// AIdark — Global Store (FIXED)
+// AIdark — Global Store
 // src/lib/store.ts
-// ═══════════════════════════════════════
-// FIXES aplicados:
-//   [1] resetMessages() escribía directo a localStorage en vez de usar
-//       _resetMessagesInternal() del fingerprint — ahora usa la función correcta
-//   [2] APP_CONFIG importado pero nunca usado — removido
-//   [3] canSendMessage() y getRemainingMessages() podían desincronizarse
-//       si wasBonusGiven() expiraba entre llamadas — ahora llaman una sola vez
-//   [4] saveMessage no pasaba el campo 'character' — se perdía en el historial
+// FIX: FREE_LIMIT 5→12
 // ═══════════════════════════════════════
 
 import { create } from 'zustand';
 import type { Message, ModelId, CharacterId, ChatSession, UserProfile } from '@/types';
-// FIX [2]: removido APP_CONFIG — no se usa en este archivo
 import {
   getDeviceMessagesUsed, incrementDeviceMessages,
   wasBonusGiven, giveBonusMessages, getBonusMessagesUsed, incrementBonusMessages,
-  _resetMessagesInternal, // FIX [1]: importar la función correcta
+  _resetMessagesInternal,
 } from '@/lib/fingerprint';
 import {
   loadUserSessions, createDbSession, saveMessage,
   updateDbSessionTitle, deleteDbSession, deleteAllDbSessions, cleanOldChats,
 } from '@/services/chatService';
 
-const FREE_LIMIT = 5;
+// FIX: 5→12 mensajes diarios gratis
+const FREE_LIMIT = 12;
 
-// ── Chat Store ──
 interface ChatState {
   sessions: ChatSession[];
   activeSessionId: string | null;
@@ -68,12 +60,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
   sessionsLoaded: false,
   customInstructions: localStorage.getItem('aidark_custom_instructions') || '',
 
-  setSelectedModel:   (model) => set({ selectedModel: model }),
-  setSelectedCharacter: (char) => set({ selectedCharacter: char }),
-  setSidebarOpen:     (open)  => set({ sidebarOpen: open }),
-  setIsTyping:        (typing) => set({ isTyping: typing }),
-  setWriterMode:      (mode)  => set({ writerMode: mode }),
-  setSessions:        (sessions) => set({ sessions }),
+  setSelectedModel:     (model)    => set({ selectedModel: model }),
+  setSelectedCharacter: (char)     => set({ selectedCharacter: char }),
+  setSidebarOpen:       (open)     => set({ sidebarOpen: open }),
+  setIsTyping:          (typing)   => set({ isTyping: typing }),
+  setWriterMode:        (mode)     => set({ writerMode: mode }),
+  setSessions:          (sessions) => set({ sessions }),
 
   setCustomInstructions: (instructions) => {
     localStorage.setItem('aidark_custom_instructions', instructions);
@@ -182,7 +174,6 @@ interface AuthState {
   isLoading: boolean;
   isAgeVerified: boolean;
   isAuthenticated: boolean;
-
   setUser: (user: UserProfile | null) => void;
   setLoading: (loading: boolean) => void;
   setAgeVerified: (verified: boolean) => void;
@@ -207,8 +198,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     localStorage.setItem('aidark_authenticated', String(auth));
     set({ user, isAuthenticated: auth });
   },
-  setLoading:   (loading) => set({ isLoading: loading }),
-  setAuthenticated: (auth) => {
+  setLoading:       (loading)  => set({ isLoading: loading }),
+  setAuthenticated: (auth)     => {
     localStorage.setItem('aidark_authenticated', String(auth));
     set({ isAuthenticated: auth });
   },
@@ -228,7 +219,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   canSendMessage: () => {
     const { user } = get();
     if (user?.plan && user.plan !== 'free') return true;
-    // FIX [3]: llamar wasBonusGiven() una sola vez para evitar desincronización
     const bonusActive = wasBonusGiven();
     if (bonusActive) return getBonusMessagesUsed() < FREE_LIMIT;
     return getDeviceMessagesUsed() < FREE_LIMIT;
@@ -237,18 +227,14 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   getRemainingMessages: () => {
     const { user } = get();
     if (user?.plan && user.plan !== 'free') return 999;
-    // FIX [3]: consistente con canSendMessage()
     const bonusActive = wasBonusGiven();
     if (bonusActive) return Math.max(0, FREE_LIMIT - getBonusMessagesUsed());
     return Math.max(0, FREE_LIMIT - getDeviceMessagesUsed());
   },
 
-  // FIX [1]: usar _resetMessagesInternal() en vez de escribir directo al localStorage
-  resetMessages: () => {
-    _resetMessagesInternal();
-  },
+  resetMessages: () => { _resetMessagesInternal(); },
 
-  isInBonusMode: () => wasBonusGiven(),
+  isInBonusMode:  () => wasBonusGiven(),
 
   shouldShowBonus: () => {
     const { user } = get();
@@ -256,7 +242,5 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     return getDeviceMessagesUsed() >= FREE_LIMIT && !wasBonusGiven();
   },
 
-  activateBonus: () => {
-    giveBonusMessages();
-  },
+  activateBonus: () => { giveBonusMessages(); },
 }));
