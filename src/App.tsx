@@ -2,9 +2,10 @@
 // AIdark — Main App
 // src/App.tsx
 // FIXES:
-//   [1] Flash del Landing al hacer F5 — si había sesión previa muestra loading, no Landing
-//   [2] Sesión persiste — clearAllAuthState NO borra las claves sb-* de Supabase
-//   [3] PUSH FIX — registrar suscripción push al hacer login
+//   [1] Flash del Landing al hacer F5
+//   [2] Sesión persiste — clearAllAuthState NO borra claves sb-*
+//   [3] Push registration al login
+//   [4] onOpenPricing pasado al SettingsModal
 // ═══════════════════════════════════════
 
 import React, { useState, useEffect, useRef } from 'react';
@@ -23,30 +24,23 @@ if ('serviceWorker' in navigator) {
   });
 }
 
-// FIX [3]: registrar push subscription después del login
 async function registerPush(accessToken: string): Promise<void> {
   try {
     if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
     const vapidKey = import.meta.env.VITE_VAPID_PUBLIC_KEY;
     if (!vapidKey) return;
-
     const reg      = await navigator.serviceWorker.ready;
     const existing = await reg.pushManager.getSubscription();
     const sub      = existing || await reg.pushManager.subscribe({
       userVisibleOnly: true,
       applicationServerKey: vapidKey,
     });
-
     await fetch('/api/push-subscribe', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${accessToken}`,
-      },
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${accessToken}` },
       body: JSON.stringify({ subscription: sub }),
     });
   } catch (err) {
-    // No crítico — el usuario puede no dar permiso
     console.warn('[Push] No se pudo registrar:', err);
   }
 }
@@ -106,8 +100,17 @@ const ChatLayout: React.FC = () => {
         <ChatArea onOpenPricing={() => setPromoOpen(true)} />
       </main>
       <PricingModal isOpen={pricingOpen} onClose={() => setPricingOpen(false)} />
-      <PromoModal isOpen={promoOpen} onClose={() => setPromoOpen(false)} onOpenPricing={() => { setPromoOpen(false); setPricingOpen(true); }} />
-      <SettingsModal isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <PromoModal
+        isOpen={promoOpen}
+        onClose={() => setPromoOpen(false)}
+        onOpenPricing={() => { setPromoOpen(false); setPricingOpen(true); }}
+      />
+      {/* FIX [4]: onOpenPricing pasado al SettingsModal para que funcione el botón "Hacerse Premium" */}
+      <SettingsModal
+        isOpen={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        onOpenPricing={() => { setSettingsOpen(false); setPricingOpen(true); }}
+      />
       <PrivacyModal isOpen={privacyOpen} onClose={() => setPrivacyOpen(false)} />
       <InstallBanner />
     </div>
@@ -146,7 +149,6 @@ function clearAllAuthState(setUser: any, setAuthenticated: any) {
   setUser(null);
   setAuthenticated(false);
   localStorage.removeItem('aidark_authenticated');
-  // NO tocar las claves sb-* — Supabase las necesita para renovar la sesión
 }
 
 async function processSession(session: any, setUser: any, setAuthenticated: any, loadFromSupabase: any) {
@@ -155,11 +157,7 @@ async function processSession(session: any, setUser: any, setAuthenticated: any,
   setAuthenticated(true);
   localStorage.setItem('aidark_was_authenticated', 'true');
   loadFromSupabase(session.user.id).catch(console.error);
-
-  // FIX [3]: registrar push después de confirmar sesión válida
-  if (session.access_token) {
-    registerPush(session.access_token);
-  }
+  if (session.access_token) registerPush(session.access_token);
 }
 
 const App: React.FC = () => {
@@ -172,8 +170,6 @@ const App: React.FC = () => {
   const [showAuth, setShowAuth]         = useState(false);
   const initialized = useRef(false);
   const doneRef     = useRef(false);
-
-  const hadSession = localStorage.getItem('aidark_was_authenticated') === 'true';
 
   const done = (clearAuth = false) => {
     if (doneRef.current) return;
@@ -198,41 +194,25 @@ const App: React.FC = () => {
         }
 
         const sessionResult = await getSessionSafe();
-
-        if (sessionResult === null) {
-          console.warn('[Auth] getSession timeout — esperando onAuthStateChange');
-          return;
-        }
+        if (sessionResult === null) { console.warn('[Auth] getSession timeout'); return; }
 
         const { data: { session }, error } = sessionResult as any;
-
-        if (error) {
-          console.error('[Auth] getSession error:', error.message);
-          done(true);
-          return;
-        }
+        if (error) { done(true); return; }
 
         if (session?.user) {
           const expiresAt = session.expires_at ? session.expires_at * 1000 : 0;
-          const now = Date.now();
-
-          if (expiresAt > 0 && expiresAt < now) {
+          if (expiresAt > 0 && expiresAt < Date.now()) {
             const { data: refreshed, error: refreshErr } = await supabase.auth.refreshSession();
             if (refreshErr || !refreshed.session) { done(true); return; }
             await processSession(refreshed.session, setUser, setAuthenticated, loadFromSupabase);
-            done();
-            return;
+            done(); return;
           }
-
           await processSession(session, setUser, setAuthenticated, loadFromSupabase);
-          done();
-          return;
+          done(); return;
         }
-
         done(true);
-
       } catch (err: any) {
-        console.error('[Auth] Error inesperado:', err);
+        console.error('[Auth] Error:', err);
         done(true);
       }
     };
@@ -249,17 +229,12 @@ const App: React.FC = () => {
           }
           await processSession(session, setUser, setAuthenticated, loadFromSupabase);
         } catch (err: any) {
-          console.error('[Auth] Error procesando sesión:', err);
           setAuthError('Error al cargar tu perfil. Intenta de nuevo.');
         }
-        done();
-        return;
+        done(); return;
       }
 
-      if (event === 'INITIAL_SESSION' && !session && !doneRef.current) {
-        done(true);
-        return;
-      }
+      if (event === 'INITIAL_SESSION' && !session && !doneRef.current) { done(true); return; }
 
       if (event === 'TOKEN_REFRESHED' && session?.user) {
         try {
@@ -275,19 +250,12 @@ const App: React.FC = () => {
     });
 
     const fallback = setTimeout(() => {
-      if (!doneRef.current) {
-        console.warn('[Auth] Fallback 5s — forzando resolución');
-        done(true);
-      }
+      if (!doneRef.current) { done(true); }
     }, 5000);
 
-    return () => {
-      clearTimeout(fallback);
-      subscription.unsubscribe();
-    };
+    return () => { clearTimeout(fallback); subscription.unsubscribe(); };
   }, []);
 
-  // ── Render ──
   if (!authComplete) {
     return (
       <div style={{ minHeight: '100dvh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#000', flexDirection: 'column', gap: 20 }}>
