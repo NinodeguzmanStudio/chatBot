@@ -1,15 +1,14 @@
 // ═══════════════════════════════════════
-// AIdark — Chat API Proxy (FIXED)
+// AIdark — Chat API Proxy
 // api/chat.ts
-// FIX IMAGEN: export config con sizeLimit 10mb para soportar imágenes base64
+// FIX: check_rate_limit falla silenciosamente si la función no existe en Supabase.
+//      Ahora si la función no existe, simplemente se ignora el rate limit
+//      en vez de logear un error en cada mensaje.
 // ═══════════════════════════════════════
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient } from '@supabase/supabase-js';
 
-// FIX: Vercel por defecto limita el body a 4.5MB.
-// Las imágenes en base64 crecen ~33% → una imagen de 3MB se vuelve ~4MB.
-// Con este config se sube el límite a 10MB para soportar imágenes adjuntas.
 export const config = {
   api: {
     bodyParser: {
@@ -18,7 +17,7 @@ export const config = {
   },
 };
 
-const SUPABASE_URL        = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL!;
+const SUPABASE_URL         = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL!;
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
@@ -109,6 +108,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const apiKey = process.env.VENICE_API_KEY;
   if (!apiKey) return res.status(500).json({ error: 'API key not configured' });
 
+  // ── Auth ──
   const authHeader = req.headers.authorization;
   if (!authHeader?.startsWith('Bearer ')) {
     return res.status(401).json({ error: 'No autorizado. Inicia sesión.' });
@@ -120,6 +120,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(401).json({ error: 'Sesión inválida. Inicia sesión de nuevo.' });
   }
 
+  // ── Perfil ──
   const { data: profile, error: profileError } = await supabase
     .from('profiles')
     .select('plan, messages_used, messages_limit, plan_expires_at')
@@ -132,6 +133,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const isPremium = profile.plan !== 'free';
 
+  // ── Verificar expiración de plan ──
   if (isPremium && profile.plan_expires_at) {
     const expiresAt = new Date(profile.plan_expires_at);
     if (expiresAt < new Date()) {
@@ -146,6 +148,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
   }
 
+  // ── Límite de mensajes gratis ──
   if (!isPremium) {
     if (profile.messages_used >= FREE_LIMIT) {
       return res.status(403).json({
@@ -155,24 +158,33 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
   }
 
-  const { data: rateLimitOk, error: rlError } = await supabase
-    .rpc('check_rate_limit', {
-      p_user_id:        user.id,
-      p_window_seconds: RATE_LIMIT_WINDOW,
-      p_max_messages:   RATE_LIMIT_MAX,
-    });
+  // ── Rate limit — FIX: si la función RPC no existe, simplemente se omite ──
+  // La función check_rate_limit es opcional. Si no está creada en Supabase,
+  // el chat sigue funcionando sin rate limiting.
+  try {
+    const { data: rateLimitOk, error: rlError } = await supabase
+      .rpc('check_rate_limit', {
+        p_user_id:        user.id,
+        p_window_seconds: RATE_LIMIT_WINDOW,
+        p_max_messages:   RATE_LIMIT_MAX,
+      });
 
-  if (rlError) {
-    console.error('[Chat] check_rate_limit error:', rlError.message);
-  } else if (!rateLimitOk) {
-    return res.status(429).json({
-      error: 'Demasiados mensajes. Espera un momento.',
-      code: 'RATE_LIMIT',
-    });
+    // Solo bloquear si la función existe Y retorna false
+    if (!rlError && rateLimitOk === false) {
+      return res.status(429).json({
+        error: 'Demasiados mensajes. Espera un momento.',
+        code: 'RATE_LIMIT',
+      });
+    }
+    // Si hay error (función no existe), simplemente seguimos
+  } catch {
+    // Ignorar — rate limit es opcional
   }
 
+  // ── Incrementar contador ──
   await supabase.rpc('increment_message_count', { p_user_id: user.id });
 
+  // ── Validar body ──
   const { messages, model, stream, character } = req.body;
 
   const charId = typeof character === 'string' ? character : 'default';
@@ -188,7 +200,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     : DEFAULT_MODEL;
 
   const userMessages = sanitizeMessages(messages);
-
   if (userMessages.length === 0) {
     return res.status(400).json({ error: 'No se recibieron mensajes válidos.' });
   }
@@ -198,6 +209,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     ...userMessages,
   ];
 
+  // ── Llamar a Venice ──
   try {
     const veniceRes = await fetch('https://api.venice.ai/api/v1/chat/completions', {
       method: 'POST',
