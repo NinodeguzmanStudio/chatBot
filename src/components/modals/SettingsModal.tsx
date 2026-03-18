@@ -343,12 +343,10 @@ export const SettingsModal: React.FC<{ isOpen: boolean; onClose: () => void; onO
                 <div style={{ fontSize: 11, color: 'var(--txt-ter)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>
                   Incluido en tu plan
                 </div>
-                {[
-                  plan === 'free'
-                    ? ['12 mensajes/día', 'Historial 7 días', '3 personajes básicos']
-                    : ['Mensajes ilimitados', 'Historial 90 días', 'Todos los personajes',
-                      'Generación de imágenes sin censura'
-                ].flat().map((feature, i) => (
+                {(plan === 'free'
+                  ? ['12 mensajes/día', 'Historial 7 días', '3 personajes básicos']
+                  : ['Mensajes ilimitados', 'Historial 90 días', 'Todos los personajes', 'Generación de imágenes sin censura']
+                ).map((feature, i) => (
                   <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5 }}>
                     <div style={{ width: 5, height: 5, borderRadius: '50%', background: planColor, flexShrink: 0 }} />
                     <span style={{ fontSize: 12, color: 'var(--txt-sec)' }}>{feature}</span>
