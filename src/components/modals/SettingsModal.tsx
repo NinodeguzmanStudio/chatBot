@@ -347,9 +347,7 @@ export const SettingsModal: React.FC<{ isOpen: boolean; onClose: () => void; onO
                   plan === 'free'
                     ? ['12 mensajes/día', 'Historial 7 días', '3 personajes básicos']
                     : ['Mensajes ilimitados', 'Historial 90 días', 'Todos los personajes',
-                       (plan === 'ultra_annual' || plan === 'premium_annual') ? '50 imágenes/día' :
-                       (plan === 'pro_quarterly' || plan === 'premium_quarterly') ? '25 imágenes/día · Anime' :
-                       '10 imágenes/día · Realistas'],
+                      'Generación de imágenes sin censura'
                 ].flat().map((feature, i) => (
                   <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5 }}>
                     <div style={{ width: 5, height: 5, borderRadius: '50%', background: planColor, flexShrink: 0 }} />
