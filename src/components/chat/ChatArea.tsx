@@ -19,7 +19,7 @@ import { useIsMobile } from '@/hooks/useIsMobile';
 import { t } from '@/lib/i18n';
 import type { Message, Attachment } from '@/types';
 
-const MAX_FILE_SIZE         = 5 * 1024 * 1024;
+const MAX_FILE_SIZE = 3 * 1024 * 1024; // 3MB → base64 queda en ~4MB, bajo el límite de Vercel
 const ALLOWED_IMAGE_TYPES   = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
 const ALLOWED_PDF_TYPES     = ['application/pdf'];
 const ALLOWED_TYPES         = [...ALLOWED_IMAGE_TYPES, ...ALLOWED_PDF_TYPES];
