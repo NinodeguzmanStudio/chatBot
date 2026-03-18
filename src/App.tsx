@@ -1,9 +1,10 @@
 // ═══════════════════════════════════════
 // AIdark — Main App
+// src/App.tsx
 // FIXES:
 //   [1] Flash del Landing al hacer F5 — si había sesión previa muestra loading, no Landing
-//   [2] Sesión no persiste — clearAllAuthState ya NO borra las claves sb-* de Supabase
-//       Solo borra el flag propio de la app. Supabase puede renovar el token automáticamente.
+//   [2] Sesión persiste — clearAllAuthState NO borra las claves sb-* de Supabase
+//   [3] PUSH FIX — registrar suscripción push al hacer login
 // ═══════════════════════════════════════
 
 import React, { useState, useEffect, useRef } from 'react';
@@ -20,6 +21,34 @@ if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js').catch(() => {});
   });
+}
+
+// FIX [3]: registrar push subscription después del login
+async function registerPush(accessToken: string): Promise<void> {
+  try {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+    const vapidKey = import.meta.env.VITE_VAPID_PUBLIC_KEY;
+    if (!vapidKey) return;
+
+    const reg      = await navigator.serviceWorker.ready;
+    const existing = await reg.pushManager.getSubscription();
+    const sub      = existing || await reg.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: vapidKey,
+    });
+
+    await fetch('/api/push-subscribe', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({ subscription: sub }),
+    });
+  } catch (err) {
+    // No crítico — el usuario puede no dar permiso
+    console.warn('[Push] No se pudo registrar:', err);
+  }
 }
 
 const PaymentSuccess: React.FC = () => (
@@ -51,10 +80,10 @@ const PaymentPending: React.FC = () => (
 
 const ChatLayout: React.FC = () => {
   const { sidebarOpen } = useChatStore();
-  const [pricingOpen, setPricingOpen] = useState(false);
-  const [promoOpen, setPromoOpen] = useState(false);
+  const [pricingOpen, setPricingOpen]   = useState(false);
+  const [promoOpen, setPromoOpen]       = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [privacyOpen, setPrivacyOpen] = useState(false);
+  const [privacyOpen, setPrivacyOpen]   = useState(false);
   const isMobile = useIsMobile();
 
   return (
@@ -113,9 +142,6 @@ async function resolveUserProfile(userId: string, email: string) {
   return newProfile;
 }
 
-// FIX [2]: ya NO borra las claves sb-* de Supabase
-// Antes las borraba y Supabase no podía renovar el token → usuario deslogueado
-// Ahora solo limpia el flag de la app
 function clearAllAuthState(setUser: any, setAuthenticated: any) {
   setUser(null);
   setAuthenticated(false);
@@ -127,9 +153,13 @@ async function processSession(session: any, setUser: any, setAuthenticated: any,
   const profile = await resolveUserProfile(session.user.id, session.user.email || '');
   setUser(profile as any);
   setAuthenticated(true);
-  // FIX [1]: marcar que hubo sesión para evitar flash del Landing al recargar
   localStorage.setItem('aidark_was_authenticated', 'true');
   loadFromSupabase(session.user.id).catch(console.error);
+
+  // FIX [3]: registrar push después de confirmar sesión válida
+  if (session.access_token) {
+    registerPush(session.access_token);
+  }
 }
 
 const App: React.FC = () => {
@@ -138,12 +168,11 @@ const App: React.FC = () => {
   const { loadFromSupabase } = useChatStore();
 
   const [authComplete, setAuthComplete] = useState(false);
-  const [authError, setAuthError] = useState('');
-  const [showAuth, setShowAuth] = useState(false);
+  const [authError, setAuthError]       = useState('');
+  const [showAuth, setShowAuth]         = useState(false);
   const initialized = useRef(false);
-  const doneRef = useRef(false);
+  const doneRef     = useRef(false);
 
-  // FIX [1]: si el usuario ya se había logueado antes, no mostrar Landing mientras verifica
   const hadSession = localStorage.getItem('aidark_was_authenticated') === 'true';
 
   const done = (clearAuth = false) => {
@@ -151,7 +180,6 @@ const App: React.FC = () => {
     doneRef.current = true;
     if (clearAuth) {
       clearAllAuthState(setUser, setAuthenticated);
-      // Si no hay sesión, limpiar el flag para mostrar el Landing correctamente
       localStorage.removeItem('aidark_was_authenticated');
     }
     setAuthComplete(true);
@@ -261,7 +289,6 @@ const App: React.FC = () => {
 
   // ── Render ──
   if (!authComplete) {
-    // FIX [1]: siempre mostrar el loading spinner, nunca el Landing, mientras verifica
     return (
       <div style={{ minHeight: '100dvh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#000', flexDirection: 'column', gap: 20 }}>
         <img src="/icon-512.png" alt="AIdark" style={{ width: 120, height: 120, borderRadius: 24, animation: 'fadeIn 0.6s ease, pulse 2s ease-in-out infinite' }} />
