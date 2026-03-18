@@ -20,11 +20,11 @@ interface Particle {
 }
 
 const COLORS: number[][] = [
-  [139, 115, 85],
-  [160, 81, 59],
-  [160, 137, 106],
-  [120, 95, 65],
-  [180, 110, 55],
+  [255, 40,  20],   // rojo fosforescente fuerte
+  [220, 60,  10],   // naranja-rojo depredador
+  [255, 80,  40],   // rojo cálido
+  [200, 30,  10],   // rojo oscuro intenso
+  [255, 120, 30],   // naranja fuego
 ];
 
 const MAX_PARTICLES = 30;
@@ -238,7 +238,7 @@ export const TypingParticles: React.FC<{ trigger: number }> = ({ trigger }) => {
 
       const fadeIn = p.life > 0.88 ? (1 - p.life) / 0.12 : 1;
       const fadeOut = p.life < 0.35 ? p.life / 0.35 : 1;
-      const opacity = fadeIn * fadeOut * 0.22;
+      const opacity = fadeIn * fadeOut * 0.45;
 
       if (opacity <= 0.003) return true;
 
