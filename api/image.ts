@@ -214,7 +214,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const data = await veniceRes.json() as any;
 
     return res.status(200).json({
-      images:    data.images || [],
+      images: data.images?.map((img: any) => img.b64_json ?? img) || [],
       used:      newCount,
       limit:     dailyLimit,
       remaining: dailyLimit - newCount,
