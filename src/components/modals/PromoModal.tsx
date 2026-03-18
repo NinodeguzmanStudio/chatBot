@@ -1,15 +1,17 @@
 // ═══════════════════════════════════════
 // AIdark — Promo Modal (50% OFF)
-// FIX: planIds corregidos → precios reales
+// FIX: handleSubscribe ahora envía Bearer token
+//      (create-payment.ts lo requiere desde el último fix de seguridad)
 // ═══════════════════════════════════════
 
 import React, { useState, useEffect } from 'react';
 import { X, Loader2 } from 'lucide-react';
 import { useAuthStore } from '@/lib/store';
 import { useIsMobile } from '@/hooks/useIsMobile';
+import { supabase } from '@/lib/supabase';
 
 const PROMO_START_KEY = 'aidark_promo_start';
-const PROMO_DURATION = 24 * 60 * 60 * 1000;
+const PROMO_DURATION  = 24 * 60 * 60 * 1000;
 
 function getPromoRemaining(): { h: number; m: number; s: number; expired: boolean } {
   let start = localStorage.getItem(PROMO_START_KEY);
@@ -29,34 +31,24 @@ function getPromoRemaining(): { h: number; m: number; s: number; expired: boolea
 
 const pad = (n: number) => String(n).padStart(2, '0');
 
-// ── IDs corregidos: apuntan a los planes _promo en create-payment.ts ──
 const PROMO_PLANS = [
   {
-    id: 'basic_monthly_promo',       // ← corregido (antes: 'basic_monthly')
+    id: 'basic_monthly_promo',
     name: 'Basic',
-    before: '$12',
-    after: '$6',
-    period: '/mes',
-    equivalent: '$6/mes',
-    features: ['Mensajes ilimitados', '3 personajes IA', 'Historial 30 días', '10 imágenes HD/día'],
+    before: '$12', after: '$6', period: '/mes', equivalent: '$6/mes',
+    features: ['Mensajes ilimitados', '3 personajes IA', 'Historial 90 días', '10 imágenes HD/día'],
   },
   {
-    id: 'pro_quarterly_promo',       // ← corregido (antes: 'pro_monthly' — no existía)
+    id: 'pro_quarterly_promo',
     name: 'Pro',
-    before: '$29.99',
-    after: '$15',
-    period: '/3 meses',
-    equivalent: '$5/mes',
+    before: '$29.99', after: '$15', period: '/3 meses', equivalent: '$5/mes',
     popular: true,
     features: ['Todo en Basic', '5 personajes IA', '25 imágenes HD/día', 'Hentai · Manhwa · Manga'],
   },
   {
-    id: 'ultra_annual_promo',        // ← corregido (antes: 'ultra_annual' → precio completo)
+    id: 'ultra_annual_promo',
     name: 'Ultra',
-    before: '$99.99',
-    after: '$50',
-    period: '/año',
-    equivalent: '$4.16/mes',
+    before: '$99.99', after: '$50', period: '/año', equivalent: '$4.16/mes',
     features: ['Todo en Pro', '50 imágenes HD/día', 'Badge Fundador', 'Soporte VIP'],
   },
 ];
@@ -69,10 +61,10 @@ interface PromoModalProps {
 
 export const PromoModal: React.FC<PromoModalProps> = ({ isOpen, onClose, onOpenPricing }) => {
   const { user } = useAuthStore();
-  const [countdown, setCountdown] = useState(getPromoRemaining());
-  const [loading, setLoading] = useState<string | null>(null);
-  const [error, setError] = useState('');
-  const [pulse, setPulse] = useState(false);
+  const [countdown, setCountdown]   = useState(getPromoRemaining());
+  const [loading, setLoading]       = useState<string | null>(null);
+  const [error, setError]           = useState('');
+  const [pulse, setPulse]           = useState(false);
   const [hoveredPlan, setHoveredPlan] = useState<string | null>(null);
   const isMobile = useIsMobile();
 
@@ -92,16 +84,28 @@ export const PromoModal: React.FC<PromoModalProps> = ({ isOpen, onClose, onOpenP
     if (isOpen && countdown.expired) { onClose(); onOpenPricing(); }
   }, [isOpen, countdown.expired]);
 
+  // FIX: ahora envía el Bearer token igual que PricingModal
   const handleSubscribe = async (planId: string) => {
     if (!user) { setError('Necesitas una cuenta.'); return; }
     setLoading(planId);
     setError('');
     try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        setError('Sesión expirada. Recargá la página.');
+        setLoading(null);
+        return;
+      }
+
       const res = await fetch('/api/create-payment', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type':  'application/json',
+          'Authorization': `Bearer ${session.access_token}`, // FIX
+        },
         body: JSON.stringify({ planId, userEmail: user.email, userId: user.id }),
       });
+
       const data = await res.json();
       if (!res.ok) { setError(data.error || 'Error al crear el pago.'); setLoading(null); return; }
       if (data.init_point) window.location.href = data.init_point;
@@ -130,7 +134,6 @@ export const PromoModal: React.FC<PromoModalProps> = ({ isOpen, onClose, onOpenP
         boxShadow: '0 0 80px rgba(139,115,85,0.15)',
       }}>
 
-        {/* Top glow */}
         <div style={{
           position: 'absolute', top: -80, left: '50%', transform: 'translateX(-50%)',
           width: 500, height: 250,
@@ -138,7 +141,6 @@ export const PromoModal: React.FC<PromoModalProps> = ({ isOpen, onClose, onOpenP
           pointerEvents: 'none',
         }} />
 
-        {/* Animated top border */}
         <div style={{
           position: 'absolute', top: -1, left: -1, right: -1, height: 2,
           background: 'linear-gradient(90deg, transparent, #8b7355, transparent)',
@@ -147,7 +149,6 @@ export const PromoModal: React.FC<PromoModalProps> = ({ isOpen, onClose, onOpenP
 
         <div style={{ position: 'relative', padding: isMobile ? '24px 16px 18px' : '28px 22px 22px' }}>
 
-          {/* Close */}
           <button onClick={onClose} style={{
             position: 'absolute', top: 14, right: 14, width: 32, height: 32,
             borderRadius: 8, background: '#141414', border: '1px solid #222',
@@ -157,7 +158,6 @@ export const PromoModal: React.FC<PromoModalProps> = ({ isOpen, onClose, onOpenP
             <X size={14} />
           </button>
 
-          {/* Hero */}
           <div style={{ textAlign: 'center', marginBottom: 20 }}>
             <div style={{
               display: 'inline-flex', alignItems: 'center', gap: 6,
@@ -187,7 +187,6 @@ export const PromoModal: React.FC<PromoModalProps> = ({ isOpen, onClose, onOpenP
               Mensajes ilimitados · Imágenes sin censura · Todos los personajes
             </p>
 
-            {/* Countdown */}
             <div style={{
               display: 'inline-flex', alignItems: 'center', gap: 0,
               marginTop: 18, borderRadius: 14, overflow: 'hidden',
@@ -215,18 +214,16 @@ export const PromoModal: React.FC<PromoModalProps> = ({ isOpen, onClose, onOpenP
             </div>
           </div>
 
-          {/* Error */}
           {error && (
             <div style={{ padding: '8px 12px', marginBottom: 12, borderRadius: 8, background: 'rgba(200,60,60,0.15)', color: '#ff6b6b', fontSize: 11 }}>
               {error}
             </div>
           )}
 
-          {/* Plans */}
           <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: isMobile ? 'wrap' : 'nowrap' }}>
             {PROMO_PLANS.map(plan => {
               const isHovered = hoveredPlan === plan.id;
-              const isPop = !!plan.popular;
+              const isPop     = !!plan.popular;
               return (
                 <div key={plan.id}
                   onMouseEnter={() => setHoveredPlan(plan.id)}
@@ -304,7 +301,6 @@ export const PromoModal: React.FC<PromoModalProps> = ({ isOpen, onClose, onOpenP
             })}
           </div>
 
-          {/* Urgency bar */}
           <div style={{
             background: '#080808', borderRadius: 12, padding: '12px 16px', border: '1px solid #1a1a1a',
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -312,7 +308,7 @@ export const PromoModal: React.FC<PromoModalProps> = ({ isOpen, onClose, onOpenP
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#8b7355', animation: 'promoPulse 2s ease infinite' }} />
               <span style={{ fontSize: 11, color: '#888' }}>
-                <strong style={{ color: '#d4c5b0' }}>127 personas</strong> vieron esta oferta hoy
+                Pago seguro vía <strong style={{ color: '#d4c5b0' }}>MercadoPago</strong>
               </span>
             </div>
             <div style={{ height: 3, width: 60, background: '#1a1a1a', borderRadius: 2, overflow: 'hidden' }}>
@@ -326,7 +322,7 @@ export const PromoModal: React.FC<PromoModalProps> = ({ isOpen, onClose, onOpenP
         </div>
 
         <style>{`
-          @keyframes promoIn { from { opacity:0; transform:scale(0.92) translateY(20px); } to { opacity:1; transform:scale(1) translateY(0); } }
+          @keyframes promoIn { from{opacity:0;transform:scale(0.92) translateY(20px)} to{opacity:1;transform:scale(1) translateY(0)} }
           @keyframes promoPulse { 0%,100%{opacity:1;box-shadow:0 0 4px rgba(139,115,85,0.5)} 50%{opacity:.5;box-shadow:0 0 8px rgba(139,115,85,0.2)} }
           @keyframes promoBlink { 0%,100%{opacity:1} 50%{opacity:.3} }
           @keyframes promoSpin { to{transform:rotate(360deg)} }
