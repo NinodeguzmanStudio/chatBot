@@ -1,17 +1,21 @@
 // ═══════════════════════════════════════
 // AIdark — Venice AI Service
 // src/services/venice.ts
-// FIX: errores 403 ahora incluyen el código de error para que
-//      mobile pueda identificar FREE_LIMIT_REACHED correctamente
+// MEJORA: 6 modelos mapeados a Venice API
 // ═══════════════════════════════════════
 
 import type { Message, ModelId, CharacterId, VeniceContentPart } from '@/types';
 import { supabase } from '@/lib/supabase';
 
+// Mapa de ModelId del frontend → modelo real de Venice API
+// Todos usan la misma API de Venice, solo cambia el modelo
 const VENICE_MODELS: Record<ModelId, string> = {
-  venice:     'venice-uncensored',
-  'dark-grok': 'venice-uncensored',
-  'void-x':   'qwen3-235b',
+  'venice':     'venice-uncensored',   // Modelo principal sin censura
+  'dark-grok':  'venice-uncensored',   // Mismo modelo, distinto personaje
+  'void-x':     'qwen3-235b',          // Qwen ultra conciso
+  'llama-fast': 'llama-3.3-70b',       // Llama rápido (70B)
+  'llama-pro':  'llama-3.1-405b',      // Llama máxima potencia (405B)
+  'mistral':    'mistral-31-24b',      // Mistral preciso
 };
 
 const VISION_MODEL = 'qwen-2.5-vl-72b';
@@ -51,7 +55,7 @@ function needsVisionModel(messages: Message[]): boolean {
   return messages.some((m) => m.attachment?.type === 'image');
 }
 
-// ── Error tipado para poder identificar el código en el catch ──
+// ── Error tipado ──
 export class ApiError extends Error {
   code: string;
   constructor(message: string, code: string) {
@@ -61,17 +65,15 @@ export class ApiError extends Error {
   }
 }
 
-// ── Parsear error de respuesta HTTP ──
 async function parseResponseError(response: Response): Promise<never> {
   let errorMsg  = 'Error al conectar con AIdark';
   let errorCode = 'UNKNOWN';
 
   try {
     const body = await response.json();
-    if (body.error)  errorMsg  = body.error;
-    if (body.code)   errorCode = body.code;
+    if (body.error) errorMsg  = body.error;
+    if (body.code)  errorCode = body.code;
   } catch {
-    // Si json() falla, usar status para determinar el código
     if (response.status === 403) errorCode = 'FORBIDDEN';
     if (response.status === 429) errorCode = 'RATE_LIMIT';
     if (response.status === 401) errorCode = 'UNAUTHORIZED';
@@ -85,7 +87,7 @@ export async function sendMessage(
   model: ModelId,
   character: CharacterId = 'default'
 ): Promise<string> {
-  const veniceModel = needsVisionModel(messages) ? VISION_MODEL : VENICE_MODELS[model];
+  const veniceModel = needsVisionModel(messages) ? VISION_MODEL : VENICE_MODELS[model] || VENICE_MODELS['venice'];
   const token = await getAuthToken();
 
   const response = await fetch('/api/chat', {
@@ -108,7 +110,7 @@ export async function sendMessageStream(
   onDone: () => void,
   signal?: AbortSignal
 ): Promise<void> {
-  const veniceModel = needsVisionModel(messages) ? VISION_MODEL : VENICE_MODELS[model];
+  const veniceModel = needsVisionModel(messages) ? VISION_MODEL : VENICE_MODELS[model] || VENICE_MODELS['venice'];
   const token = await getAuthToken();
 
   const response = await fetch('/api/chat', {
