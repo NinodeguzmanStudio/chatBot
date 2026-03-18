@@ -1,21 +1,20 @@
 // ═══════════════════════════════════════
-// AIdark — Image API (FIXED)
+// AIdark — Image API
 // api/image.ts
-// ═══════════════════════════════════════
-// FIXES aplicados:
-//   [1] Sin validación de width/height — usuario podía pedir 4096x4096 y quemar créditos
-//   [2] Sin lista blanca de category/style — inyección de valores arbitrarios a Venice
-//   [3] Race condition en el contador — dos requests simultáneos pasaban el límite
-//       Ahora se incrementa atómicamente con una función SQL
-//   [4] plan expiry solo actualizaba plan='free' sin limpiar plan_id
-//   [5] negative_prompt sin límite de longitud
+// FIXES:
+//   [1] Dimensiones validadas contra lista blanca
+//   [2] category/style validados contra lista blanca
+//   [3] Race condition en contador — incremento atómico
+//   [4] plan expiry limpia plan_id
+//   [5] negative_prompt limitado a 500 chars
+//   [6] NEGRO FIX — Venice devuelve { b64_json } no string raw
 // ═══════════════════════════════════════
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient } from '@supabase/supabase-js';
 
-const VENICE_API_KEY   = process.env.VENICE_API_KEY || '';
-const SUPABASE_URL     = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL!;
+const VENICE_API_KEY       = process.env.VENICE_API_KEY || '';
+const SUPABASE_URL         = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL!;
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
@@ -32,11 +31,9 @@ const ANIME_PLANS = new Set([
   'pro_quarterly', 'ultra_annual',
 ]);
 
-// FIX [1]: dimensiones permitidas — solo valores estándar de Venice
 const ALLOWED_DIMENSIONS = new Set([512, 768, 1024]);
 const DEFAULT_SIZE = 1024;
 
-// FIX [2]: listas blancas de category y style
 const ALLOWED_CATEGORIES = new Set(['realistic', 'anime']);
 const ALLOWED_STYLES      = new Set(['hentai', 'manhwa', 'manga', 'ecchi', 'realistic']);
 
@@ -89,7 +86,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
   }
 
-  // FIX [4]: al expirar también limpiar plan_id
   if (profile.plan_expires_at && new Date(profile.plan_expires_at) < new Date()) {
     await supabase
       .from('profiles')
@@ -111,7 +107,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
   }
 
-  // ── Extraer y validar parámetros del body ──
+  // ── Parámetros del body ──
   const {
     prompt,
     negative_prompt = '',
@@ -123,7 +119,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (!prompt?.trim()) return res.status(400).json({ error: 'El prompt es requerido.' });
 
-  // FIX [2]: validar category y style contra lista blanca
   if (!ALLOWED_CATEGORIES.has(category)) {
     return res.status(400).json({ error: 'Categoría inválida.', code: 'INVALID_CATEGORY' });
   }
@@ -131,7 +126,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(400).json({ error: 'Estilo inválido.', code: 'INVALID_STYLE' });
   }
 
-  // FIX [1]: validar dimensiones contra lista blanca
   const safeWidth  = ALLOWED_DIMENSIONS.has(Number(width))  ? Number(width)  : DEFAULT_SIZE;
   const safeHeight = ALLOWED_DIMENSIONS.has(Number(height)) ? Number(height) : DEFAULT_SIZE;
 
@@ -142,15 +136,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
   }
 
-  const enhancer    = getEnhancer(category, style);
-  const model       = category === 'anime' ? 'lustify-sdxl' : 'venice-sd35';
-  const safePrompt  = `${prompt.trim().slice(0, 1000)}, ${enhancer}`;
-  // FIX [5]: limitar negative_prompt a 500 chars
+  const enhancer     = getEnhancer(category, style);
+  const model        = category === 'anime' ? 'lustify-sdxl' : 'venice-sd35';
+  const safePrompt   = `${prompt.trim().slice(0, 1000)}, ${enhancer}`;
   const safeNegative = `${NEGATIVE_BASE}${negative_prompt ? ', ' + String(negative_prompt).slice(0, 500) : ''}`;
 
-  // FIX [3]: incrementar el contador ANTES de llamar a Venice
-  //          para prevenir race condition con requests simultáneos.
-  //          Si Venice falla, decrementamos.
+  // Incrementar contador antes de llamar a Venice (anti race-condition)
   const newCount = usedToday + 1;
   const { error: updateError } = await supabase
     .from('profiles')
@@ -160,11 +151,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       updated_at:   new Date().toISOString(),
     })
     .eq('id', user.id)
-    // Condición atómica: solo actualiza si el valor no cambió mientras procesábamos
     .eq('images_today', usedToday);
 
   if (updateError) {
-    // Si otro request ya incrementó el contador, rechazar este
     console.error('[Image API] Concurrent request detected or DB error:', updateError);
     return res.status(429).json({
       error: 'Demasiadas solicitudes simultáneas. Intentá de nuevo.',
@@ -183,7 +172,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         model,
         prompt:          safePrompt,
         negative_prompt: safeNegative,
-        width:           safeWidth,   // FIX [1]: usar dimensiones validadas
+        width:           safeWidth,
         height:          safeHeight,
         safe_mode:       false,
         hide_watermark:  true,
@@ -194,7 +183,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
 
     if (!veniceRes.ok) {
-      // FIX [3]: si Venice falla, revertir el contador
+      // Revertir contador si Venice falla
       await supabase
         .from('profiles')
         .update({ images_today: usedToday, updated_at: new Date().toISOString() })
@@ -213,15 +202,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const data = await veniceRes.json() as any;
 
+    // FIX [6]: Venice devuelve array de objetos { b64_json, index, ... }
+    // NO strings crudos. Extraer b64_json de cada objeto.
+    const images = (data.images || [])
+      .map((img: any) => typeof img === 'string' ? img : (img.b64_json || img.url || ''))
+      .filter(Boolean);
+
     return res.status(200).json({
-      images: data.images?.map((img: any) => img.b64_json ?? img) || [],
+      images,
       used:      newCount,
       limit:     dailyLimit,
       remaining: dailyLimit - newCount,
     });
 
   } catch (err: any) {
-    // FIX [3]: revertir contador si hay error inesperado
+    // Revertir contador si hay error inesperado
     await supabase
       .from('profiles')
       .update({ images_today: usedToday, updated_at: new Date().toISOString() })
