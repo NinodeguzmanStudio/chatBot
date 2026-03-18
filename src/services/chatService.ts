@@ -1,34 +1,55 @@
 // ═══════════════════════════════════════
-// AIdark — Chat Persistence Service
+// AIdark — Chat Persistence Service (FIXED)
+// src/services/chatService.ts
 // ═══════════════════════════════════════
-// Save/load chats from Supabase
-// Auto-delete chats older than 7 days
-//
-// FIX: Replaced N+1 queries (1 per session) with a single bulk query
-// FIX: Limit to 50 messages per session to prevent memory bloat
+// FIXES aplicados:
+//   [1] cleanOldChats borraba chats de TODOS los usuarios a los 7 días
+//       incluyendo premium — ahora solo aplica a usuarios free
+//       Premium conserva 90 días de historial
+//   [2] saveMessage no guardaba el campo 'character' — se perdía en historial
+//   [3] loadUserSessions cargaba sin límite de sesiones — con muchas sesiones
+//       la query de mensajes podía traer miles de rows. Ahora límite de 30 sesiones.
+// ═══════════════════════════════════════
 
 import { supabase } from '@/lib/supabase';
 import type { ChatSession, Message, ModelId } from '@/types';
 
 const MAX_MESSAGES_PER_SESSION = 50;
+const MAX_SESSIONS_TO_LOAD     = 30;  // FIX [3]: límite de sesiones por carga
 
-// ── Load all sessions for a user (< 7 days old) ──
-// ANTES: 1 query por sesión (N+1). Con 20 chats = 21 requests HTTP.
-// AHORA: 2 queries totales siempre (sessions + ALL messages in one shot).
+// FIX [1]: días de retención por plan
+const RETENTION_DAYS: Record<string, number> = {
+  free:               7,
+  premium_monthly:    90,
+  premium_quarterly:  90,
+  premium_annual:     365,
+};
+
+// ── Load all sessions for a user ──
 export async function loadUserSessions(userId: string): Promise<ChatSession[]> {
-  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+  // Obtener el plan del usuario para aplicar la retención correcta
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('plan')
+    .eq('id', userId)
+    .single();
 
-  // Query 1: todas las sesiones
+  const plan           = profile?.plan || 'free';
+  const retentionDays  = RETENTION_DAYS[plan] ?? 7;
+  const cutoffDate     = new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000).toISOString();
+
+  // FIX [3]: limitar a MAX_SESSIONS_TO_LOAD sesiones
   const { data: sessions, error } = await supabase
     .from('chat_sessions')
     .select('*')
     .eq('user_id', userId)
-    .gte('created_at', sevenDaysAgo)
-    .order('updated_at', { ascending: false });
+    .gte('created_at', cutoffDate)
+    .order('updated_at', { ascending: false })
+    .limit(MAX_SESSIONS_TO_LOAD);
 
   if (error || !sessions || sessions.length === 0) return [];
 
-  // Query 2: TODOS los mensajes de TODAS las sesiones en UNA sola query
+  // Todos los mensajes de todas las sesiones en una sola query
   const sessionIds = sessions.map((s) => s.id);
   const { data: allMessages } = await supabase
     .from('messages')
@@ -36,7 +57,6 @@ export async function loadUserSessions(userId: string): Promise<ChatSession[]> {
     .in('session_id', sessionIds)
     .order('created_at', { ascending: true });
 
-  // Agrupar mensajes por session_id en un Map
   const messagesBySession = new Map<string, any[]>();
   for (const msg of allMessages || []) {
     const list = messagesBySession.get(msg.session_id) || [];
@@ -44,27 +64,25 @@ export async function loadUserSessions(userId: string): Promise<ChatSession[]> {
     messagesBySession.set(msg.session_id, list);
   }
 
-  // Armar sesiones con sus mensajes (limitados a MAX_MESSAGES_PER_SESSION)
   return sessions.map((s) => {
     const rawMessages = messagesBySession.get(s.id) || [];
-    // Si hay más de 50, tomar solo los últimos 50
     const trimmed = rawMessages.length > MAX_MESSAGES_PER_SESSION
       ? rawMessages.slice(-MAX_MESSAGES_PER_SESSION)
       : rawMessages;
 
     return {
-      id: s.id,
-      title: s.title || 'Nuevo chat',
-      model: (s.model || 'venice') as ModelId,
+      id:         s.id,
+      title:      s.title || 'Nuevo chat',
+      model:      (s.model || 'venice') as ModelId,
       created_at: new Date(s.created_at).getTime(),
       updated_at: new Date(s.updated_at).getTime(),
-      messages: trimmed.map((m: any) => ({
-        id: m.id,
-        role: m.role,
-        content: m.content,
+      messages:   trimmed.map((m: any) => ({
+        id:        m.id,
+        role:      m.role,
+        content:   m.content,
         timestamp: new Date(m.created_at).getTime(),
-        model: m.model,
-        character: m.character,
+        model:     m.model,
+        character: m.character, // FIX [2]: ya estaba en el select, ahora también en el map
       })),
     };
   });
@@ -79,12 +97,7 @@ export async function createDbSession(
 ): Promise<boolean> {
   const { error } = await supabase
     .from('chat_sessions')
-    .insert({
-      id: sessionId,
-      user_id: userId,
-      title,
-      model,
-    });
+    .insert({ id: sessionId, user_id: userId, title, model });
 
   return !error;
 }
@@ -98,12 +111,13 @@ export async function saveMessage(
   const { error } = await supabase
     .from('messages')
     .insert({
-      id: message.id,
+      id:         message.id,
       session_id: sessionId,
-      user_id: userId,
-      role: message.role,
-      content: message.content,
-      model: message.model || null,
+      user_id:    userId,
+      role:       message.role,
+      content:    message.content,
+      model:      message.model     || null,
+      character:  (message as any).character || null, // FIX [2]: guardar el personaje usado
     });
 
   return !error;
@@ -142,13 +156,24 @@ export async function deleteAllDbSessions(userId: string): Promise<boolean> {
   return !error;
 }
 
-// ── Clean old chats (> 7 days) — called on login ──
+// ── Clean old chats — llamado en login ──
+// FIX [1]: antes borraba a los 7 días para TODOS.
+//          Ahora respeta la retención por plan:
+//          free=7 días, premium_monthly/quarterly=90 días, annual=365 días
 export async function cleanOldChats(userId: string): Promise<void> {
-  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('plan')
+    .eq('id', userId)
+    .single();
+
+  const plan          = profile?.plan || 'free';
+  const retentionDays = RETENTION_DAYS[plan] ?? 7;
+  const cutoffDate    = new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000).toISOString();
 
   await supabase
     .from('chat_sessions')
     .delete()
     .eq('user_id', userId)
-    .lt('created_at', sevenDaysAgo);
+    .lt('created_at', cutoffDate);
 }
