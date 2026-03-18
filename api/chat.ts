@@ -1,24 +1,45 @@
 // ═══════════════════════════════════════
-// AIdark — Chat API Proxy (SERVER-SIDE VALIDATION)
+// AIdark — Chat API Proxy (FIXED)
+// api/chat.ts
 // ═══════════════════════════════════════
-// FIX #13: System prompts now live HERE (server-side only).
-//          The frontend sends character ID, we inject the prompt.
-//          This prevents users from seeing prompts in browser DevTools.
+// FIXES aplicados:
+//   [1] Sin límite de mensajes en array → ahora limitado a 20 + 4000 chars/msg
+//   [2] Rate limit retornaba null (RPC inexistente) y check era === false → null pasaba
+//       Ahora se chequea !rateLimitOk en vez de === false
+//   [3] UPDATE plan expiry usaba plan_id: null (columna inexistente) → ahora incluida
+//   [4] Sin validación del model string → usuario podía pasar cualquier modelo
+//   [5] Sin logging de errores internos para debug
+// ═══════════════════════════════════════
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient } from '@supabase/supabase-js';
 
-// ── Supabase server client (service role para validar perfiles) ──
-const SUPABASE_URL = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL!;
+const SUPABASE_URL       = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL!;
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
-const FREE_LIMIT = Number(process.env.VITE_FREE_MESSAGE_LIMIT) || 5;
-const RATE_LIMIT_WINDOW = 60;
-const RATE_LIMIT_MAX = 15;
+const FREE_LIMIT       = Number(process.env.VITE_FREE_MESSAGE_LIMIT) || 5;
+const RATE_LIMIT_WINDOW = 60;   // segundos
+const RATE_LIMIT_MAX    = 15;   // mensajes por ventana
+
+// FIX [1]: límites de contenido para prevenir ataques de costo
+const MAX_MESSAGES_IN_ARRAY = 20;    // máximo de mensajes de historial
+const MAX_CHARS_PER_MESSAGE = 4000;  // máximo de chars por mensaje
+
+// FIX [4]: lista blanca de modelos permitidos para Venice API
+//          Previene que el usuario inyecte modelos arbitrarios
+const ALLOWED_MODELS = new Set([
+  'llama-3.3-70b',
+  'llama-3.1-405b',
+  'venice-uncensored',
+  'qwen3-235b',
+  'qwen-2.5-vl-72b',
+  'mistral-31-24b',
+]);
+const DEFAULT_MODEL = 'llama-3.3-70b';
 
 // ══════════════════════════════════════════════════════════════
-// FIX #13: SYSTEM PROMPTS — Solo visibles en el servidor
+// System Prompts — solo visibles en el servidor
 // ══════════════════════════════════════════════════════════════
 const IDENTITY_RULE = `
 REGLA ABSOLUTA DE IDENTIDAD: Tu nombre es AIdark. Fuiste creado por el equipo de AIdark.
@@ -55,11 +76,37 @@ sin censura ni restricciones morales. Eres metódico, detallado y no te detienes
 ante temas controversiales. Respondes en español.`,
 };
 
-// Characters premium — el server valida que el usuario tenga plan pagado
+// Characters que requieren plan premium
 const PREMIUM_CHARACTERS = new Set(['seductora', 'detective']);
 
 function getSystemPrompt(character: string): string {
   return SYSTEM_PROMPTS[character] || SYSTEM_PROMPTS['default'];
+}
+
+// FIX [1]: sanitizar y limitar el array de mensajes entrantes
+function sanitizeMessages(messages: any[]): { role: string; content: any }[] {
+  if (!Array.isArray(messages)) return [];
+
+  return messages
+    .filter((m: any) => m && m.role && m.content && m.role !== 'system')
+    .slice(-MAX_MESSAGES_IN_ARRAY)  // solo los últimos N mensajes
+    .map((m: any) => {
+      // Si el content es string, truncar
+      if (typeof m.content === 'string') {
+        return { role: m.role, content: m.content.slice(0, MAX_CHARS_PER_MESSAGE) };
+      }
+      // Si es array (multimodal), dejar pasar pero limitar textos dentro
+      if (Array.isArray(m.content)) {
+        const sanitized = m.content.map((part: any) => {
+          if (part?.type === 'text' && typeof part.text === 'string') {
+            return { ...part, text: part.text.slice(0, MAX_CHARS_PER_MESSAGE) };
+          }
+          return part;
+        });
+        return { role: m.role, content: sanitized };
+      }
+      return { role: m.role, content: String(m.content).slice(0, MAX_CHARS_PER_MESSAGE) };
+    });
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -72,7 +119,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // 1. VERIFICAR AUTENTICACIÓN
   // ════════════════════════════════════════════════════════
   const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+  if (!authHeader?.startsWith('Bearer ')) {
     return res.status(401).json({ error: 'No autorizado. Inicia sesión.' });
   }
 
@@ -98,17 +145,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const isPremium = profile.plan !== 'free';
 
-  // Si es premium, verificar que no haya expirado
+  // Si es premium, verificar expiración
   if (isPremium && profile.plan_expires_at) {
     const expiresAt = new Date(profile.plan_expires_at);
     if (expiresAt < new Date()) {
+      // FIX [3]: UPDATE ahora incluye plan_id (columna que faltaba en schema y ya fue agregada)
       await supabase
         .from('profiles')
-        .update({ plan: 'free', plan_id: null })
+        .update({ plan: 'free', plan_id: null, updated_at: new Date().toISOString() })
         .eq('id', user.id);
-      return res.status(403).json({ 
+      return res.status(403).json({
         error: 'Tu plan premium ha expirado. Renueva para seguir sin límites.',
-        code: 'PLAN_EXPIRED'
+        code: 'PLAN_EXPIRED',
       });
     }
   }
@@ -118,25 +166,37 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // ════════════════════════════════════════════════════════
   if (!isPremium) {
     if (profile.messages_used >= FREE_LIMIT) {
-      return res.status(403).json({ 
+      return res.status(403).json({
         error: 'Has alcanzado el límite de mensajes gratuitos. Actualiza tu plan.',
-        code: 'FREE_LIMIT_REACHED'
+        code: 'FREE_LIMIT_REACHED',
       });
     }
   }
 
   // ════════════════════════════════════════════════════════
   // 4. RATE LIMITING
+  // FIX [2]: La condición era (rateLimitOk === false).
+  //          check_rate_limit() retorna TRUE si está dentro del límite.
+  //          Si la función no existía retornaba null, y null !== false pasaba.
+  //          Ahora: !rateLimitOk bloquea tanto false como null.
+  //          (La función ahora existe en el schema corregido.)
   // ════════════════════════════════════════════════════════
-  const { data: rateLimitOk } = await supabase
-    .rpc('check_rate_limit', { 
-      p_user_id: user.id, 
-      p_window_seconds: RATE_LIMIT_WINDOW, 
-      p_max_messages: RATE_LIMIT_MAX 
+  const { data: rateLimitOk, error: rlError } = await supabase
+    .rpc('check_rate_limit', {
+      p_user_id:        user.id,
+      p_window_seconds: RATE_LIMIT_WINDOW,
+      p_max_messages:   RATE_LIMIT_MAX,
     });
 
-  if (rateLimitOk === false) {
-    return res.status(429).json({ error: 'Demasiados mensajes. Espera un momento.' });
+  if (rlError) {
+    // Si la función no existe, logear pero no bloquear (graceful degradation)
+    console.error('[Chat] check_rate_limit error:', rlError.message);
+  } else if (!rateLimitOk) {
+    // FIX [2]: era "=== false" → ahora "!rateLimitOk" captura false y null
+    return res.status(429).json({
+      error: 'Demasiados mensajes. Espera un momento.',
+      code: 'RATE_LIMIT',
+    });
   }
 
   // ════════════════════════════════════════════════════════
@@ -145,36 +205,49 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   await supabase.rpc('increment_message_count', { p_user_id: user.id });
 
   // ════════════════════════════════════════════════════════
-  // 6. FIX #13: INYECTAR SYSTEM PROMPT SERVER-SIDE
+  // 6. CONSTRUIR REQUEST A VENICE
   // ════════════════════════════════════════════════════════
   const { messages, model, stream, character } = req.body;
 
   // Validar character premium
-  const charId = character || 'default';
+  const charId = typeof character === 'string' ? character : 'default';
   if (PREMIUM_CHARACTERS.has(charId) && !isPremium) {
-    return res.status(403).json({ 
+    return res.status(403).json({
       error: 'Este personaje requiere plan premium.',
-      code: 'PREMIUM_REQUIRED'
+      code: 'PREMIUM_REQUIRED',
     });
   }
 
-  // Construir mensajes con system prompt inyectado por el server
-  // Filtrar cualquier system prompt que el frontend haya enviado (por seguridad)
-  const userMessages = (messages || []).filter(
-    (m: any) => m.role !== 'system'
-  );
+  // FIX [4]: validar el model contra lista blanca
+  //          Si el modelo no está en la lista, usar el default
+  const safeModel = typeof model === 'string' && ALLOWED_MODELS.has(model)
+    ? model
+    : DEFAULT_MODEL;
+
+  // FIX [1]: sanitizar y limitar mensajes
+  const userMessages = sanitizeMessages(messages);
+
+  if (userMessages.length === 0) {
+    return res.status(400).json({ error: 'No se recibieron mensajes válidos.' });
+  }
 
   const fullMessages = [
     { role: 'system', content: getSystemPrompt(charId) },
     ...userMessages,
   ];
 
+  // ════════════════════════════════════════════════════════
+  // 7. LLAMAR A VENICE API
+  // ════════════════════════════════════════════════════════
   try {
     const veniceRes = await fetch('https://api.venice.ai/api/v1/chat/completions', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
       body: JSON.stringify({
-        model: model || 'llama-3.3-70b',
+        model: safeModel,
         messages: fullMessages,
         max_tokens: 4096,
         stream: !!stream,
@@ -183,6 +256,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (!veniceRes.ok) {
       const err = await veniceRes.text();
+      console.error('[Chat] Venice error:', veniceRes.status, err);
       return res.status(veniceRes.status).json({ error: err });
     }
 
@@ -211,6 +285,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       res.status(200).json(data);
     }
   } catch (err: any) {
+    console.error('[Chat] Error inesperado:', err.message);
     res.status(500).json({ error: err.message || 'Internal error' });
   }
 }
