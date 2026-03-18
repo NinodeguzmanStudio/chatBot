@@ -46,7 +46,7 @@ function generateFingerprint(): string {
     navigator.language,
     navigator.languages?.join(',') || '',
     navigator.hardwareConcurrency,
-    navigator.deviceMemory || 0,
+    (navigator as any).deviceMemory || 0,
     screen.width,
     screen.height,
     screen.colorDepth,
