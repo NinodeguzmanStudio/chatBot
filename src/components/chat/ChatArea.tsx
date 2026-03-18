@@ -162,7 +162,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
       const objectUrl = URL.createObjectURL(file);
       img.onload = () => {
         URL.revokeObjectURL(objectUrl);
-        const MAX_DIM = 1024;
+        const MAX_DIM = 800;
         let w = img.width, h = img.height;
         if (w > MAX_DIM || h > MAX_DIM) {
           if (w > h) { h = Math.round(h * MAX_DIM / w); w = MAX_DIM; }
@@ -171,7 +171,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
         const canvas = document.createElement('canvas');
         canvas.width = w; canvas.height = h;
         canvas.getContext('2d')!.drawImage(img, 0, 0, w, h);
-        const compressed = canvas.toDataURL('image/jpeg', 0.82);
+        const compressed = canvas.toDataURL('image/jpeg', 0.70);
         setAttachment({ type: 'image', data: compressed.split(',')[1], name: file.name, mimeType: 'image/jpeg', preview: compressed });
       };
       img.src = objectUrl;
