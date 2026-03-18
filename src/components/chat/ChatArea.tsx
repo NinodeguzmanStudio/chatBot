@@ -1,8 +1,6 @@
 // ═══════════════════════════════════════
-// AIdark — Chat Area (FIXED)
+// AIdark — Chat Area
 // src/components/chat/ChatArea.tsx
-// FIX: círculo de progreso de mensajes para usuarios free
-//      se muestra junto al botón de enviar
 // ═══════════════════════════════════════
 
 import React, { useRef, useEffect, useState } from 'react';
@@ -19,18 +17,16 @@ import { useIsMobile } from '@/hooks/useIsMobile';
 import { t } from '@/lib/i18n';
 import type { Message, Attachment } from '@/types';
 
-const MAX_FILE_SIZE = 3 * 1024 * 1024; // 3MB → base64 queda en ~4MB, bajo el límite de Vercel
+const MAX_FILE_SIZE         = 3 * 1024 * 1024;
 const ALLOWED_IMAGE_TYPES   = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
 const ALLOWED_PDF_TYPES     = ['application/pdf'];
 const ALLOWED_TYPES         = [...ALLOWED_IMAGE_TYPES, ...ALLOWED_PDF_TYPES];
-const FREE_LIMIT            = APP_CONFIG.freeMessageLimit; // 12
+const FREE_LIMIT            = APP_CONFIG.freeMessageLimit;
 
 interface ChatAreaProps {
   onOpenPricing: () => void;
 }
 
-// ── Círculo de progreso SVG ──
-// Muestra cuántos mensajes quedan. Solo para usuarios free.
 const MessageProgressCircle: React.FC<{
   remaining: number;
   total: number;
@@ -43,8 +39,6 @@ const MessageProgressCircle: React.FC<{
   const used       = total - remaining;
   const progress   = Math.min(used / total, 1);
   const dashOffset = circ * (1 - progress);
-
-  // Color según cuánto queda
   const color =
     remaining <= 2 ? '#e05555' :
     remaining <= 5 ? '#c9944a' :
@@ -62,34 +56,15 @@ const MessageProgressCircle: React.FC<{
       }}
     >
       <svg width={size} height={size} style={{ transform: 'rotate(-90deg)' }}>
-        {/* Track */}
+        <circle cx={size/2} cy={size/2} r={radius} fill="none" stroke="var(--border-sub)" strokeWidth={stroke} />
         <circle
-          cx={size / 2} cy={size / 2} r={radius}
-          fill="none"
-          stroke="var(--border-sub)"
-          strokeWidth={stroke}
-        />
-        {/* Progreso */}
-        <circle
-          cx={size / 2} cy={size / 2} r={radius}
-          fill="none"
-          stroke={color}
-          strokeWidth={stroke}
-          strokeLinecap="round"
-          strokeDasharray={circ}
-          strokeDashoffset={dashOffset}
+          cx={size/2} cy={size/2} r={radius} fill="none"
+          stroke={color} strokeWidth={stroke} strokeLinecap="round"
+          strokeDasharray={circ} strokeDashoffset={dashOffset}
           style={{ transition: 'stroke-dashoffset 0.4s ease, stroke 0.3s ease' }}
         />
       </svg>
-      {/* Número en el centro */}
-      <span style={{
-        position: 'absolute',
-        fontSize: remaining >= 10 ? 9 : 10,
-        fontWeight: 600,
-        color,
-        lineHeight: 1,
-        userSelect: 'none',
-      }}>
+      <span style={{ position: 'absolute', fontSize: remaining >= 10 ? 9 : 10, fontWeight: 600, color, lineHeight: 1, userSelect: 'none' }}>
         {remaining}
       </span>
     </button>
@@ -135,18 +110,13 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
 
   useEffect(() => {
     const el = textareaRef.current;
-    if (el) {
-      el.style.height = 'auto';
-      el.style.height = Math.min(el.scrollHeight, 160) + 'px';
-    }
+    if (el) { el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 160) + 'px'; }
   }, [input]);
 
   useEffect(() => {
     if (!showAttachMenu) return;
     const handle = (e: MouseEvent) => {
-      if (attachMenuRef.current && !attachMenuRef.current.contains(e.target as Node)) {
-        setAttachMenu(false);
-      }
+      if (attachMenuRef.current && !attachMenuRef.current.contains(e.target as Node)) setAttachMenu(false);
     };
     document.addEventListener('mousedown', handle);
     return () => document.removeEventListener('mousedown', handle);
@@ -163,46 +133,28 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
   };
 
   const processFile = async (file: File) => {
-  if (file.size > MAX_FILE_SIZE) { alert('Archivo muy grande. Máximo 3MB.'); return; }
-  if (!ALLOWED_TYPES.includes(file.type)) { alert('Formato no soportado. Usa JPG, PNG, WEBP o PDF.'); return; }
-
-  if (ALLOWED_IMAGE_TYPES.includes(file.type)) {
-    const img = new window.Image();
-    const objectUrl = URL.createObjectURL(file);
-    img.onload = () => {
-      URL.revokeObjectURL(objectUrl);
-      const MAX_DIM = 1024;
-      let w = img.width, h = img.height;
-      if (w > MAX_DIM || h > MAX_DIM) {
-        if (w > h) { h = Math.round(h * MAX_DIM / w); w = MAX_DIM; }
-        else       { w = Math.round(w * MAX_DIM / h); h = MAX_DIM; }
-      }
-      const canvas = document.createElement('canvas');
-      canvas.width = w; canvas.height = h;
-      canvas.getContext('2d')!.drawImage(img, 0, 0, w, h);
-      const compressed = canvas.toDataURL('image/jpeg', 0.82);
-      const base64 = compressed.split(',')[1];
-      setAttachment({ type: 'image', data: base64, name: file.name, mimeType: 'image/jpeg', preview: compressed });
-    };
-    img.src = objectUrl;
-  } else if (file.type === 'application/pdf') {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const text = extractPdfText(reader.result as ArrayBuffer);
-      setAttachment({ type: 'pdf', data: text || `[PDF: ${file.name}]`, name: file.name, mimeType: file.type });
-    };
-    reader.readAsArrayBuffer(file);
-  }
-};
+    if (file.size > MAX_FILE_SIZE) { alert('Archivo muy grande. Máximo 3MB.'); return; }
     if (!ALLOWED_TYPES.includes(file.type)) { alert('Formato no soportado. Usa JPG, PNG, WEBP o PDF.'); return; }
 
     if (ALLOWED_IMAGE_TYPES.includes(file.type)) {
-      const reader = new FileReader();
-      reader.onload = () => {
-        const base64 = (reader.result as string).split(',')[1];
-        setAttachment({ type: 'image', data: base64, name: file.name, mimeType: file.type, preview: reader.result as string });
+      const img = new window.Image();
+      const objectUrl = URL.createObjectURL(file);
+      img.onload = () => {
+        URL.revokeObjectURL(objectUrl);
+        const MAX_DIM = 1024;
+        let w = img.width, h = img.height;
+        if (w > MAX_DIM || h > MAX_DIM) {
+          if (w > h) { h = Math.round(h * MAX_DIM / w); w = MAX_DIM; }
+          else       { w = Math.round(w * MAX_DIM / h); h = MAX_DIM; }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        canvas.getContext('2d')!.drawImage(img, 0, 0, w, h);
+        const compressed = canvas.toDataURL('image/jpeg', 0.82);
+        const base64 = compressed.split(',')[1];
+        setAttachment({ type: 'image', data: base64, name: file.name, mimeType: 'image/jpeg', preview: compressed });
       };
-      reader.readAsDataURL(file);
+      img.src = objectUrl;
     } else if (file.type === 'application/pdf') {
       const reader = new FileReader();
       reader.onload = () => {
@@ -230,7 +182,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
         }
       }
       if (matches.length > 0) return matches.join(' ').slice(0, 8000);
-      const plain   = text.replace(/[^\x20-\x7E\n]/g, ' ').replace(/\s+/g, ' ').trim();
+      const plain    = text.replace(/[^\x20-\x7E\n]/g, ' ').replace(/\s+/g, ' ').trim();
       const readable = plain.match(/[a-zA-Z]{3,}/g);
       if (readable && readable.length > 20) return readable.join(' ').slice(0, 8000);
       return '';
@@ -260,9 +212,9 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
     setStreaming('');
     incrementMessages();
 
-    const controller  = new AbortController();
-    abortRef.current  = controller;
-    const msgsToSend  = [...baseMessages, userMsg];
+    const controller = new AbortController();
+    abortRef.current = controller;
+    const msgsToSend = [...baseMessages, userMsg];
 
     try {
       let fullResponse = '';
@@ -318,10 +270,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
 
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const val = e.target.value;
-    if (val.length <= charLimit) {
-      setInput(val);
-      setKeystrokes((k) => k + 1);
-    }
+    if (val.length <= charLimit) { setInput(val); setKeystrokes((k) => k + 1); }
   };
 
   const tabStyle = (active: boolean): React.CSSProperties => ({
@@ -338,11 +287,8 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, height: '100%', position: 'relative', overflow: 'hidden' }}>
       <TypingParticles trigger={keystrokeCount} />
 
-      {/* Tabs */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: isMobile ? '10px 14px 0' : '12px 20px 0', flexShrink: 0 }}>
-        <button style={tabStyle(activeTab === 'chat')} onClick={() => setActiveTab('chat')}>
-          💬 Chat
-        </button>
+        <button style={tabStyle(activeTab === 'chat')} onClick={() => setActiveTab('chat')}>💬 Chat</button>
         <button style={tabStyle(activeTab === 'image')} onClick={() => setActiveTab('image')}>
           <Sparkles size={12} /> Generar imagen
         </button>
@@ -356,7 +302,6 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
 
       {activeTab === 'chat' && (
         <>
-          {/* Mensajes */}
           <div ref={scrollRef} style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', position: 'relative', zIndex: 2 }}>
             {messages.length === 0 && !streamingContent ? (
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
@@ -384,10 +329,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
                   const isLastAI  = isLastMsg && msg.role === 'assistant';
                   return (
                     <MessageBubble
-                      key={msg.id}
-                      message={msg}
-                      index={idx}
-                      isLast={isLastAI}
+                      key={msg.id} message={msg} index={idx} isLast={isLastAI}
                       onEdit={msg.role === 'user' ? handleEdit : undefined}
                       onRegenerate={isLastAI ? handleRegenerate : undefined}
                     />
@@ -417,7 +359,6 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
             )}
           </div>
 
-          {/* Input Area */}
           <div style={{
             padding: messages.length === 0
               ? (isMobile ? '0 12px 24px' : '0 20px 40px')
@@ -426,7 +367,6 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
           }}>
             <div style={{ maxWidth: writerMode ? 900 : 720, width: '100%' }}>
 
-              {/* Attachment preview */}
               {attachment && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', marginBottom: 6, background: 'var(--bg-el)', borderRadius: 10, border: '1px solid var(--border-sub)' }}>
                   {attachment.type === 'image' && attachment.preview ? (
@@ -446,7 +386,6 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
                 </div>
               )}
 
-              {/* Textarea box */}
               <div
                 style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-sub)', borderRadius: isMobile ? 12 : 14, padding: isMobile ? '10px 12px 8px' : '12px 16px 8px', transition: 'border-color 0.2s' }}
                 onFocus={e => e.currentTarget.style.borderColor = 'var(--border-def)'}
@@ -464,7 +403,6 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
 
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 8, gap: 6 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                    {/* Attach */}
                     <div style={{ position: 'relative' }} ref={attachMenuRef}>
                       <button
                         onClick={() => { if (!canAttach) { onOpenPricing(); return; } setAttachMenu(!showAttachMenu); }}
@@ -505,13 +443,8 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
                       {input.length}/{charLimit}
                     </span>
 
-                    {/* Círculo de progreso — solo usuarios free */}
                     {isFree && remaining < 999 && (
-                      <MessageProgressCircle
-                        remaining={remaining}
-                        total={FREE_LIMIT}
-                        onClick={onOpenPricing}
-                      />
+                      <MessageProgressCircle remaining={remaining} total={FREE_LIMIT} onClick={onOpenPricing} />
                     )}
 
                     {isTyping ? (
@@ -529,14 +462,10 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
 
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 6, padding: '0 4px' }}>
                 <span style={{ fontSize: 10, color: 'var(--txt-ghost)' }}>{t('app.chats_private')}</span>
-                {/* Texto de mensajes restantes solo cuando queda poco */}
                 {isFree && remaining <= 3 && (
                   <span style={{ fontSize: 10, color: 'var(--danger)', fontWeight: 500 }}>
                     {remaining === 0 ? 'Sin mensajes — ' : `${remaining} restantes — `}
-                    <span
-                      onClick={onOpenPricing}
-                      style={{ textDecoration: 'underline', cursor: 'pointer' }}
-                    >
+                    <span onClick={onOpenPricing} style={{ textDecoration: 'underline', cursor: 'pointer' }}>
                       Obtener más
                     </span>
                   </span>
