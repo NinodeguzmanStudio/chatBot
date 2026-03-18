@@ -194,7 +194,7 @@ export default function Landing({ onStart }: { onStart?: () => void }) {
         </div>
 
         <p style={{ fontSize: 11, color: "#ffffff33", marginTop: 16 }}>
-          +18 · No requiere tarjeta · 5 mensajes gratis
+          +18 · No requiere tarjeta · 
         </p>
 
         <div style={{
@@ -321,7 +321,7 @@ export default function Landing({ onStart }: { onStart?: () => void }) {
           boxShadow: "0 4px 30px rgba(139,115,85,0.3)",
         }} onClick={onStart}>Obtener acceso ahora →</button>
         <p style={{ fontSize: 11, color: "#ffffff33", marginTop: 12 }}>
-          5 mensajes gratis · No requiere tarjeta · Cancela cuando quieras
+           · No requiere tarjeta · Cancela cuando quieras
         </p>
       </section>
 
