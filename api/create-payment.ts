@@ -2,11 +2,14 @@
 // AIdark — Create MercadoPago Payment
 // api/create-payment.ts
 // FIXES:
-//   [1] Verificación de token Bearer — nadie puede crear pagos por otro usuario
-//   [2] notification_url fija desde env — no puede ser spoofed
+//   [1] Verificación de token Bearer
+//   [2] notification_url fija desde env
 //   [3] Validación de UUID en userId
 //   [4] Sanitización de userEmail
-//   [5] LATAM FIX — payment_methods con cuotas, Pix, PSE, débito habilitados
+//   [5] LATAM: payment_methods habilitados
+//   [6] CRÍTICO: eliminado currency_id:'USD' — bloqueaba el botón Pagar en LATAM
+//       Las cuentas MP de LATAM solo aceptan su moneda local (ARS/PEN/MXN/COP).
+//       Con 'USD' la preferencia se crea OK pero el checkout deshabilita el botón.
 // ═══════════════════════════════════════
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
@@ -19,7 +22,6 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 const APP_URL = process.env.VITE_APP_URL || 'https://aidark.es';
 
 const PLANS: Record<string, { title: string; price: number; period: string; months: number; plan_id: string }> = {
-  // ── Planes normales ──
   basic_monthly: {
     title: 'AIdark Basic - Plan mensual',
     price: 12.00, period: 'monthly', months: 1, plan_id: 'premium_monthly',
@@ -32,7 +34,6 @@ const PLANS: Record<string, { title: string; price: number; period: string; mont
     title: 'AIdark Ultra - Plan anual',
     price: 99.99, period: 'annual', months: 12, plan_id: 'premium_annual',
   },
-  // ── Planes promo 50% OFF ──
   basic_monthly_promo: {
     title: 'AIdark Basic - Plan mensual (Oferta 50%)',
     price: 6.00, period: 'monthly', months: 1, plan_id: 'premium_monthly',
@@ -60,7 +61,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(500).json({ error: 'MercadoPago no configurado.' });
   }
 
-  // ── Verificar autenticación ──
   const authHeader = req.headers.authorization;
   if (!authHeader?.startsWith('Bearer ')) {
     return res.status(401).json({ error: 'No autorizado. Inicia sesión.' });
@@ -72,7 +72,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(401).json({ error: 'Sesión inválida. Inicia sesión de nuevo.' });
   }
 
-  // ── Extraer y validar body ──
   const { planId, userEmail, userId } = req.body;
 
   if (!planId || !userEmail || !userId) {
@@ -98,10 +97,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     const preference = {
       items: [{
-        title: plan.title,
-        quantity: 1,
+        title:      plan.title,
+        quantity:   1,
         unit_price: plan.price,
-        currency_id: 'USD',
+        // FIX [6]: NO incluir currency_id aquí.
+        // Con currency_id:'USD' la preferencia se crea correctamente en la API,
+        // pero MercadoPago deshabilita el botón "Pagar" en el checkout porque
+        // las cuentas LATAM (ARG, PER, MEX, COL, CHI, URU, BRA) solo procesan
+        // su moneda local. Sin este campo, MP usa la moneda de la cuenta automáticamente.
       }],
       payer: { email: safeEmail },
       metadata: {
@@ -118,12 +121,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       auto_return: 'approved',
       notification_url: `${APP_URL}/api/webhook-mercadopago`,
       external_reference: `${user.id}|${plan.plan_id}|${Date.now()}`,
-      // FIX [5]: habilitar todos los métodos de pago LATAM
-      // MercadoPago detecta el país del comprador y muestra:
-      // Pix (Brasil), PSE (Colombia), OXXO (México), débito, transferencia, etc.
+      // Métodos de pago LATAM habilitados (Pix, PSE, OXXO, débito, transferencia)
       payment_methods: {
         excluded_payment_types: [],
-        installments: 3,
+        installments:         3,
         default_installments: 1,
       },
     };
@@ -132,7 +133,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${MP_ACCESS_TOKEN}`,
+        Authorization:  `Bearer ${MP_ACCESS_TOKEN}`,
       },
       body: JSON.stringify(preference),
     });
