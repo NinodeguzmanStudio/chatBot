@@ -11,7 +11,6 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.95.3",
-    "web-push": "^3.6.7",
     "lucide-react": "^0.468.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
@@ -19,6 +18,7 @@
     "react-router-dom": "^7.1.0",
     "react-syntax-highlighter": "^15.6.1",
     "rehype-highlight": "^7.0.0",
+    "web-push": "^3.6.7",
     "zustand": "^5.0.0"
   },
   "devDependencies": {
