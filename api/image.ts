@@ -23,8 +23,10 @@ const DAILY_LIMITS: Record<string, number> = {
   premium_monthly:   10,
   premium_quarterly: 25,
   premium_annual:    50,
+  basic_monthly:     10,
+  pro_quarterly:     25,
+  ultra_annual:      50,
 };
-
 const ANIME_PLANS = new Set(['premium_quarterly', 'premium_annual']);
 
 // FIX [1]: dimensiones permitidas — solo valores estándar de Venice
