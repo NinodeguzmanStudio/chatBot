@@ -1,14 +1,12 @@
 // ═══════════════════════════════════════
-// AIdark — Promo Modal (50% OFF)
-// FIX: handleSubscribe ahora envía Bearer token
-//      (create-payment.ts lo requiere desde el último fix de seguridad)
+// AIdark — Promo Modal (50% OFF) FIXED
 // ═══════════════════════════════════════
 
 import React, { useState, useEffect } from 'react';
 import { X, Loader2 } from 'lucide-react';
 import { useAuthStore } from '@/lib/store';
-import { useIsMobile } from '@/hooks/useIsMobile';
 import { supabase } from '@/lib/supabase';
+import { useIsMobile } from '@/hooks/useIsMobile';
 
 const PROMO_START_KEY = 'aidark_promo_start';
 const PROMO_DURATION  = 24 * 60 * 60 * 1000;
@@ -61,10 +59,10 @@ interface PromoModalProps {
 
 export const PromoModal: React.FC<PromoModalProps> = ({ isOpen, onClose, onOpenPricing }) => {
   const { user } = useAuthStore();
-  const [countdown, setCountdown]   = useState(getPromoRemaining());
-  const [loading, setLoading]       = useState<string | null>(null);
-  const [error, setError]           = useState('');
-  const [pulse, setPulse]           = useState(false);
+  const [countdown, setCountdown]     = useState(getPromoRemaining());
+  const [loading, setLoading]         = useState<string | null>(null);
+  const [error, setError]             = useState('');
+  const [pulse, setPulse]             = useState(false);
   const [hoveredPlan, setHoveredPlan] = useState<string | null>(null);
   const isMobile = useIsMobile();
 
@@ -84,7 +82,6 @@ export const PromoModal: React.FC<PromoModalProps> = ({ isOpen, onClose, onOpenP
     if (isOpen && countdown.expired) { onClose(); onOpenPricing(); }
   }, [isOpen, countdown.expired]);
 
-  // FIX: ahora envía el Bearer token igual que PricingModal
   const handleSubscribe = async (planId: string) => {
     if (!user) { setError('Necesitas una cuenta.'); return; }
     setLoading(planId);
@@ -96,16 +93,14 @@ export const PromoModal: React.FC<PromoModalProps> = ({ isOpen, onClose, onOpenP
         setLoading(null);
         return;
       }
-
       const res = await fetch('/api/create-payment', {
         method: 'POST',
         headers: {
-          'Content-Type':  'application/json',
-          'Authorization': `Bearer ${session.access_token}`, // FIX
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
         },
         body: JSON.stringify({ planId, userEmail: user.email, userId: user.id }),
       });
-
       const data = await res.json();
       if (!res.ok) { setError(data.error || 'Error al crear el pago.'); setLoading(null); return; }
       if (data.init_point) window.location.href = data.init_point;
@@ -202,12 +197,12 @@ export const PromoModal: React.FC<PromoModalProps> = ({ isOpen, onClose, onOpenP
                   { val: pad(countdown.h), sep: true },
                   { val: pad(countdown.m), sep: true },
                   { val: pad(countdown.s), sep: false },
-                ].map((t, i) => (
+                ].map((item, i) => (
                   <div key={i} style={{ display: 'flex', alignItems: 'center' }}>
                     <span style={{ fontSize: 20, fontWeight: 800, color: '#d4c5b0', fontFamily: 'monospace', minWidth: 28, textAlign: 'center' }}>
-                      {t.val}
+                      {item.val}
                     </span>
-                    {t.sep && <span style={{ fontSize: 18, color: '#8b735566', fontWeight: 300, margin: '0 1px', animation: 'promoBlink 1s step-end infinite' }}>:</span>}
+                    {item.sep && <span style={{ fontSize: 18, color: '#8b735566', fontWeight: 300, margin: '0 1px', animation: 'promoBlink 1s step-end infinite' }}>:</span>}
                   </div>
                 ))}
               </div>
