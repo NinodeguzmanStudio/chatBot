@@ -1,13 +1,12 @@
 // ═══════════════════════════════════════
-// AIdark — MercadoPago Webhook v2
+// AIdark — MercadoPago Webhook v3
 // api/webhook-mercadopago.ts
-// FIXES v2:
-//   [1] Anti-fraude multi-moneda: valida usando price_usd del metadata + tipo de cambio
-//       Antes: comparaba transaction_amount (en moneda local) contra precio USD → rechazaba pagos válidos
-//   [2] Guarda currency y exchange_rate en la tabla payments
-//   [3] Tolerancia del 25% para fluctuaciones de tipo de cambio entre creación y pago
-//   [4] Log detallado de moneda para debugging
-//   [5] isPremium check robusto (no solo !== 'free')
+// FIXES v3:
+//   [1] Maneja pagos únicos (type=payment) Y suscripciones (type=subscription_preapproval)
+//   [2] subscription_preapproval: activa/pausa/cancela plan automáticamente
+//   [3] Renovación automática: cuando MP cobra, extiende plan_expires_at
+//   [4] Anti-fraude multi-moneda con metadata
+//   [5] Push notification en activación Y en cancelación
 // ═══════════════════════════════════════
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
@@ -27,43 +26,25 @@ const webpush = require('web-push');
 const VALID_PLANS = new Set(['premium_monthly', 'premium_quarterly', 'premium_annual']);
 
 const PLAN_MONTHS: Record<string, number> = {
-  premium_monthly:   1,
-  premium_quarterly: 3,
-  premium_annual:    12,
+  premium_monthly: 1, premium_quarterly: 3, premium_annual: 12,
 };
-
 const PLAN_PRICES_USD: Record<string, number> = {
-  premium_monthly:   12.00,
-  premium_quarterly: 29.99,
-  premium_annual:    99.99,
+  premium_monthly: 12.00, premium_quarterly: 29.99, premium_annual: 99.99,
 };
-
-// Precios promo (50% OFF) — también son válidos
 const PLAN_PROMO_PRICES_USD: Record<string, number> = {
-  premium_monthly:   6.00,
-  premium_quarterly: 15.00,
-  premium_annual:    50.00,
+  premium_monthly: 6.00, premium_quarterly: 15.00, premium_annual: 50.00,
+};
+const PLAN_NAMES: Record<string, string> = {
+  premium_monthly: 'Mensual', premium_quarterly: 'Trimestral', premium_annual: 'Anual',
 };
 
-// ── Push notification al activar plan ──
-async function sendPushToUser(userId: string, title: string, body: string): Promise<void> {
+// ── Push ──
+async function sendPush(userId: string, title: string, body: string): Promise<void> {
   try {
     if (!process.env.VAPID_PUBLIC_KEY || !process.env.VAPID_PRIVATE_KEY) return;
-
-    webpush.setVapidDetails(
-      'mailto:soporte@aidark.app',
-      process.env.VAPID_PUBLIC_KEY,
-      process.env.VAPID_PRIVATE_KEY
-    );
-
-    const { data: subs } = await supabase
-      .from('push_subscriptions')
-      .select('endpoint, p256dh, auth')
-      .eq('user_id', userId)
-      .limit(5);
-
+    webpush.setVapidDetails('mailto:soporte@aidark.app', process.env.VAPID_PUBLIC_KEY, process.env.VAPID_PRIVATE_KEY);
+    const { data: subs } = await supabase.from('push_subscriptions').select('endpoint, p256dh, auth').eq('user_id', userId).limit(5);
     if (!subs?.length) return;
-
     for (const sub of subs) {
       try {
         await webpush.sendNotification(
@@ -71,213 +52,293 @@ async function sendPushToUser(userId: string, title: string, body: string): Prom
           JSON.stringify({ title, body, url: '/' })
         );
       } catch (e: any) {
-        if (e.statusCode === 410) {
-          await supabase.from('push_subscriptions').delete().eq('endpoint', sub.endpoint);
-        }
+        if (e.statusCode === 410) await supabase.from('push_subscriptions').delete().eq('endpoint', sub.endpoint);
       }
     }
-  } catch (err) {
-    console.error('[Webhook] Push error (no crítico):', err);
-  }
+  } catch { /* no crítico */ }
 }
 
+// ── Signature ──
 function verifySignature(req: VercelRequest): boolean {
-  if (!MP_WEBHOOK_SECRET) {
-    console.error('[Webhook] ❌ MP_WEBHOOK_SECRET no configurado. Rechazando request.');
-    return false;
-  }
-
+  if (!MP_WEBHOOK_SECRET) { console.error('[Webhook] MP_WEBHOOK_SECRET no configurado'); return false; }
   const xSignature = req.headers['x-signature'] as string;
   const xRequestId = req.headers['x-request-id'] as string;
-
-  if (!xSignature || !xRequestId) {
-    console.error('[Webhook] Headers x-signature o x-request-id ausentes');
-    return false;
-  }
+  if (!xSignature || !xRequestId) return false;
 
   const parts: Record<string, string> = {};
-  xSignature.split(',').forEach(part => {
-    const [key, value] = part.split('=');
-    if (key && value) parts[key.trim()] = value.trim();
-  });
+  xSignature.split(',').forEach(p => { const [k, v] = p.split('='); if (k && v) parts[k.trim()] = v.trim(); });
+  const ts = parts['ts'], v1 = parts['v1'];
+  if (!ts || !v1) return false;
+  if (Math.abs(Math.floor(Date.now() / 1000) - parseInt(ts, 10)) > 300) return false;
 
-  const ts = parts['ts'];
-  const v1 = parts['v1'];
-
-  if (!ts || !v1) {
-    console.error('[Webhook] Formato de signature inválido');
-    return false;
-  }
-
-  const now    = Math.floor(Date.now() / 1000);
-  const tsNum  = parseInt(ts, 10);
-  if (Math.abs(now - tsNum) > 300) {
-    console.error(`[Webhook] Timestamp demasiado viejo: ${ts}`);
-    return false;
-  }
-
-  const dataId   = req.query?.['data.id'] || req.body?.data?.id || '';
+  const dataId = req.query?.['data.id'] || req.body?.data?.id || '';
   const manifest = `id:${dataId};request-id:${xRequestId};ts:${ts};`;
-
-  const hmac = crypto
-    .createHmac('sha256', MP_WEBHOOK_SECRET)
-    .update(manifest)
-    .digest('hex');
-
-  const isValid = hmac === v1;
-  if (!isValid) console.error('[Webhook] HMAC no coincide — posible request falso');
-  return isValid;
+  const hmac = crypto.createHmac('sha256', MP_WEBHOOK_SECRET).update(manifest).digest('hex');
+  return hmac === v1;
 }
 
-// ── FIX v2 [1]: Validación anti-fraude multi-moneda ──
-function validatePaymentAmount(
-  transactionAmount: number,
-  transactionCurrency: string,
-  planId: string,
-  metadata: any
-): { valid: boolean; reason?: string } {
-  // Si el metadata tiene price_usd y exchange_rate (pagos nuevos con v2)
-  const metaPriceUSD   = Number(metadata?.price_usd || 0);
-  const metaExchangeRate = Number(metadata?.exchange_rate || 0);
-  const metaLocalPrice = Number(metadata?.local_price || 0);
-
-  if (metaPriceUSD > 0 && metaLocalPrice > 0) {
-    // Validar contra el precio local que se generó al crear la preferencia
-    // Tolerancia del 25% para fluctuaciones de cambio y redondeos
-    const minAcceptable = metaLocalPrice * 0.75;
-    if (transactionAmount < minAcceptable) {
-      return {
-        valid: false,
-        reason: `Monto ${transactionAmount} ${transactionCurrency} < mínimo ${minAcceptable.toFixed(2)} (esperado ~${metaLocalPrice} ${transactionCurrency}, USD ${metaPriceUSD})`,
-      };
-    }
-    return { valid: true };
+// ── Validación anti-fraude ──
+function validateAmount(amount: number, currency: string, planId: string, metadata: any): boolean {
+  const metaLocal = Number(metadata?.local_price || 0);
+  if (metaLocal > 0) return amount >= metaLocal * 0.75;
+  if (currency === 'USD') {
+    const expected = PLAN_PROMO_PRICES_USD[planId] || PLAN_PRICES_USD[planId];
+    return expected ? amount >= expected * 0.75 : true;
   }
-
-  // Fallback para pagos legacy (sin metadata de conversión):
-  // Solo validar si la moneda es USD (pagos desde Ecuador o cuentas USD)
-  if (transactionCurrency === 'USD') {
-    const expectedUSD = PLAN_PROMO_PRICES_USD[planId] || PLAN_PRICES_USD[planId];
-    if (expectedUSD && transactionAmount < expectedUSD * 0.75) {
-      return {
-        valid: false,
-        reason: `Monto USD ${transactionAmount} < mínimo ${(expectedUSD * 0.75).toFixed(2)} (esperado ~${expectedUSD})`,
-      };
-    }
-  }
-  // Para pagos legacy en moneda local sin metadata, aceptar (no podemos validar sin tipo de cambio)
-  console.warn(`[Webhook] Pago legacy sin metadata de conversión — aceptando sin validación de monto (${transactionAmount} ${transactionCurrency})`);
-  return { valid: true };
+  return true; // No podemos validar moneda local sin metadata
 }
 
+// ═══════════════════════════════════════
+// Handler principal
+// ═══════════════════════════════════════
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method === 'GET') return res.status(200).send('OK');
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   if (!verifySignature(req)) {
-    console.error('[Webhook] ❌ Firma inválida — request rechazado');
+    console.error('[Webhook] ❌ Firma inválida');
     return res.status(401).json({ error: 'Invalid signature' });
   }
 
   try {
-    const { type, data } = req.body;
+    const { type, data, action } = req.body;
 
-    if (type !== 'payment') {
-      return res.status(200).json({ received: true, skipped: `type=${type}` });
+    // ──────────────────────────────────────
+    // CASO 1: Pago único (igual que antes)
+    // ──────────────────────────────────────
+    if (type === 'payment') {
+      return handlePayment(data?.id, res);
     }
 
-    const paymentId = data?.id;
-    if (!paymentId) return res.status(200).json({ received: true });
-    const paymentKey = String(paymentId);
-
-    // ── Deduplicación ──
-    const { data: existingPayment } = await supabase
-      .from('payments')
-      .select('id')
-      .eq('mp_payment_id', paymentKey)
-      .single();
-
-    if (existingPayment) {
-      console.log(`[Webhook] Pago ${paymentId} ya procesado — ignorando`);
-      return res.status(200).json({ received: true, duplicate: true });
+    // ──────────────────────────────────────
+    // CASO 2: Suscripción recurrente (NUEVO)
+    // ──────────────────────────────────────
+    if (type === 'subscription_preapproval') {
+      return handleSubscription(data?.id, action, res);
     }
 
-    // ── Obtener detalles desde MercadoPago ──
-    const mpRes = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
-      headers: { Authorization: `Bearer ${MP_ACCESS_TOKEN}` },
-    });
-
-    if (!mpRes.ok) {
-      console.error('[Webhook] Error consultando pago a MP:', await mpRes.text());
-      return res.status(200).json({ received: true });
+    // ──────────────────────────────────────
+    // CASO 3: Pago de suscripción (cobro automático)
+    // ──────────────────────────────────────
+    if (type === 'subscription_authorized_payment') {
+      return handleSubscriptionPayment(data?.id, res);
     }
 
-    const payment = await mpRes.json() as any;
+    return res.status(200).json({ received: true, skipped: `type=${type}` });
 
-    if (payment.status !== 'approved') {
-      console.log(`[Webhook] Pago ${paymentId} status: ${payment.status} — omitiendo`);
-      return res.status(200).json({ received: true });
+  } catch (err) {
+    console.error('[Webhook] Error:', err);
+    return res.status(200).json({ received: true, error: 'internal_error' });
+  }
+}
+
+// ── PAGO ÚNICO ──
+async function handlePayment(paymentId: any, res: VercelResponse) {
+  if (!paymentId) return res.status(200).json({ received: true });
+  const paymentKey = String(paymentId);
+
+  // Deduplicación
+  const { data: existing } = await supabase.from('payments').select('id').eq('mp_payment_id', paymentKey).single();
+  if (existing) return res.status(200).json({ received: true, duplicate: true });
+
+  // Obtener detalles
+  const mpRes = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
+    headers: { Authorization: `Bearer ${MP_ACCESS_TOKEN}` },
+  });
+  if (!mpRes.ok) return res.status(200).json({ received: true });
+  const payment = await mpRes.json() as any;
+  if (payment.status !== 'approved') return res.status(200).json({ received: true });
+
+  // Extraer datos
+  let userId: string | null = null, userEmail: string | null = null, planId = 'premium_monthly';
+  if (payment.metadata) {
+    userId = payment.metadata.user_id || null;
+    userEmail = payment.metadata.user_email || null;
+    planId = payment.metadata.plan_id || planId;
+  }
+  if (!userId && payment.external_reference) {
+    const parts = payment.external_reference.split('|');
+    userId = parts[0] || parts[1] || null; // Soporta "userId|planId" y "sub|userId|planId"
+    if (parts[0] === 'sub') { userId = parts[1]; planId = parts[2] || planId; }
+    else { planId = parts[1] || planId; }
+  }
+  if (!userId) return res.status(200).json({ received: true, error: 'no_user_id' });
+  if (!VALID_PLANS.has(planId)) return res.status(200).json({ received: true, error: 'invalid_plan' });
+
+  if (!validateAmount(payment.transaction_amount, payment.currency_id || 'USD', planId, payment.metadata)) {
+    console.error(`[Webhook] ❌ Monto sospechoso: ${payment.transaction_amount} ${payment.currency_id}`);
+    return res.status(200).json({ received: true, error: 'suspicious_amount' });
+  }
+
+  // Activar plan
+  const months = PLAN_MONTHS[planId];
+  const now = new Date();
+  const expiresAt = new Date(now);
+  expiresAt.setMonth(expiresAt.getMonth() + months);
+
+  await supabase.from('profiles').update({
+    plan: planId, plan_id: planId,
+    plan_expires_at: expiresAt.toISOString(),
+    plan_activated_at: now.toISOString(),
+    mp_payment_id: paymentKey,
+    updated_at: now.toISOString(),
+  }).eq('id', userId);
+
+  await supabase.from('payments').insert({
+    user_id: userId, email: userEmail || payment.payer?.email || null,
+    plan: planId, plan_id: planId,
+    amount: payment.transaction_amount,
+    currency: payment.currency_id || 'USD',
+    amount_usd: Number(payment.metadata?.price_usd || 0) || null,
+    exchange_rate: Number(payment.metadata?.exchange_rate || 0) || null,
+    status: 'approved', mp_payment_id: paymentKey,
+    expires_at: expiresAt.toISOString(),
+  });
+
+  await sendPush(userId, '🎉 ¡Plan activo!', `Plan ${PLAN_NAMES[planId] || planId} activado.`);
+  console.log(`[Webhook] ✅ Pago único: ${planId} para ${userId}`);
+  return res.status(200).json({ received: true, activated: true });
+}
+
+// ── SUSCRIPCIÓN: Cambio de estado ──
+async function handleSubscription(subId: any, action: string, res: VercelResponse) {
+  if (!subId) return res.status(200).json({ received: true });
+
+  // Obtener detalles de la suscripción
+  const mpRes = await fetch(`https://api.mercadopago.com/preapproval/${subId}`, {
+    headers: { Authorization: `Bearer ${MP_ACCESS_TOKEN}` },
+  });
+  if (!mpRes.ok) return res.status(200).json({ received: true });
+  const sub = await mpRes.json() as any;
+
+  // Buscar usuario por subscription_id
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('id, plan, plan_id')
+    .eq('mp_subscription_id', String(subId))
+    .single();
+
+  // Alternativa: buscar por external_reference
+  let userId = profile?.id;
+  if (!userId && sub.external_reference) {
+    const parts = sub.external_reference.split('|');
+    if (parts[0] === 'sub') userId = parts[1];
+  }
+  if (!userId) return res.status(200).json({ received: true, error: 'no_user' });
+
+  const status = sub.status; // 'authorized', 'paused', 'cancelled', 'pending'
+
+  if (status === 'authorized') {
+    // Suscripción activa — asegurar que el plan esté activo
+    let planId = 'premium_monthly';
+    if (sub.external_reference) {
+      const parts = sub.external_reference.split('|');
+      if (parts[2] && VALID_PLANS.has(parts[2])) planId = parts[2];
     }
-
-    // ── Extraer userId, email y planId ──
-    let userId: string | null   = null;
-    let userEmail: string | null = null;
-    let planId: string           = 'premium_monthly';
-
-    if (payment.metadata) {
-      userId    = payment.metadata.user_id    || null;
-      userEmail = payment.metadata.user_email || null;
-      planId    = payment.metadata.plan_id    || planId;
-    }
-
-    if (!userId && payment.external_reference) {
-      const parts = payment.external_reference.split('|');
-      userId = parts[0] || null;
-      if (parts[1]) planId = parts[1];
-    }
-
-    if (!userId) {
-      console.error('[Webhook] No se encontró userId en el pago', paymentId);
-      return res.status(200).json({ received: true, error: 'no_user_id' });
-    }
-
-    // FIX v2 [5]: validación robusta de plan
-    if (!VALID_PLANS.has(planId)) {
-      console.error(`[Webhook] planId inválido: "${planId}"`);
-      return res.status(200).json({ received: true, error: 'invalid_plan_id' });
-    }
-
-    // ── FIX v2 [1]: Validar monto con soporte multi-moneda ──
-    const transactionAmount   = payment.transaction_amount;
-    const transactionCurrency = payment.currency_id || 'USD';
-
-    const amountValidation = validatePaymentAmount(
-      transactionAmount,
-      transactionCurrency,
-      planId,
-      payment.metadata
-    );
-
-    if (!amountValidation.valid) {
-      console.error(`[Webhook] ❌ Monto sospechoso: ${amountValidation.reason}`);
-      return res.status(200).json({ received: true, error: 'suspicious_amount' });
-    }
-
-    console.log(`[Webhook] ✅ Monto válido: ${transactionAmount} ${transactionCurrency} para plan ${planId}`);
-
-    // ── Calcular expiración ──
-    const months    = PLAN_MONTHS[planId];
-    const now       = new Date();
-    const expiresAt = new Date(now);
+    const months = PLAN_MONTHS[planId] || 1;
+    const expiresAt = new Date();
     expiresAt.setMonth(expiresAt.getMonth() + months);
 
-    const profileUpdate = {
-      plan:              planId,
-      plan_id:           planId,
-      plan_expires_at:   expiresAt.toISOString(),
-      plan_activated_at: now.toISOString(),
-      mp_payment_id:     paymentKey,
-      updated_at:        now.toISOString(),
-    };
+    await supabase.from('profiles').update({
+      plan: planId, plan_id: planId,
+      plan_expires_at: expiresAt.toISOString(),
+      plan_activated_at: new Date().toISOString(),
+      mp_subscription_id: String(subId),
+      updated_at: new Date().toISOString(),
+    }).eq('id', userId);
 
-    const { error: updateError } = await supabase
+    await sendPush(userId, '🎉 ¡Suscripción activa!', `Tu suscripción ${PLAN_NAMES[planId] || ''} se renovará automáticamente.`);
+    console.log(`[Webhook] ✅ Suscripción activa: ${planId} para ${userId}`);
+
+  } else if (status === 'paused' || status === 'cancelled') {
+    // No revocar el plan inmediatamente — dejar que expire naturalmente
+    // Solo actualizar el estado para que no se renueve
+    await supabase.from('profiles').update({
+      mp_subscription_id: null, // Limpiar para que no se confunda
+      updated_at: new Date().toISOString(),
+    }).eq('id', userId);
+
+    const msg = status === 'cancelled'
+      ? 'Tu suscripción fue cancelada. Tu plan sigue activo hasta la fecha de vencimiento.'
+      : 'Tu suscripción está pausada.';
+    await sendPush(userId, '📋 Suscripción actualizada', msg);
+    console.log(`[Webhook] Suscripción ${status}: ${userId}`);
+  }
+
+  return res.status(200).json({ received: true, sub_status: status });
+}
+
+// ── PAGO DE SUSCRIPCIÓN: Cobro automático periódico ──
+async function handleSubscriptionPayment(paymentId: any, res: VercelResponse) {
+  if (!paymentId) return res.status(200).json({ received: true });
+  const paymentKey = String(paymentId);
+
+  // Deduplicación
+  const { data: existing } = await supabase.from('payments').select('id').eq('mp_payment_id', paymentKey).single();
+  if (existing) return res.status(200).json({ received: true, duplicate: true });
+
+  // Obtener detalles del pago
+  const mpRes = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
+    headers: { Authorization: `Bearer ${MP_ACCESS_TOKEN}` },
+  });
+  if (!mpRes.ok) return res.status(200).json({ received: true });
+  const payment = await mpRes.json() as any;
+  if (payment.status !== 'approved') return res.status(200).json({ received: true });
+
+  // Buscar usuario por subscription ID del pago
+  const subId = payment.metadata?.preapproval_id || '';
+  let userId: string | null = null;
+  let planId = 'premium_monthly';
+
+  if (subId) {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('id, plan_id')
+      .eq('mp_subscription_id', String(subId))
+      .single();
+    if (profile) {
+      userId = profile.id;
+      planId = profile.plan_id || planId;
+    }
+  }
+
+  // Fallback: buscar por email del payer
+  if (!userId && payment.payer?.email) {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('id, plan_id')
+      .eq('email', payment.payer.email)
+      .single();
+    if (profile) {
+      userId = profile.id;
+      planId = profile.plan_id || planId;
+    }
+  }
+
+  if (!userId) return res.status(200).json({ received: true, error: 'no_user' });
+
+  // Extender plan
+  const months = PLAN_MONTHS[planId] || 1;
+  const expiresAt = new Date();
+  expiresAt.setMonth(expiresAt.getMonth() + months);
+
+  await supabase.from('profiles').update({
+    plan_expires_at: expiresAt.toISOString(),
+    mp_payment_id: paymentKey,
+    updated_at: new Date().toISOString(),
+  }).eq('id', userId);
+
+  // Registrar pago
+  await supabase.from('payments').insert({
+    user_id: userId, email: payment.payer?.email || null,
+    plan: planId, plan_id: planId,
+    amount: payment.transaction_amount,
+    currency: payment.currency_id || 'USD',
+    status: 'approved', mp_payment_id: paymentKey,
+    expires_at: expiresAt.toISOString(),
+  });
+
+  await sendPush(userId, '✅ Renovación exitosa', `Tu plan ${PLAN_NAMES[planId] || ''} se renovó hasta ${expiresAt.toLocaleDateString('es')}.`);
+  console.log(`[Webhook] ✅ Renovación automática: ${planId} para ${userId}, vence ${expiresAt.toISOString()}`);
+  return res.status(200).json({ received: true, renewed: true });
+}
