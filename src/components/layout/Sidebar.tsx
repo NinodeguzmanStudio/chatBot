@@ -1,18 +1,25 @@
 // ═══════════════════════════════════════
-// AIdark — Sidebar v2 (search + date grouping)
+// AIdark — Sidebar v3 (+ admin button)
+// src/components/layout/Sidebar.tsx
+// NEW: Botón admin solo visible para ADMIN_EMAILS
 // ═══════════════════════════════════════
 
 import React, { useEffect, useRef, useState, useMemo } from 'react';
-import { Plus, Trash2, MessageSquare, PanelLeftClose, Shield, Settings, MoreHorizontal, Pencil, Search, X } from 'lucide-react';
-import { useChatStore } from '@/lib/store';
+import { Plus, Trash2, MessageSquare, PanelLeftClose, Settings, MoreHorizontal, Pencil, Search, X, BarChart3 } from 'lucide-react';
+import { useChatStore, useAuthStore } from '@/lib/store';
 import { useIsMobile } from '@/hooks/useIsMobile';
 import { t } from '@/lib/i18n';
+
+const ADMIN_EMAILS = new Set([
+  'ninodeguzmanstudio@gmail.com',
+]);
 
 interface SidebarProps {
   onOpenPricing?: () => void;
   onOpenSettings?: () => void;
   onOpenPrivacy?: () => void;
   onOpenTerms?: () => void;
+  onOpenAdmin?: () => void;
   isMobile?: boolean;
 }
 
@@ -29,8 +36,9 @@ function getGroup(ts: number): string {
 
 const GROUP_ORDER = ['Hoy', 'Ayer', 'Esta semana', 'Este mes', 'Anterior'];
 
-export const Sidebar: React.FC<SidebarProps> = ({ onOpenSettings, onOpenPrivacy }) => {
+export const Sidebar: React.FC<SidebarProps> = ({ onOpenSettings, onOpenPrivacy, onOpenAdmin }) => {
   const { sessions, activeSessionId, sidebarOpen, setSidebarOpen, createSession, setActiveSession, deleteSession, renameSession } = useChatStore();
+  const { user } = useAuthStore();
   const isMobile = useIsMobile();
   const sidebarRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -39,6 +47,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ onOpenSettings, onOpenPrivacy 
   const [renameValue, setRenameValue] = useState('');
   const [search, setSearch] = useState('');
   const [showSearch, setShowSearch] = useState(false);
+
+  const isAdmin = user?.email ? ADMIN_EMAILS.has(user.email) : false;
 
   useEffect(() => {
     if (!isMobile || !sidebarOpen) return;
@@ -60,7 +70,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ onOpenSettings, onOpenPrivacy 
 
   if (!sidebarOpen) return null;
 
-  // Filter + sort
   const filtered = useMemo(() => {
     const q = search.toLowerCase().trim();
     return [...sessions]
@@ -69,7 +78,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ onOpenSettings, onOpenPrivacy 
       .sort((a, b) => b.updated_at - a.updated_at);
   }, [sessions, search]);
 
-  // Group by date
   const grouped = useMemo(() => {
     const map: Record<string, typeof filtered> = {};
     for (const s of filtered) {
@@ -125,7 +133,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ onOpenSettings, onOpenPrivacy 
           ) : (
             <>
               <div style={{ fontSize: 12, color: isActive ? 'var(--txt-pri)' : 'var(--txt-sec)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                {/* Highlight search match */}
                 {search ? highlightMatch(session.title || 'Nuevo chat', search) : (session.title || 'Nuevo chat')}
               </div>
               <div style={{ fontSize: 9, color: 'var(--txt-ghost)', marginTop: 2 }}>
@@ -203,8 +210,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ onOpenSettings, onOpenPrivacy 
             <div style={{ position: 'relative' }}>
               <Search size={12} style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: 'var(--txt-mut)', pointerEvents: 'none' }} />
               <input
-                autoFocus
-                value={search}
+                autoFocus value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Buscar chats..."
                 style={{ width: '100%', background: 'var(--bg-el)', border: '1px solid var(--border-sub)', borderRadius: 7, padding: '6px 28px 6px 26px', fontSize: 11, color: 'var(--txt-pri)', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' }}
@@ -241,7 +247,16 @@ export const Sidebar: React.FC<SidebarProps> = ({ onOpenSettings, onOpenPrivacy 
         </div>
 
         {/* Footer */}
-        <div style={{ padding: '12px 14px', borderTop: '1px solid var(--border-sub)', display: 'flex', gap: 14, justifyContent: 'center' }}>
+        <div style={{ padding: '12px 14px', borderTop: '1px solid var(--border-sub)', display: 'flex', gap: 14, justifyContent: 'center', flexWrap: 'wrap' }}>
+          {/* ADMIN BUTTON — solo visible para ti */}
+          {isAdmin && onOpenAdmin && (
+            <button onClick={onOpenAdmin} style={{ background: 'none', border: 'none', color: '#f59e0b', fontSize: 11, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5, fontFamily: 'inherit', transition: 'color 0.15s' }}
+              onMouseEnter={e => e.currentTarget.style.color = '#fbbf24'}
+              onMouseLeave={e => e.currentTarget.style.color = '#f59e0b'}
+            >
+              <BarChart3 size={13} /> Admin
+            </button>
+          )}
           {onOpenSettings && (
             <button onClick={onOpenSettings} style={{ background: 'none', border: 'none', color: 'var(--txt-sec)', fontSize: 11, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5, fontFamily: 'inherit', transition: 'color 0.15s' }}
               onMouseEnter={e => e.currentTarget.style.color = 'var(--txt-pri)'}
@@ -264,7 +279,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ onOpenSettings, onOpenPrivacy 
   );
 };
 
-// Utility: highlight matching text
 function highlightMatch(text: string, query: string): React.ReactNode {
   if (!query) return text;
   const idx = text.toLowerCase().indexOf(query.toLowerCase());
