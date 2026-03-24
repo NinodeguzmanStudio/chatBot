@@ -1,15 +1,15 @@
 // ═══════════════════════════════════════
-// AIdark — Create MercadoPago Payment
+// AIdark — Create MercadoPago Payment v2
 // api/create-payment.ts
-// FIXES:
-//   [1] Verificación de token Bearer
-//   [2] notification_url fija desde env
-//   [3] Validación de UUID en userId
-//   [4] Sanitización de userEmail
-//   [5] LATAM: payment_methods habilitados
-//   [6] CRÍTICO: eliminado currency_id:'USD' — bloqueaba el botón Pagar en LATAM
-//       Las cuentas MP de LATAM solo aceptan su moneda local (ARS/PEN/MXN/COP).
-//       Con 'USD' la preferencia se crea OK pero el checkout deshabilita el botón.
+// FIXES v2:
+//   [1] CRÍTICO: Conversión de moneda USD → moneda local en tiempo real
+//       Antes: unit_price:12 se interpretaba como 12 PEN/MXN/ARS (una miseria)
+//       Ahora: se detecta la moneda de la cuenta MP y se convierte con tipo de cambio real
+//   [2] Detección automática de moneda por país del access_token de MP
+//   [3] Cache de tipo de cambio (15 min) para no saturar API
+//   [4] Fallback con tipos de cambio hardcodeados si la API falla
+//   [5] Se envía currency_id correcto (moneda local, no USD)
+//   [6] metadata incluye precio_usd original para validación en webhook
 // ═══════════════════════════════════════
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
@@ -21,137 +21,136 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
 const APP_URL = process.env.VITE_APP_URL || 'https://aidark.es';
 
-const PLANS: Record<string, { title: string; price: number; period: string; months: number; plan_id: string }> = {
+// ── Planes con precios BASE en USD ──
+const PLANS: Record<string, { title: string; priceUSD: number; period: string; months: number; plan_id: string }> = {
   basic_monthly: {
     title: 'AIdark Basic - Plan mensual',
-    price: 12.00, period: 'monthly', months: 1, plan_id: 'premium_monthly',
+    priceUSD: 12.00, period: 'monthly', months: 1, plan_id: 'premium_monthly',
   },
   pro_quarterly: {
     title: 'AIdark Pro - Plan trimestral',
-    price: 29.99, period: 'quarterly', months: 3, plan_id: 'premium_quarterly',
+    priceUSD: 29.99, period: 'quarterly', months: 3, plan_id: 'premium_quarterly',
   },
   ultra_annual: {
     title: 'AIdark Ultra - Plan anual',
-    price: 99.99, period: 'annual', months: 12, plan_id: 'premium_annual',
+    priceUSD: 99.99, period: 'annual', months: 12, plan_id: 'premium_annual',
   },
   basic_monthly_promo: {
     title: 'AIdark Basic - Plan mensual (Oferta 50%)',
-    price: 6.00, period: 'monthly', months: 1, plan_id: 'premium_monthly',
+    priceUSD: 6.00, period: 'monthly', months: 1, plan_id: 'premium_monthly',
   },
   pro_quarterly_promo: {
     title: 'AIdark Pro - Plan trimestral (Oferta 50%)',
-    price: 15.00, period: 'quarterly', months: 3, plan_id: 'premium_quarterly',
+    priceUSD: 15.00, period: 'quarterly', months: 3, plan_id: 'premium_quarterly',
   },
   ultra_annual_promo: {
     title: 'AIdark Ultra - Plan anual (Oferta 50%)',
-    price: 50.00, period: 'annual', months: 12, plan_id: 'premium_annual',
+    priceUSD: 50.00, period: 'annual', months: 12, plan_id: 'premium_annual',
   },
 };
 
-const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-function isValidUUID(str: string): boolean {
-  return UUID_REGEX.test(str);
-}
+// ── Monedas de MercadoPago por país ──
+const MP_COUNTRY_CURRENCY: Record<string, string> = {
+  AR: 'ARS', // Argentina - Peso argentino
+  BR: 'BRL', // Brasil - Real
+  CL: 'CLP', // Chile - Peso chileno
+  CO: 'COP', // Colombia - Peso colombiano
+  MX: 'MXN', // México - Peso mexicano
+  PE: 'PEN', // Perú - Sol
+  UY: 'UYU', // Uruguay - Peso uruguayo
+  VE: 'VES', // Venezuela - Bolívar (limitado en MP)
+  EC: 'USD', // Ecuador - usa USD
+  US: 'USD', // USA
+  ES: 'EUR', // España
+};
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
-  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+// ── Fallback de tipos de cambio (actualizar periódicamente como respaldo) ──
+// Estos solo se usan si TODAS las APIs de cambio fallan
+const FALLBACK_RATES: Record<string, number> = {
+  ARS: 1200,   // 1 USD ≈ 1200 ARS (actualizar regularmente)
+  BRL: 5.8,    // 1 USD ≈ 5.8 BRL
+  CLP: 980,    // 1 USD ≈ 980 CLP
+  COP: 4400,   // 1 USD ≈ 4400 COP
+  MXN: 17.5,   // 1 USD ≈ 17.5 MXN
+  PEN: 3.75,   // 1 USD ≈ 3.75 PEN
+  UYU: 42,     // 1 USD ≈ 42 UYU
+  VES: 40,     // 1 USD ≈ 40 VES
+  USD: 1,
+  EUR: 0.93,
+};
 
-  const MP_ACCESS_TOKEN = process.env.MP_ACCESS_TOKEN;
-  if (!MP_ACCESS_TOKEN) {
-    return res.status(500).json({ error: 'MercadoPago no configurado.' });
+// ── Cache de tipos de cambio (15 minutos) ──
+let ratesCache: { rates: Record<string, number>; timestamp: number } | null = null;
+const CACHE_TTL = 15 * 60 * 1000; // 15 minutos
+
+async function getExchangeRates(): Promise<Record<string, number>> {
+  // Verificar cache
+  if (ratesCache && (Date.now() - ratesCache.timestamp) < CACHE_TTL) {
+    return ratesCache.rates;
   }
 
-  const authHeader = req.headers.authorization;
-  if (!authHeader?.startsWith('Bearer ')) {
-    return res.status(401).json({ error: 'No autorizado. Inicia sesión.' });
-  }
-
-  const token = authHeader.replace('Bearer ', '');
-  const { data: { user }, error: authError } = await supabase.auth.getUser(token);
-  if (authError || !user) {
-    return res.status(401).json({ error: 'Sesión inválida. Inicia sesión de nuevo.' });
-  }
-
-  const { planId, userEmail, userId } = req.body;
-
-  if (!planId || !userEmail || !userId) {
-    return res.status(400).json({ error: 'Faltan datos requeridos.' });
-  }
-
-  if (!isValidUUID(userId)) {
-    return res.status(400).json({ error: 'userId inválido.' });
-  }
-
-  if (userId !== user.id) {
-    return res.status(403).json({ error: 'No podés crear pagos para otro usuario.' });
-  }
-
-  const safeEmail = String(userEmail).trim().toLowerCase().slice(0, 254);
-  if (!safeEmail.includes('@') || safeEmail.length < 5) {
-    return res.status(400).json({ error: 'Email inválido.' });
-  }
-
-  const plan = PLANS[planId];
-  if (!plan) return res.status(400).json({ error: `Plan "${planId}" no válido.` });
-
+  // Intentar API 1: exchangerate-api (gratis, no requiere key)
   try {
-    const preference = {
-      items: [{
-        title:      plan.title,
-        quantity:   1,
-        unit_price: plan.price,
-        // FIX [6]: NO incluir currency_id aquí.
-        // Con currency_id:'USD' la preferencia se crea correctamente en la API,
-        // pero MercadoPago deshabilita el botón "Pagar" en el checkout porque
-        // las cuentas LATAM (ARG, PER, MEX, COL, CHI, URU, BRA) solo procesan
-        // su moneda local. Sin este campo, MP usa la moneda de la cuenta automáticamente.
-      }],
-      payer: { email: safeEmail },
-      metadata: {
-        user_id:    user.id,
-        user_email: safeEmail,
-        plan_id:    plan.plan_id,
-        months:     plan.months,
-      },
-      back_urls: {
-        success: `${APP_URL}/payment/success`,
-        failure: `${APP_URL}/payment/failure`,
-        pending: `${APP_URL}/payment/pending`,
-      },
-      auto_return: 'approved',
-      notification_url: `${APP_URL}/api/webhook-mercadopago`,
-      external_reference: `${user.id}|${plan.plan_id}|${Date.now()}`,
-      // Métodos de pago LATAM habilitados (Pix, PSE, OXXO, débito, transferencia)
-      payment_methods: {
-        excluded_payment_types: [],
-        installments:         3,
-        default_installments: 1,
-      },
-    };
-
-    const mpRes = await fetch('https://api.mercadopago.com/checkout/preferences', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization:  `Bearer ${MP_ACCESS_TOKEN}`,
-      },
-      body: JSON.stringify(preference),
+    const res = await fetch('https://open.er-api.com/v6/latest/USD', {
+      signal: AbortSignal.timeout(5000),
     });
-
-    if (!mpRes.ok) {
-      const err = await mpRes.text();
-      console.error('[MP] Error creando preferencia:', err);
-      return res.status(500).json({ error: 'Error al crear el pago.' });
+    if (res.ok) {
+      const data = await res.json() as any;
+      if (data.rates) {
+        ratesCache = { rates: data.rates, timestamp: Date.now() };
+        console.log('[Payment] Exchange rates actualizados desde er-api.com');
+        return data.rates;
+      }
     }
-
-    const data = await mpRes.json() as any;
-    return res.status(200).json({
-      init_point:         data.init_point,
-      sandbox_init_point: data.sandbox_init_point,
-    });
-
-  } catch (err) {
-    console.error('[MP] Error inesperado:', err);
-    return res.status(500).json({ error: 'Error del servidor.' });
+  } catch (e) {
+    console.warn('[Payment] er-api.com falló:', e);
   }
+
+  // Intentar API 2: frankfurter.app (gratis, ECB data)
+  try {
+    const currencies = Object.keys(MP_COUNTRY_CURRENCY)
+      .map(k => MP_COUNTRY_CURRENCY[k])
+      .filter(c => c !== 'USD')
+      .join(',');
+    const res = await fetch(`https://api.frankfurter.app/latest?from=USD&to=${currencies}`, {
+      signal: AbortSignal.timeout(5000),
+    });
+    if (res.ok) {
+      const data = await res.json() as any;
+      if (data.rates) {
+        const rates = { ...data.rates, USD: 1 };
+        ratesCache = { rates, timestamp: Date.now() };
+        console.log('[Payment] Exchange rates actualizados desde frankfurter.app');
+        return rates;
+      }
+    }
+  } catch (e) {
+    console.warn('[Payment] frankfurter.app falló:', e);
+  }
+
+  // Fallback: usar tipos de cambio hardcodeados
+  console.warn('[Payment] ⚠️ Usando tipos de cambio FALLBACK (pueden estar desactualizados)');
+  return FALLBACK_RATES;
 }
+
+// ── Detectar país/moneda de la cuenta MercadoPago ──
+async function getMPAccountCurrency(accessToken: string): Promise<{ currency: string; country: string }> {
+  try {
+    const res = await fetch('https://api.mercadopago.com/users/me', {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      signal: AbortSignal.timeout(5000),
+    });
+    if (res.ok) {
+      const data = await res.json() as any;
+      const countryId = data.country_id || data.site_id || '';
+      // site_id viene como "MLA" (Argentina), "MLM" (México), etc.
+      const siteToCountry: Record<string, string> = {
+        MLA: 'AR', MLB: 'BR', MLC: 'CL', MCO: 'CO',
+        MLM: 'MX', MPE: 'PE', MLU: 'UY', MLV: 'VE',
+      };
+      const country = siteToCountry[countryId] || countryId || 'AR';
+      const currency = MP_COUNTRY_CURRENCY[country] || 'USD';
+      console.log(`[Payment] Cuenta MP: país=${country}, moneda=${currency}`);
+      return { currency, country };
+    }
+  } catch (e) {
