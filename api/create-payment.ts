@@ -1,15 +1,6 @@
 // ═══════════════════════════════════════
 // AIdark — Create MercadoPago Payment v2
 // api/create-payment.ts
-// FIXES v2:
-//   [1] CRÍTICO: Conversión de moneda USD → moneda local en tiempo real
-//       Antes: unit_price:12 se interpretaba como 12 PEN/MXN/ARS (una miseria)
-//       Ahora: se detecta la moneda de la cuenta MP y se convierte con tipo de cambio real
-//   [2] Detección automática de moneda por país del access_token de MP
-//   [3] Cache de tipo de cambio (15 min) para no saturar API
-//   [4] Fallback con tipos de cambio hardcodeados si la API falla
-//   [5] Se envía currency_id correcto (moneda local, no USD)
-//   [6] metadata incluye precio_usd original para validación en webhook
 // ═══════════════════════════════════════
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
@@ -21,7 +12,6 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
 const APP_URL = process.env.VITE_APP_URL || 'https://aidark.es';
 
-// ── Planes con precios BASE en USD ──
 const PLANS: Record<string, { title: string; priceUSD: number; period: string; months: number; plan_id: string }> = {
   basic_monthly: {
     title: 'AIdark Basic - Plan mensual',
@@ -49,47 +39,24 @@ const PLANS: Record<string, { title: string; priceUSD: number; period: string; m
   },
 };
 
-// ── Monedas de MercadoPago por país ──
 const MP_COUNTRY_CURRENCY: Record<string, string> = {
-  AR: 'ARS', // Argentina - Peso argentino
-  BR: 'BRL', // Brasil - Real
-  CL: 'CLP', // Chile - Peso chileno
-  CO: 'COP', // Colombia - Peso colombiano
-  MX: 'MXN', // México - Peso mexicano
-  PE: 'PEN', // Perú - Sol
-  UY: 'UYU', // Uruguay - Peso uruguayo
-  VE: 'VES', // Venezuela - Bolívar (limitado en MP)
-  EC: 'USD', // Ecuador - usa USD
-  US: 'USD', // USA
-  ES: 'EUR', // España
+  AR: 'ARS', BR: 'BRL', CL: 'CLP', CO: 'COP',
+  MX: 'MXN', PE: 'PEN', UY: 'UYU', VE: 'VES',
+  EC: 'USD', US: 'USD', ES: 'EUR',
 };
 
-// ── Fallback de tipos de cambio (actualizar periódicamente como respaldo) ──
-// Estos solo se usan si TODAS las APIs de cambio fallan
 const FALLBACK_RATES: Record<string, number> = {
-  ARS: 1200,   // 1 USD ≈ 1200 ARS (actualizar regularmente)
-  BRL: 5.8,    // 1 USD ≈ 5.8 BRL
-  CLP: 980,    // 1 USD ≈ 980 CLP
-  COP: 4400,   // 1 USD ≈ 4400 COP
-  MXN: 17.5,   // 1 USD ≈ 17.5 MXN
-  PEN: 3.75,   // 1 USD ≈ 3.75 PEN
-  UYU: 42,     // 1 USD ≈ 42 UYU
-  VES: 40,     // 1 USD ≈ 40 VES
-  USD: 1,
-  EUR: 0.93,
+  ARS: 1200, BRL: 5.8, CLP: 980, COP: 4400,
+  MXN: 17.5, PEN: 3.75, UYU: 42, VES: 40, USD: 1, EUR: 0.93,
 };
 
-// ── Cache de tipos de cambio (15 minutos) ──
 let ratesCache: { rates: Record<string, number>; timestamp: number } | null = null;
-const CACHE_TTL = 15 * 60 * 1000; // 15 minutos
+const CACHE_TTL = 15 * 60 * 1000;
 
 async function getExchangeRates(): Promise<Record<string, number>> {
-  // Verificar cache
   if (ratesCache && (Date.now() - ratesCache.timestamp) < CACHE_TTL) {
     return ratesCache.rates;
   }
-
-  // Intentar API 1: exchangerate-api (gratis, no requiere key)
   try {
     const res = await fetch('https://open.er-api.com/v6/latest/USD', {
       signal: AbortSignal.timeout(5000),
@@ -98,15 +65,12 @@ async function getExchangeRates(): Promise<Record<string, number>> {
       const data = await res.json() as any;
       if (data.rates) {
         ratesCache = { rates: data.rates, timestamp: Date.now() };
-        console.log('[Payment] Exchange rates actualizados desde er-api.com');
         return data.rates;
       }
     }
   } catch (e) {
     console.warn('[Payment] er-api.com falló:', e);
   }
-
-  // Intentar API 2: frankfurter.app (gratis, ECB data)
   try {
     const currencies = Object.keys(MP_COUNTRY_CURRENCY)
       .map(k => MP_COUNTRY_CURRENCY[k])
@@ -120,20 +84,16 @@ async function getExchangeRates(): Promise<Record<string, number>> {
       if (data.rates) {
         const rates = { ...data.rates, USD: 1 };
         ratesCache = { rates, timestamp: Date.now() };
-        console.log('[Payment] Exchange rates actualizados desde frankfurter.app');
         return rates;
       }
     }
   } catch (e) {
     console.warn('[Payment] frankfurter.app falló:', e);
   }
-
-  // Fallback: usar tipos de cambio hardcodeados
-  console.warn('[Payment] ⚠️ Usando tipos de cambio FALLBACK (pueden estar desactualizados)');
+  console.warn('[Payment] Usando tipos de cambio FALLBACK');
   return FALLBACK_RATES;
 }
 
-// ── Detectar país/moneda de la cuenta MercadoPago ──
 async function getMPAccountCurrency(accessToken: string): Promise<{ currency: string; country: string }> {
   try {
     const res = await fetch('https://api.mercadopago.com/users/me', {
@@ -143,7 +103,6 @@ async function getMPAccountCurrency(accessToken: string): Promise<{ currency: st
     if (res.ok) {
       const data = await res.json() as any;
       const countryId = data.country_id || data.site_id || '';
-      // site_id viene como "MLA" (Argentina), "MLM" (México), etc.
       const siteToCountry: Record<string, string> = {
         MLA: 'AR', MLB: 'BR', MLC: 'CL', MCO: 'CO',
         MLM: 'MX', MPE: 'PE', MLU: 'UY', MLV: 'VE',
@@ -154,3 +113,135 @@ async function getMPAccountCurrency(accessToken: string): Promise<{ currency: st
       return { currency, country };
     }
   } catch (e) {
+    console.warn('[Payment] No se pudo detectar país de cuenta MP:', e);
+  }
+  return { currency: 'ARS', country: 'AR' };
+}
+
+function convertPrice(priceUSD: number, currency: string, rates: Record<string, number>): number {
+  if (currency === 'USD') return priceUSD;
+  const rate = rates[currency] || FALLBACK_RATES[currency];
+  if (!rate) return priceUSD;
+  const converted = priceUSD * rate;
+  const highValueCurrencies = new Set(['CLP', 'COP', 'ARS', 'VES']);
+  if (highValueCurrencies.has(currency)) return Math.ceil(converted);
+  return Math.ceil(converted * 100) / 100;
+}
+
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+export default async function handler(req: VercelRequest, res: VercelResponse) {
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+
+  const MP_ACCESS_TOKEN = process.env.MP_ACCESS_TOKEN;
+  if (!MP_ACCESS_TOKEN) {
+    return res.status(500).json({ error: 'MercadoPago no configurado.' });
+  }
+
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'No autorizado. Inicia sesión.' });
+  }
+
+  const token = authHeader.replace('Bearer ', '');
+  const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+  if (authError || !user) {
+    return res.status(401).json({ error: 'Sesión inválida. Inicia sesión de nuevo.' });
+  }
+
+  const { planId, userEmail, userId } = req.body;
+
+  if (!planId || !userEmail || !userId) {
+    return res.status(400).json({ error: 'Faltan datos requeridos.' });
+  }
+
+  if (!UUID_REGEX.test(userId)) {
+    return res.status(400).json({ error: 'userId inválido.' });
+  }
+
+  if (userId !== user.id) {
+    return res.status(403).json({ error: 'No podés crear pagos para otro usuario.' });
+  }
+
+  const safeEmail = String(userEmail).trim().toLowerCase().slice(0, 254);
+  if (!safeEmail.includes('@') || safeEmail.length < 5) {
+    return res.status(400).json({ error: 'Email inválido.' });
+  }
+
+  const plan = PLANS[planId];
+  if (!plan) return res.status(400).json({ error: `Plan "${planId}" no válido.` });
+
+  try {
+    const [{ currency, country }, rates] = await Promise.all([
+      getMPAccountCurrency(MP_ACCESS_TOKEN),
+      getExchangeRates(),
+    ]);
+
+    const localPrice = convertPrice(plan.priceUSD, currency, rates);
+    const usedRate   = rates[currency] || FALLBACK_RATES[currency] || 1;
+
+    console.log(`[Payment] Plan: ${planId} | USD ${plan.priceUSD} → ${currency} ${localPrice} (rate: ${usedRate}) | País: ${country}`);
+
+    const preference = {
+      items: [{
+        title:       plan.title,
+        quantity:    1,
+        unit_price:  localPrice,
+        currency_id: currency,
+      }],
+      payer: { email: safeEmail },
+      metadata: {
+        user_id:       user.id,
+        user_email:    safeEmail,
+        plan_id:       plan.plan_id,
+        months:        plan.months,
+        price_usd:     plan.priceUSD,
+        local_price:   localPrice,
+        currency:      currency,
+        exchange_rate: usedRate,
+        country:       country,
+      },
+      back_urls: {
+        success: `${APP_URL}/payment/success`,
+        failure: `${APP_URL}/payment/failure`,
+        pending: `${APP_URL}/payment/pending`,
+      },
+      auto_return: 'approved',
+      notification_url: `${APP_URL}/api/webhook-mercadopago`,
+      external_reference: `${user.id}|${plan.plan_id}|${Date.now()}`,
+      payment_methods: {
+        excluded_payment_types: [],
+        installments:         3,
+        default_installments: 1,
+      },
+    };
+
+    const mpRes = await fetch('https://api.mercadopago.com/checkout/preferences', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization:  `Bearer ${MP_ACCESS_TOKEN}`,
+      },
+      body: JSON.stringify(preference),
+    });
+
+    if (!mpRes.ok) {
+      const err = await mpRes.text();
+      console.error('[MP] Error creando preferencia:', err);
+      return res.status(500).json({ error: 'Error al crear el pago.' });
+    }
+
+    const data = await mpRes.json() as any;
+    return res.status(200).json({
+      init_point:         data.init_point,
+      sandbox_init_point: data.sandbox_init_point,
+      currency,
+      local_price: localPrice,
+      exchange_rate: usedRate,
+    });
+
+  } catch (err) {
+    console.error('[MP] Error inesperado:', err);
+    return res.status(500).json({ error: 'Error del servidor.' });
+  }
+}
