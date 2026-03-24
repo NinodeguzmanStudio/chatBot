@@ -1,16 +1,12 @@
 // ═══════════════════════════════════════
-// AIdark — Main App
+// AIdark — Main App v3
 // src/App.tsx
-// FIXES:
-//   [1] Flash del Landing al hacer F5
-//   [2] Sesión persiste — clearAllAuthState NO borra claves sb-*
-//   [3] Push registration al login
-//   [4] onOpenPricing pasado al SettingsModal
+// NEW: AdminDashboard integrado
 // ═══════════════════════════════════════
 
 import React, { useState, useEffect, useRef } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { Sidebar, Header, ChatArea, AgeGate, PricingModal, PromoModal, SettingsModal, PrivacyModal, AuthModal } from '@/components';
+import { Sidebar, Header, ChatArea, AgeGate, PricingModal, PromoModal, SettingsModal, PrivacyModal, AuthModal, AdminDashboard } from '@/components';
 import { useAuthStore, useChatStore } from '@/lib/store';
 import { supabase } from '@/lib/supabase';
 import { useIsMobile } from '@/hooks/useIsMobile';
@@ -78,20 +74,21 @@ const ChatLayout: React.FC = () => {
   const [promoOpen, setPromoOpen]       = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [privacyOpen, setPrivacyOpen]   = useState(false);
+  const [adminOpen, setAdminOpen]       = useState(false);
   const isMobile = useIsMobile();
 
   return (
     <div style={{ height: '100dvh', display: 'flex', background: 'var(--bg-primary)', overflow: 'hidden' }}>
       {!isMobile && sidebarOpen && (
         <aside style={{ width: 260, display: 'flex', flexDirection: 'column', background: 'var(--bg-secondary)', borderRight: '1px solid var(--border-sub)', flexShrink: 0 }}>
-          <Sidebar onOpenPricing={() => setPricingOpen(true)} onOpenSettings={() => setSettingsOpen(true)} onOpenPrivacy={() => setPrivacyOpen(true)} />
+          <Sidebar onOpenPricing={() => setPricingOpen(true)} onOpenSettings={() => setSettingsOpen(true)} onOpenPrivacy={() => setPrivacyOpen(true)} onOpenAdmin={() => setAdminOpen(true)} />
         </aside>
       )}
       {isMobile && sidebarOpen && (
         <>
           <div onClick={() => useChatStore.getState().setSidebarOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 99 }} />
           <aside style={{ position: 'fixed', left: 0, top: 0, bottom: 0, width: 280, display: 'flex', flexDirection: 'column', background: 'var(--bg-secondary)', borderRight: '1px solid var(--border-sub)', zIndex: 100 }}>
-            <Sidebar onOpenPricing={() => setPricingOpen(true)} onOpenSettings={() => setSettingsOpen(true)} onOpenPrivacy={() => setPrivacyOpen(true)} isMobile />
+            <Sidebar onOpenPricing={() => setPricingOpen(true)} onOpenSettings={() => setSettingsOpen(true)} onOpenPrivacy={() => setPrivacyOpen(true)} onOpenAdmin={() => setAdminOpen(true)} isMobile />
           </aside>
         </>
       )}
@@ -105,7 +102,6 @@ const ChatLayout: React.FC = () => {
         onClose={() => setPromoOpen(false)}
         onOpenPricing={() => { setPromoOpen(false); setPricingOpen(true); }}
       />
-      {/* FIX [4]: onOpenPricing pasado al SettingsModal para que funcione el botón "Hacerse Premium" */}
       <SettingsModal
         isOpen={settingsOpen}
         onClose={() => setSettingsOpen(false)}
@@ -113,6 +109,7 @@ const ChatLayout: React.FC = () => {
       />
       <PrivacyModal isOpen={privacyOpen} onClose={() => setPrivacyOpen(false)} />
       <InstallBanner />
+      <AdminDashboard isOpen={adminOpen} onClose={() => setAdminOpen(false)} />
     </div>
   );
 };
