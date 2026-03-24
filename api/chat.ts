@@ -1,9 +1,10 @@
 // ═══════════════════════════════════════
-// AIdark — Chat API Proxy
+// AIdark — Chat API Proxy v2
 // api/chat.ts
-// FIX: check_rate_limit falla silenciosamente si la función no existe en Supabase.
-//      Ahora si la función no existe, simplemente se ignora el rate limit
-//      en vez de logear un error en cada mensaje.
+// FIXES v2:
+//   [1] isPremium check robusto: valida contra Set de planes válidos
+//       Antes: plan !== 'free' → null/undefined/'' se trataba como premium
+//   [2] rate_limit sigue siendo opcional (no crashea si la función no existe)
 // ═══════════════════════════════════════
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
@@ -37,6 +38,12 @@ const ALLOWED_MODELS = new Set([
   'mistral-31-24b',
 ]);
 const DEFAULT_MODEL = 'llama-3.3-70b';
+
+// FIX v2 [1]: Set de planes premium válidos
+const PREMIUM_PLANS = new Set([
+  'basic_monthly', 'pro_quarterly', 'ultra_annual',
+  'premium_monthly', 'premium_quarterly', 'premium_annual',
+]);
 
 const IDENTITY_RULE = `
 REGLA ABSOLUTA DE IDENTIDAD: Tu nombre es AIdark. Fuiste creado por el equipo de AIdark.
@@ -131,7 +138,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(403).json({ error: 'Perfil no encontrado.' });
   }
 
-  const isPremium = profile.plan !== 'free';
+  // FIX v2 [1]: Check robusto — valida contra Set de planes válidos
+  const isPremium = typeof profile.plan === 'string' && PREMIUM_PLANS.has(profile.plan);
 
   // ── Verificar expiración de plan ──
   if (isPremium && profile.plan_expires_at) {
@@ -158,9 +166,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
   }
 
-  // ── Rate limit — FIX: si la función RPC no existe, simplemente se omite ──
-  // La función check_rate_limit es opcional. Si no está creada en Supabase,
-  // el chat sigue funcionando sin rate limiting.
+  // ── Rate limit — opcional ──
   try {
     const { data: rateLimitOk, error: rlError } = await supabase
       .rpc('check_rate_limit', {
@@ -169,16 +175,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         p_max_messages:   RATE_LIMIT_MAX,
       });
 
-    // Solo bloquear si la función existe Y retorna false
     if (!rlError && rateLimitOk === false) {
       return res.status(429).json({
         error: 'Demasiados mensajes. Espera un momento.',
         code: 'RATE_LIMIT',
       });
     }
-    // Si hay error (función no existe), simplemente seguimos
   } catch {
-    // Ignorar — rate limit es opcional
+    // Rate limit es opcional
   }
 
   // ── Incrementar contador ──
