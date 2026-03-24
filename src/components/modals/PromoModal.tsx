@@ -1,11 +1,10 @@
 // ═══════════════════════════════════════
-// AIdark — Promo Modal (Paywall)
+// AIdark — Promo Modal (Paywall) v2
 // src/components/modals/PromoModal.tsx
-// MEJORAS:
-//   [1] Mensaje claro de por qué se bloqueó (agotaste mensajes gratis)
-//   [2] Comparación visual Free vs Premium
-//   [3] Mantiene el descuento 50% del timer
-//   [4] Botón "Ver todos los planes" por si quieren el anual
+// FIXES v2:
+//   [1] Precios en moneda local del usuario
+//   [2] Detección de país por timezone
+//   [3] Equivalencia USD visible
 // ═══════════════════════════════════════
 
 import React, { useState, useEffect } from 'react';
@@ -35,12 +34,47 @@ function getPromoRemaining(): { h: number; m: number; s: number; expired: boolea
 
 const pad = (n: number) => String(n).padStart(2, '0');
 
-// Solo mostramos los 2 planes más populares en el paywall
+type CurrencyInfo = { code: string; symbol: string; rate: number };
+
+function detectUserCountry(): string {
+  try {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
+    const lang = (navigator.language || '').toLowerCase();
+    const tzMap: Record<string, string> = {
+      'America/Argentina': 'AR', 'America/Buenos_Aires': 'AR',
+      'America/Sao_Paulo': 'BR', 'America/Fortaleza': 'BR',
+      'America/Santiago': 'CL', 'America/Bogota': 'CO',
+      'America/Mexico_City': 'MX', 'America/Monterrey': 'MX', 'America/Cancun': 'MX', 'America/Tijuana': 'MX',
+      'America/Lima': 'PE', 'America/Montevideo': 'UY',
+      'America/Guayaquil': 'EC', 'America/Caracas': 'VE',
+      'Europe/Madrid': 'ES',
+      'America/New_York': 'US', 'America/Chicago': 'US', 'America/Los_Angeles': 'US',
+    };
+    for (const [tzPrefix, country] of Object.entries(tzMap)) {
+      if (tz.startsWith(tzPrefix) || tz === tzPrefix) return country;
+    }
+    if (lang.startsWith('es-ar')) return 'AR';
+    if (lang.startsWith('es-mx')) return 'MX';
+    if (lang.startsWith('es-co')) return 'CO';
+    if (lang.startsWith('es-pe')) return 'PE';
+    if (lang.startsWith('pt-br') || lang.startsWith('pt')) return 'BR';
+    return 'US';
+  } catch { return 'US'; }
+}
+
+function formatLocalPrice(usd: number, c: CurrencyInfo): string {
+  if (c.code === 'USD') return `$${usd}`;
+  const converted = usd * c.rate;
+  const highValue = new Set(['CLP', 'COP', 'ARS', 'VES']);
+  const fmt = highValue.has(c.code) ? Math.ceil(converted).toLocaleString('es') : converted.toFixed(2);
+  return `${c.symbol} ${fmt}`;
+}
+
 const PROMO_PLANS = [
   {
     id: 'basic_monthly_promo',
     name: 'Basic',
-    before: '$12', after: '$6', period: '/mes',
+    beforeUSD: 12, afterUSD: 6, period: '/mes',
     tag: 'Más accesible',
     color: '#e67e22',
     features: ['Mensajes ilimitados', 'Imágenes HD sin censura', 'Historial 90 días'],
@@ -48,7 +82,7 @@ const PROMO_PLANS = [
   {
     id: 'pro_quarterly_promo',
     name: 'Pro',
-    before: '$29.99', after: '$15', period: '/3 meses',
+    beforeUSD: 29.99, afterUSD: 15, period: '/3 meses',
     tag: '⭐ Más popular',
     color: '#2eaadc',
     popular: true,
@@ -68,6 +102,28 @@ export const PromoModal: React.FC<PromoModalProps> = ({ isOpen, onClose, onOpenP
   const [loading, setLoading]     = useState<string | null>(null);
   const [error, setError]         = useState('');
   const isMobile = useIsMobile();
+
+  // Currency state
+  const [currency, setCurrency] = useState<CurrencyInfo>({ code: 'USD', symbol: '$', rate: 1 });
+
+  useEffect(() => {
+    if (!isOpen) return;
+    let cancelled = false;
+    const fetchCurrency = async () => {
+      try {
+        const country = detectUserCountry();
+        const res = await fetch(`/api/exchange-rate?country=${country}`);
+        if (res.ok && !cancelled) {
+          const data = await res.json();
+          if (data.currency && data.rate) {
+            setCurrency({ code: data.currency, symbol: data.symbol || data.currency, rate: data.rate });
+          }
+        }
+      } catch { /* fallback USD */ }
+    };
+    fetchCurrency();
+    return () => { cancelled = true; };
+  }, [isOpen]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -125,7 +181,6 @@ export const PromoModal: React.FC<PromoModalProps> = ({ isOpen, onClose, onOpenP
         boxShadow: '0 0 60px rgba(139,115,85,0.12)',
       }}>
 
-        {/* Línea superior decorativa */}
         <div style={{
           position: 'absolute', top: 0, left: 0, right: 0, height: 2,
           background: 'linear-gradient(90deg, transparent, #8b7355, transparent)',
@@ -142,7 +197,6 @@ export const PromoModal: React.FC<PromoModalProps> = ({ isOpen, onClose, onOpenP
             <X size={13} />
           </button>
 
-          {/* Header — mensaje de bloqueo */}
           <div style={{ marginBottom: 20 }}>
             <div style={{ fontSize: 11, color: '#8b7355', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 8 }}>
               Mensajes agotados
@@ -156,9 +210,7 @@ export const PromoModal: React.FC<PromoModalProps> = ({ isOpen, onClose, onOpenP
           </div>
 
           {/* Comparación Free vs Premium */}
-          <div style={{
-            display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 20,
-          }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 20 }}>
             {[
               { label: 'Gratis', items: [
                 { icon: <MessageSquare size={11} />, text: '12 mensajes/día', muted: true },
@@ -189,7 +241,7 @@ export const PromoModal: React.FC<PromoModalProps> = ({ isOpen, onClose, onOpenP
             ))}
           </div>
 
-          {/* Timer de oferta */}
+          {/* Timer */}
           <div style={{
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
             padding: '10px 14px', borderRadius: 10,
@@ -215,55 +267,63 @@ export const PromoModal: React.FC<PromoModalProps> = ({ isOpen, onClose, onOpenP
             </div>
           )}
 
-          {/* Planes */}
+          {/* Planes con precios locales */}
           <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: isMobile ? 'wrap' : 'nowrap' }}>
-            {PROMO_PLANS.map(plan => (
-              <div key={plan.id} style={{
-                flex: 1, minWidth: isMobile ? '100%' : 0,
-                borderRadius: 12, padding: '14px',
-                background: plan.popular ? `${plan.color}08` : '#0e0e0e',
-                border: `1px solid ${plan.popular ? `${plan.color}33` : '#222'}`,
-              }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
-                  <div>
-                    <div style={{ fontSize: 10, color: plan.popular ? plan.color : '#555', fontWeight: 700, marginBottom: 2 }}>{plan.tag}</div>
-                    <div style={{ fontSize: 11, color: '#888' }}>{plan.name}</div>
-                  </div>
-                  <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontSize: 11, color: '#333', textDecoration: 'line-through' }}>{plan.before}</div>
-                    <div style={{ fontSize: 22, fontWeight: 800, color: plan.popular ? plan.color : '#fff', letterSpacing: -0.5 }}>
-                      {plan.after}<span style={{ fontSize: 11, fontWeight: 400, color: '#555' }}>{plan.period}</span>
+            {PROMO_PLANS.map(plan => {
+              const beforeLocal = formatLocalPrice(plan.beforeUSD, currency);
+              const afterLocal  = formatLocalPrice(plan.afterUSD, currency);
+              const isLocal = currency.code !== 'USD';
+
+              return (
+                <div key={plan.id} style={{
+                  flex: 1, minWidth: isMobile ? '100%' : 0,
+                  borderRadius: 12, padding: '14px',
+                  background: plan.popular ? `${plan.color}08` : '#0e0e0e',
+                  border: `1px solid ${plan.popular ? `${plan.color}33` : '#222'}`,
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
+                    <div>
+                      <div style={{ fontSize: 10, color: plan.popular ? plan.color : '#555', fontWeight: 700, marginBottom: 2 }}>{plan.tag}</div>
+                      <div style={{ fontSize: 11, color: '#888' }}>{plan.name}</div>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{ fontSize: 11, color: '#333', textDecoration: 'line-through' }}>{beforeLocal}</div>
+                      <div style={{ fontSize: isLocal ? 18 : 22, fontWeight: 800, color: plan.popular ? plan.color : '#fff', letterSpacing: -0.5 }}>
+                        {afterLocal}<span style={{ fontSize: 11, fontWeight: 400, color: '#555' }}>{plan.period}</span>
+                      </div>
+                      {isLocal && (
+                        <div style={{ fontSize: 9, color: '#555', marginTop: 2 }}>≈ ${plan.afterUSD} USD</div>
+                      )}
                     </div>
                   </div>
+
+                  {plan.features.map((f, i) => (
+                    <div key={i} style={{ fontSize: 10, color: '#666', display: 'flex', alignItems: 'center', gap: 5, marginBottom: 4 }}>
+                      <svg width="8" height="8" viewBox="0 0 16 16" fill="none">
+                        <path d="M3 8l3.5 3.5L13 5" stroke={plan.popular ? plan.color : '#444'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                      {f}
+                    </div>
+                  ))}
+
+                  <button onClick={() => handleSubscribe(plan.id)} disabled={!!loading} style={{
+                    width: '100%', marginTop: 12, padding: '10px 0', borderRadius: 8,
+                    border: plan.popular ? 'none' : '1px solid #333',
+                    background: plan.popular ? `linear-gradient(135deg, ${plan.color}, ${plan.color}bb)` : 'transparent',
+                    color: plan.popular ? '#fff' : '#777',
+                    fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                    boxShadow: plan.popular ? `0 4px 16px ${plan.color}33` : 'none',
+                    opacity: loading && loading !== plan.id ? 0.5 : 1,
+                  }}>
+                    {loading === plan.id && <Loader2 size={12} style={{ animation: 'promoSpin 1s linear infinite' }} />}
+                    Elegir {plan.name}
+                  </button>
                 </div>
-
-                {plan.features.map((f, i) => (
-                  <div key={i} style={{ fontSize: 10, color: '#666', display: 'flex', alignItems: 'center', gap: 5, marginBottom: 4 }}>
-                    <svg width="8" height="8" viewBox="0 0 16 16" fill="none">
-                      <path d="M3 8l3.5 3.5L13 5" stroke={plan.popular ? plan.color : '#444'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
-                    {f}
-                  </div>
-                ))}
-
-                <button onClick={() => handleSubscribe(plan.id)} disabled={!!loading} style={{
-                  width: '100%', marginTop: 12, padding: '10px 0', borderRadius: 8,
-                  border: plan.popular ? 'none' : '1px solid #333',
-                  background: plan.popular ? `linear-gradient(135deg, ${plan.color}, ${plan.color}bb)` : 'transparent',
-                  color: plan.popular ? '#fff' : '#777',
-                  fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-                  boxShadow: plan.popular ? `0 4px 16px ${plan.color}33` : 'none',
-                  opacity: loading && loading !== plan.id ? 0.5 : 1,
-                }}>
-                  {loading === plan.id && <Loader2 size={12} style={{ animation: 'promoSpin 1s linear infinite' }} />}
-                  Elegir {plan.name}
-                </button>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
-          {/* Link a todos los planes */}
           <button onClick={() => { onClose(); onOpenPricing(); }} style={{
             width: '100%', padding: '10px', borderRadius: 8,
             border: '1px solid #1a1a1a', background: 'transparent',
@@ -274,6 +334,7 @@ export const PromoModal: React.FC<PromoModalProps> = ({ isOpen, onClose, onOpenP
 
           <p style={{ textAlign: 'center', fontSize: 10, color: '#2a2a2a', margin: '12px 0 0' }}>
             Pago seguro vía MercadoPago · Cancela cuando quieras
+            {currency.code !== 'USD' && ` · Precio en ${currency.code}`}
           </p>
         </div>
 
