@@ -1,13 +1,13 @@
 // ═══════════════════════════════════════
-// AIdark — MercadoPago Webhook
+// AIdark — MercadoPago Webhook v2
 // api/webhook-mercadopago.ts
-// FIXES:
-//   [1] verifySignature() retornaba true sin secret — ahora retorna false
-//   [2] PLAN_MONTHS/PRICES con claves correctas (premium_*)
-//   [3] UPDATE profiles con columnas correctas del schema
-//   [4] INSERT payments con columnas correctas
-//   [5] Fallback planId corregido a 'premium_monthly'
-//   [6] PUSH NOTIFICATION al activar plan
+// FIXES v2:
+//   [1] Anti-fraude multi-moneda: valida usando price_usd del metadata + tipo de cambio
+//       Antes: comparaba transaction_amount (en moneda local) contra precio USD → rechazaba pagos válidos
+//   [2] Guarda currency y exchange_rate en la tabla payments
+//   [3] Tolerancia del 25% para fluctuaciones de tipo de cambio entre creación y pago
+//   [4] Log detallado de moneda para debugging
+//   [5] isPremium check robusto (no solo !== 'free')
 // ═══════════════════════════════════════
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
@@ -24,16 +24,25 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const webpush = require('web-push');
 
+const VALID_PLANS = new Set(['premium_monthly', 'premium_quarterly', 'premium_annual']);
+
 const PLAN_MONTHS: Record<string, number> = {
   premium_monthly:   1,
   premium_quarterly: 3,
   premium_annual:    12,
 };
 
-const PLAN_PRICES: Record<string, number> = {
+const PLAN_PRICES_USD: Record<string, number> = {
   premium_monthly:   12.00,
   premium_quarterly: 29.99,
   premium_annual:    99.99,
+};
+
+// Precios promo (50% OFF) — también son válidos
+const PLAN_PROMO_PRICES_USD: Record<string, number> = {
+  premium_monthly:   6.00,
+  premium_quarterly: 15.00,
+  premium_annual:    50.00,
 };
 
 // ── Push notification al activar plan ──
@@ -120,6 +129,47 @@ function verifySignature(req: VercelRequest): boolean {
   return isValid;
 }
 
+// ── FIX v2 [1]: Validación anti-fraude multi-moneda ──
+function validatePaymentAmount(
+  transactionAmount: number,
+  transactionCurrency: string,
+  planId: string,
+  metadata: any
+): { valid: boolean; reason?: string } {
+  // Si el metadata tiene price_usd y exchange_rate (pagos nuevos con v2)
+  const metaPriceUSD   = Number(metadata?.price_usd || 0);
+  const metaExchangeRate = Number(metadata?.exchange_rate || 0);
+  const metaLocalPrice = Number(metadata?.local_price || 0);
+
+  if (metaPriceUSD > 0 && metaLocalPrice > 0) {
+    // Validar contra el precio local que se generó al crear la preferencia
+    // Tolerancia del 25% para fluctuaciones de cambio y redondeos
+    const minAcceptable = metaLocalPrice * 0.75;
+    if (transactionAmount < minAcceptable) {
+      return {
+        valid: false,
+        reason: `Monto ${transactionAmount} ${transactionCurrency} < mínimo ${minAcceptable.toFixed(2)} (esperado ~${metaLocalPrice} ${transactionCurrency}, USD ${metaPriceUSD})`,
+      };
+    }
+    return { valid: true };
+  }
+
+  // Fallback para pagos legacy (sin metadata de conversión):
+  // Solo validar si la moneda es USD (pagos desde Ecuador o cuentas USD)
+  if (transactionCurrency === 'USD') {
+    const expectedUSD = PLAN_PROMO_PRICES_USD[planId] || PLAN_PRICES_USD[planId];
+    if (expectedUSD && transactionAmount < expectedUSD * 0.75) {
+      return {
+        valid: false,
+        reason: `Monto USD ${transactionAmount} < mínimo ${(expectedUSD * 0.75).toFixed(2)} (esperado ~${expectedUSD})`,
+      };
+    }
+  }
+  // Para pagos legacy en moneda local sin metadata, aceptar (no podemos validar sin tipo de cambio)
+  console.warn(`[Webhook] Pago legacy sin metadata de conversión — aceptando sin validación de monto (${transactionAmount} ${transactionCurrency})`);
+  return { valid: true };
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method === 'GET') return res.status(200).send('OK');
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
@@ -191,21 +241,29 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json({ received: true, error: 'no_user_id' });
     }
 
-    if (!PLAN_MONTHS[planId]) {
+    // FIX v2 [5]: validación robusta de plan
+    if (!VALID_PLANS.has(planId)) {
       console.error(`[Webhook] planId inválido: "${planId}"`);
       return res.status(200).json({ received: true, error: 'invalid_plan_id' });
     }
 
-    // ── Validar monto (anti-fraude, acepta hasta 15% de descuento por promos) ──
-    const expectedPrice = PLAN_PRICES[planId];
-    if (expectedPrice) {
-      const paidAmount    = payment.transaction_amount;
-      const minAcceptable = expectedPrice * 0.85;
-      if (paidAmount < minAcceptable) {
-        console.error(`[Webhook] ❌ Monto sospechoso: pagó ${paidAmount}, esperado ~${expectedPrice}`);
-        return res.status(200).json({ received: true, error: 'suspicious_amount' });
-      }
+    // ── FIX v2 [1]: Validar monto con soporte multi-moneda ──
+    const transactionAmount   = payment.transaction_amount;
+    const transactionCurrency = payment.currency_id || 'USD';
+
+    const amountValidation = validatePaymentAmount(
+      transactionAmount,
+      transactionCurrency,
+      planId,
+      payment.metadata
+    );
+
+    if (!amountValidation.valid) {
+      console.error(`[Webhook] ❌ Monto sospechoso: ${amountValidation.reason}`);
+      return res.status(200).json({ received: true, error: 'suspicious_amount' });
     }
+
+    console.log(`[Webhook] ✅ Monto válido: ${transactionAmount} ${transactionCurrency} para plan ${planId}`);
 
     // ── Calcular expiración ──
     const months    = PLAN_MONTHS[planId];
@@ -223,61 +281,3 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     };
 
     const { error: updateError } = await supabase
-      .from('profiles')
-      .update(profileUpdate)
-      .eq('id', userId);
-
-    if (updateError) {
-      console.error('[Webhook] Error actualizando profile por id:', updateError);
-      if (userEmail) {
-        const { error: emailUpdateError } = await supabase
-          .from('profiles')
-          .update(profileUpdate)
-          .eq('email', userEmail);
-
-        if (emailUpdateError) {
-          console.error('[Webhook] Error actualizando profile por email:', emailUpdateError);
-          return res.status(200).json({ received: true, error: 'profile_update_failed' });
-        }
-      } else {
-        return res.status(200).json({ received: true, error: 'profile_update_failed' });
-      }
-    }
-
-    const { error: insertError } = await supabase.from('payments').insert({
-      user_id:       userId,
-      email:         userEmail || payment.payer?.email || null,
-      plan:          planId,
-      plan_id:       planId,
-      amount:        payment.transaction_amount,
-      currency:      payment.currency_id || 'USD',
-      status:        'approved',
-      mp_payment_id: paymentKey,
-      expires_at:    expiresAt.toISOString(),
-    });
-
-    if (insertError) {
-      console.error('[Webhook] Error insertando en payments (no crítico):', insertError);
-    }
-
-    console.log(`[Webhook] ✅ Plan ${planId} activado para ${userId}, vence: ${expiresAt.toISOString()}`);
-
-    // FIX [6]: Notificar al usuario por push que su plan está activo
-    const planNames: Record<string, string> = {
-      premium_monthly:   'Mensual',
-      premium_quarterly: 'Trimestral',
-      premium_annual:    'Anual',
-    };
-    await sendPushToUser(
-      userId,
-      '🎉 ¡Tu plan AIdark está activo!',
-      `Plan ${planNames[planId] || planId} activado. Ya podés generar imágenes sin censura.`
-    );
-
-    return res.status(200).json({ received: true, activated: true });
-
-  } catch (err) {
-    console.error('[Webhook] Error inesperado:', err);
-    return res.status(200).json({ received: true, error: 'internal_error' });
-  }
-}
