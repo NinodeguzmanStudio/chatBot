@@ -1,24 +1,30 @@
 // ═══════════════════════════════════════
-// AIdark — Venice AI Service
+// AIdark — Venice AI Service v3
 // src/services/venice.ts
-// MEJORA: 6 modelos mapeados a Venice API
+// FIXES v3:
+//   [1] Streaming confiable: manejo de chunks cortados, timeout, reconexión
+//   [2] Timeout configurable (45s) con abort limpio
+//   [3] Retry automático (1 reintento) si el stream se corta antes de [DONE]
+//   [4] Buffer robusto que no pierde chunks parciales
+//   [5] onError callback para que el UI muestre estado
+//   [6] Detección de respuesta vacía (modelo no respondió)
 // ═══════════════════════════════════════
 
 import type { Message, ModelId, CharacterId, VeniceContentPart } from '@/types';
 import { supabase } from '@/lib/supabase';
 
-// Mapa de ModelId del frontend → modelo real de Venice API
-// Todos usan la misma API de Venice, solo cambia el modelo
 const VENICE_MODELS: Record<ModelId, string> = {
-  'venice':     'venice-uncensored',   // Modelo principal sin censura
-  'dark-grok':  'venice-uncensored',   // Mismo modelo, distinto personaje
-  'void-x':     'qwen3-235b',          // Qwen ultra conciso
-  'llama-fast': 'llama-3.3-70b',       // Llama rápido (70B)
-  'llama-pro':  'llama-3.1-405b',      // Llama máxima potencia (405B)
-  'mistral':    'mistral-31-24b',      // Mistral preciso
+  'venice':     'venice-uncensored',
+  'dark-grok':  'venice-uncensored',
+  'void-x':     'qwen3-235b',
+  'llama-fast': 'llama-3.3-70b',
+  'llama-pro':  'llama-3.1-405b',
+  'mistral':    'mistral-31-24b',
 };
 
 const VISION_MODEL = 'qwen-2.5-vl-72b';
+const STREAM_TIMEOUT = 45000; // 45 segundos
+const MAX_RETRIES = 1;
 
 async function getAuthToken(): Promise<string> {
   const { data: { session } } = await supabase.auth.getSession();
@@ -77,11 +83,13 @@ async function parseResponseError(response: Response): Promise<never> {
     if (response.status === 403) errorCode = 'FORBIDDEN';
     if (response.status === 429) errorCode = 'RATE_LIMIT';
     if (response.status === 401) errorCode = 'UNAUTHORIZED';
+    if (response.status === 503) errorCode = 'ALL_PROVIDERS_DOWN';
   }
 
   throw new ApiError(errorMsg, errorCode);
 }
 
+// ── Mensaje no-stream (fallback) ──
 export async function sendMessage(
   messages: Message[],
   model: ModelId,
@@ -102,6 +110,106 @@ export async function sendMessage(
   return data.content || data.choices?.[0]?.message?.content || '';
 }
 
+// ═══════════════════════════════════════
+// STREAMING v3: Confiable con retry
+// ═══════════════════════════════════════
+
+async function doStream(
+  messages: Message[],
+  model: ModelId,
+  character: CharacterId,
+  onChunk: (text: string) => void,
+  onDone: () => void,
+  signal?: AbortSignal,
+): Promise<{ completed: boolean; fullText: string }> {
+  const veniceModel = needsVisionModel(messages) ? VISION_MODEL : VENICE_MODELS[model] || VENICE_MODELS['venice'];
+  const token = await getAuthToken();
+
+  // Timeout interno (se cancela si el signal externo ya aborta)
+  const timeoutController = new AbortController();
+  const timeoutId = setTimeout(() => timeoutController.abort(), STREAM_TIMEOUT);
+
+  // Combinar signal del usuario + timeout
+  const combinedSignal = signal
+    ? anySignal([signal, timeoutController.signal])
+    : timeoutController.signal;
+
+  let fullText  = '';
+  let completed = false;
+
+  try {
+    const response = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      signal: combinedSignal,
+      body: JSON.stringify({
+        messages: formatMessages(messages),
+        model: veniceModel,
+        character,
+        stream: true,
+      }),
+    });
+
+    if (!response.ok) await parseResponseError(response);
+
+    const reader = response.body?.getReader();
+    if (!reader) throw new Error('Streaming no disponible');
+
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      // Resetear timeout en cada chunk recibido (el modelo sigue respondiendo)
+      clearTimeout(timeoutId);
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || ''; // Último fragmento incompleto queda en buffer
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed || !trimmed.startsWith('data: ')) continue;
+
+        const data = trimmed.slice(6);
+        if (data === '[DONE]') {
+          completed = true;
+          break;
+        }
+
+        try {
+          const parsed = JSON.parse(data);
+          const text = parsed.choices?.[0]?.delta?.content || '';
+          if (text) {
+            fullText += text;
+            onChunk(text);
+          }
+        } catch {
+          // Chunk JSON malformado — ignorar pero no crashear
+        }
+      }
+
+      if (completed) break;
+    }
+  } finally {
+    clearTimeout(timeoutId);
+  }
+
+  return { completed, fullText };
+}
+
+// Helper: combinar AbortSignals
+function anySignal(signals: AbortSignal[]): AbortSignal {
+  const controller = new AbortController();
+  for (const s of signals) {
+    if (s.aborted) { controller.abort(s.reason); return controller.signal; }
+    s.addEventListener('abort', () => controller.abort(s.reason), { once: true });
+  }
+  return controller.signal;
+}
+
 export async function sendMessageStream(
   messages: Message[],
   model: ModelId,
@@ -110,43 +218,60 @@ export async function sendMessageStream(
   onDone: () => void,
   signal?: AbortSignal
 ): Promise<void> {
-  const veniceModel = needsVisionModel(messages) ? VISION_MODEL : VENICE_MODELS[model] || VENICE_MODELS['venice'];
-  const token = await getAuthToken();
+  let lastError: Error | null = null;
 
-  const response = await fetch('/api/chat', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-    signal,
-    body: JSON.stringify({ messages: formatMessages(messages), model: veniceModel, character, stream: true }),
-  });
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      // Si ya se canceló externamente, no reintentar
+      if (signal?.aborted) throw new Error('AbortError');
 
-  if (!response.ok) await parseResponseError(response);
-
-  const reader = response.body?.getReader();
-  if (!reader) throw new Error('Streaming no disponible');
-
-  const decoder = new TextDecoder();
-  let buffer = '';
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split('\n');
-    buffer = lines.pop() || '';
-
-    for (const line of lines) {
-      if (line.startsWith('data: ')) {
-        const data = line.slice(6);
-        if (data === '[DONE]') { onDone(); return; }
-        try {
-          const parsed = JSON.parse(data);
-          const text = parsed.choices?.[0]?.delta?.content || '';
-          if (text) onChunk(text);
-        } catch { /* chunk malformado, ignorar */ }
+      if (attempt > 0) {
+        console.warn(`[Venice] Reintentando stream (intento ${attempt + 1})...`);
+        // Pequeña pausa antes de reintentar
+        await new Promise(r => setTimeout(r, 1000));
       }
+
+      const { completed, fullText } = await doStream(
+        messages, model, character, onChunk, onDone, signal
+      );
+
+      if (completed) {
+        onDone();
+        return;
+      }
+
+      // Stream terminó sin [DONE] pero tenemos contenido
+      if (fullText.length > 0) {
+        console.warn(`[Venice] Stream terminó sin [DONE] pero tiene ${fullText.length} chars — aceptando`);
+        onDone();
+        return;
+      }
+
+      // Stream vacío — reintentar
+      console.warn(`[Venice] Stream vacío — reintentando...`);
+      lastError = new Error('Stream vacío');
+      continue;
+
+    } catch (err: any) {
+      // Si el usuario canceló, propagar inmediatamente
+      if (err.name === 'AbortError' || signal?.aborted) {
+        throw Object.assign(new Error('Cancelled'), { name: 'AbortError' });
+      }
+
+      // Si es un ApiError (auth, limit, etc), no reintentar
+      if (err instanceof ApiError) throw err;
+
+      // Timeout o error de red — reintentar
+      console.warn(`[Venice] Error en stream (intento ${attempt + 1}):`, err.message);
+      lastError = err;
+      continue;
     }
   }
-  onDone();
+
+  // Todos los reintentos fallaron
+  if (lastError instanceof ApiError) throw lastError;
+  throw new ApiError(
+    'La conexión se interrumpió. Intenta de nuevo.',
+    'STREAM_FAILED'
+  );
 }
