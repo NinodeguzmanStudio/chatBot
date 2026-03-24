@@ -1,11 +1,14 @@
 // ═══════════════════════════════════════
-// AIdark — Global Store
+// AIdark — Global Store v2
 // src/lib/store.ts
-// FIX: FREE_LIMIT 5→12
+// FIXES v2:
+//   [1] isPremiumPlan helper para check robusto
+//   [2] canSendMessage usa helper en vez de plan !== 'free'
 // ═══════════════════════════════════════
 
 import { create } from 'zustand';
 import type { Message, ModelId, CharacterId, ChatSession, UserProfile } from '@/types';
+import { isPremiumPlan } from '@/types';
 import {
   getDeviceMessagesUsed, incrementDeviceMessages,
   wasBonusGiven, giveBonusMessages, getBonusMessagesUsed, incrementBonusMessages,
@@ -16,7 +19,6 @@ import {
   updateDbSessionTitle, deleteDbSession, deleteAllDbSessions, cleanOldChats,
 } from '@/services/chatService';
 
-// FIX: 5→12 mensajes diarios gratis
 const FREE_LIMIT = 12;
 
 interface ChatState {
@@ -218,7 +220,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   canSendMessage: () => {
     const { user } = get();
-    if (user?.plan && user.plan !== 'free') return true;
+    // FIX v2 [2]: usar isPremiumPlan para check robusto
+    if (isPremiumPlan(user?.plan)) return true;
     const bonusActive = wasBonusGiven();
     if (bonusActive) return getBonusMessagesUsed() < FREE_LIMIT;
     return getDeviceMessagesUsed() < FREE_LIMIT;
@@ -226,7 +229,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   getRemainingMessages: () => {
     const { user } = get();
-    if (user?.plan && user.plan !== 'free') return 999;
+    if (isPremiumPlan(user?.plan)) return 999;
     const bonusActive = wasBonusGiven();
     if (bonusActive) return Math.max(0, FREE_LIMIT - getBonusMessagesUsed());
     return Math.max(0, FREE_LIMIT - getDeviceMessagesUsed());
@@ -238,7 +241,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   shouldShowBonus: () => {
     const { user } = get();
-    if (user?.plan && user.plan !== 'free') return false;
+    if (isPremiumPlan(user?.plan)) return false;
     return getDeviceMessagesUsed() >= FREE_LIMIT && !wasBonusGiven();
   },
 
