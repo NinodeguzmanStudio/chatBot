@@ -1,14 +1,16 @@
 // ═══════════════════════════════════════
-// AIdark — Pricing Modal (FIXED)
+// AIdark — Pricing Modal v2
 // src/components/modals/PricingModal.tsx
-// FIXES:
-//   [1] Eliminado contador falso getOcupados() — riesgo legal
-//   [2] LiveCounter reemplazado por badge de features reales
-//   [3] handleSubscribe ahora envía el token de auth (requerido por create-payment.ts fijado)
-//   [4] Eliminado tick/interval de live counter que ya no existe
+// FIXES v2:
+//   [1] Precios mostrados en moneda local del usuario
+//   [2] Detección automática de país por timezone/navigator.language
+//   [3] Fetch de tipo de cambio al abrir el modal
+//   [4] Memory leak gyroscope corregido (listener removido correctamente)
+//   [5] handleSubscribe envía token Bearer
+//   [6] Muestra "≈ $12 USD" como referencia bajo el precio local
 // ═══════════════════════════════════════
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { X, Loader2 } from 'lucide-react';
 import { useAuthStore } from '@/lib/store';
 import { useIsMobile } from '@/hooks/useIsMobile';
@@ -16,7 +18,7 @@ import { supabase } from '@/lib/supabase';
 
 type PlanConfig = {
   id:          string;
-  price:       number;
+  priceUSD:    number;
   period:      string;
   periodLabel: string;
   label:       string;
@@ -28,6 +30,53 @@ type PlanConfig = {
   waveAmplitude: number;
   features:    { icon: string; text: string; highlight?: boolean }[];
 };
+
+type CurrencyInfo = {
+  code:   string;
+  symbol: string;
+  rate:   number;
+};
+
+// ── Detectar país del usuario por timezone ──
+function detectUserCountry(): string {
+  try {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
+    const lang = (navigator.language || '').toLowerCase();
+
+    const tzMap: Record<string, string> = {
+      'America/Argentina':     'AR', 'America/Buenos_Aires': 'AR',
+      'America/Sao_Paulo':     'BR', 'America/Fortaleza':   'BR', 'America/Manaus': 'BR',
+      'America/Santiago':      'CL',
+      'America/Bogota':        'CO',
+      'America/Mexico_City':   'MX', 'America/Monterrey':    'MX', 'America/Cancun': 'MX', 'America/Tijuana': 'MX',
+      'America/Lima':          'PE',
+      'America/Montevideo':    'UY',
+      'America/Guayaquil':     'EC',
+      'America/Caracas':       'VE',
+      'Europe/Madrid':         'ES',
+      'America/New_York':      'US', 'America/Chicago':      'US', 'America/Los_Angeles': 'US', 'America/Denver': 'US',
+    };
+
+    for (const [tzPrefix, country] of Object.entries(tzMap)) {
+      if (tz.startsWith(tzPrefix) || tz === tzPrefix) return country;
+    }
+
+    // Fallback por idioma
+    if (lang.startsWith('es-ar')) return 'AR';
+    if (lang.startsWith('es-mx')) return 'MX';
+    if (lang.startsWith('es-co')) return 'CO';
+    if (lang.startsWith('es-pe')) return 'PE';
+    if (lang.startsWith('es-cl')) return 'CL';
+    if (lang.startsWith('es-uy')) return 'UY';
+    if (lang.startsWith('pt-br') || lang.startsWith('pt')) return 'BR';
+    if (lang.startsWith('es-es')) return 'ES';
+    if (lang.startsWith('en-us') || lang.startsWith('en')) return 'US';
+
+    return 'US'; // Default
+  } catch {
+    return 'US';
+  }
+}
 
 // ── Wave SVG ──
 const WaveSurface: React.FC<{ color: string; speed: number; amplitude: number; offset: number }> = ({ color, speed, amplitude, offset }) => (
@@ -44,20 +93,45 @@ const WaveSurface: React.FC<{ color: string; speed: number; amplitude: number; o
   </svg>
 );
 
+// ── Formatear precio local ──
+function formatLocalPrice(priceUSD: number, currency: CurrencyInfo): string {
+  if (currency.code === 'USD') return `$${priceUSD}`;
+  const converted = priceUSD * currency.rate;
+  const highValue = new Set(['CLP', 'COP', 'ARS', 'VES']);
+  const formatted = highValue.has(currency.code)
+    ? Math.ceil(converted).toLocaleString('es')
+    : converted.toFixed(2);
+  return `${currency.symbol} ${formatted}`;
+}
+
+function formatMonthlyEquivalent(priceUSD: number, months: number, currency: CurrencyInfo): string {
+  const monthlyUSD = priceUSD / months;
+  if (currency.code === 'USD') return `~$${monthlyUSD.toFixed(2)}/mes`;
+  const monthly = monthlyUSD * currency.rate;
+  const highValue = new Set(['CLP', 'COP', 'ARS', 'VES']);
+  const formatted = highValue.has(currency.code)
+    ? Math.ceil(monthly).toLocaleString('es')
+    : monthly.toFixed(2);
+  return `~${currency.symbol} ${formatted}/mes`;
+}
+
 // ── Water Card ──
 const WaterCard: React.FC<{
   plan:        PlanConfig;
+  currency:    CurrencyInfo;
   tiltX:       number;
   tiltY:       number;
   loading:     string | null;
   currentPlan: string;
   onSubscribe: (id: string) => void;
-}> = ({ plan, tiltX, tiltY, loading, currentPlan, onSubscribe }) => {
-  const { id, price, period, periodLabel, color, colorLight, colorDark, features, label, emoji, waveSpeed, waveAmplitude } = plan;
+}> = ({ plan, currency, tiltX, tiltY, loading, currentPlan, onSubscribe }) => {
+  const { id, priceUSD, period, periodLabel, color, colorLight, colorDark, features, label, emoji, waveSpeed, waveAmplitude } = plan;
   const tiltShift  = tiltX * 0.3;
-  // FIX [1]: fill fijo y realista basado en precio (visual, no engañoso)
   const staticFill = id === 'basic_monthly' ? 72 : id === 'pro_quarterly' ? 55 : 38;
   const isCurrent  = currentPlan === id && currentPlan !== 'free';
+
+  const localPrice   = formatLocalPrice(priceUSD, currency);
+  const isLocalCurrency = currency.code !== 'USD';
 
   return (
     <div style={{
@@ -76,11 +150,28 @@ const WaterCard: React.FC<{
           border: `1px solid ${color}44`, marginBottom: 14, textTransform: 'uppercase',
         }}>{label}</div>
 
-        <div style={{ textAlign: 'center', marginBottom: 4 }}>
-          <span style={{ fontSize: 42, fontWeight: 800, color: '#fff', lineHeight: 1, fontFamily: 'system-ui' }}>${price}</span>
+        <div style={{ textAlign: 'center', marginBottom: 2 }}>
+          <span style={{ fontSize: isLocalCurrency ? 28 : 42, fontWeight: 800, color: '#fff', lineHeight: 1, fontFamily: 'system-ui' }}>
+            {localPrice}
+          </span>
         </div>
+        {/* Mostrar equivalencia en USD si la moneda es local */}
+        {isLocalCurrency && (
+          <div style={{ textAlign: 'center', fontSize: 11, color: '#ffffff55', marginBottom: 2 }}>
+            ≈ ${priceUSD} USD
+          </div>
+        )}
         <div style={{ textAlign: 'center', fontSize: 12, color: '#ffffff88', marginBottom: 4 }}>{period}</div>
-        {periodLabel && <div style={{ textAlign: 'center', fontSize: 10, color, fontWeight: 600, marginBottom: 14 }}>{periodLabel}</div>}
+        {periodLabel && (
+          <div style={{ textAlign: 'center', fontSize: 10, color, fontWeight: 600, marginBottom: 14 }}>
+            {id === 'pro_quarterly'
+              ? `${formatMonthlyEquivalent(priceUSD, 3, currency)} · Ahorra 17%`
+              : id === 'ultra_annual'
+              ? `${formatMonthlyEquivalent(priceUSD, 12, currency)} · Ahorra 30%`
+              : periodLabel
+            }
+          </div>
+        )}
 
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 7, marginBottom: 16 }}>
           {features.map((f, i) => (
@@ -154,7 +245,7 @@ const WaterCard: React.FC<{
 // ── Plan configs ──
 const basePlans: PlanConfig[] = [
   {
-    id: 'basic_monthly', price: 12, period: '/mes', periodLabel: '', label: 'Mensual',
+    id: 'basic_monthly', priceUSD: 12, period: '/mes', periodLabel: '', label: 'Mensual',
     color: '#e67e22', colorLight: '#f39c12', colorDark: '#d35400',
     emoji: '🔥', waveSpeed: 1.8, waveAmplitude: 10,
     features: [
@@ -167,7 +258,7 @@ const basePlans: PlanConfig[] = [
     ],
   },
   {
-    id: 'pro_quarterly', price: 29.99, period: '/3 meses', periodLabel: '~$10/mes · Ahorra 17%', label: 'Trimestral',
+    id: 'pro_quarterly', priceUSD: 29.99, period: '/3 meses', periodLabel: '~$10/mes · Ahorra 17%', label: 'Trimestral',
     color: '#2eaadc', colorLight: '#5dccf4', colorDark: '#1a8ab5',
     emoji: '⚡', waveSpeed: 3.5, waveAmplitude: 6,
     features: [
@@ -180,7 +271,7 @@ const basePlans: PlanConfig[] = [
     ],
   },
   {
-    id: 'ultra_annual', price: 99.99, period: '/año', periodLabel: '~$8.33/mes · Ahorra 30%', label: 'Anual · Fundador',
+    id: 'ultra_annual', priceUSD: 99.99, period: '/año', periodLabel: '~$8.33/mes · Ahorra 30%', label: 'Anual · Fundador',
     color: '#9b59b6', colorLight: '#c39bd3', colorDark: '#7d3c98',
     emoji: '👑', waveSpeed: 4.5, waveAmplitude: 4,
     features: [
@@ -205,24 +296,66 @@ export const PricingModal: React.FC<{ isOpen: boolean; onClose: () => void }> = 
   const currentPlan = user?.plan || 'free';
   const isMobile    = useIsMobile();
 
-  // Gyroscope + mouse tilt
+  // ── FIX v2 [1]: Currency state ──
+  const [currency, setCurrency] = useState<CurrencyInfo>({ code: 'USD', symbol: '$', rate: 1 });
+  const [loadingCurrency, setLoadingCurrency] = useState(false);
+
+  // FIX v2 [4]: refs para cleanup de gyroscope
+  const gyroListenerRef = useRef<((e: DeviceOrientationEvent) => void) | null>(null);
+
+  // Fetch exchange rate on open
   useEffect(() => {
     if (!isOpen) return;
+    let cancelled = false;
+
+    const fetchCurrency = async () => {
+      setLoadingCurrency(true);
+      try {
+        const country = detectUserCountry();
+        const res = await fetch(`/api/exchange-rate?country=${country}`);
+        if (res.ok && !cancelled) {
+          const data = await res.json();
+          if (data.currency && data.rate) {
+            setCurrency({ code: data.currency, symbol: data.symbol || data.currency, rate: data.rate });
+          }
+        }
+      } catch {
+        // Silently fallback to USD
+      }
+      if (!cancelled) setLoadingCurrency(false);
+    };
+
+    fetchCurrency();
+    return () => { cancelled = true; };
+  }, [isOpen]);
+
+  // Gyroscope + mouse tilt — FIX v2 [4]: proper cleanup
+  useEffect(() => {
+    if (!isOpen) return;
+
     const handleOrientation = (e: DeviceOrientationEvent) => {
       if (e.gamma !== null) setTiltX(Math.max(-15, Math.min(15, e.gamma)));
       if (e.beta  !== null) setTiltY(Math.max(-10, Math.min(10, ((e.beta ?? 45) - 45) * 0.3)));
     };
+
     if (window.DeviceOrientationEvent && typeof (DeviceOrientationEvent as any).requestPermission !== 'function') {
       window.addEventListener('deviceorientation', handleOrientation);
     }
+
     const handleMouse = (e: MouseEvent) => {
       setTiltX(((e.clientX / window.innerWidth)  - 0.5) * 20);
       setTiltY(((e.clientY / window.innerHeight) - 0.5) * 10);
     };
     window.addEventListener('mousemove', handleMouse);
+
     return () => {
       window.removeEventListener('deviceorientation', handleOrientation);
       window.removeEventListener('mousemove', handleMouse);
+      // FIX v2 [4]: also remove gyro listener if it was added
+      if (gyroListenerRef.current) {
+        window.removeEventListener('deviceorientation', gyroListenerRef.current);
+        gyroListenerRef.current = null;
+      }
     };
   }, [isOpen]);
 
@@ -231,21 +364,25 @@ export const PricingModal: React.FC<{ isOpen: boolean; onClose: () => void }> = 
       try {
         const perm = await (DeviceOrientationEvent as any).requestPermission();
         if (perm === 'granted') {
-          window.addEventListener('deviceorientation', (e) => {
+          // FIX v2 [4]: remove previous listener if any
+          if (gyroListenerRef.current) {
+            window.removeEventListener('deviceorientation', gyroListenerRef.current);
+          }
+          const handler = (e: DeviceOrientationEvent) => {
             if (e.gamma !== null) setTiltX(Math.max(-15, Math.min(15, e.gamma)));
             if (e.beta  !== null) setTiltY(Math.max(-10, Math.min(10, ((e.beta ?? 45) - 45) * 0.3)));
-          });
+          };
+          gyroListenerRef.current = handler;
+          window.addEventListener('deviceorientation', handler);
         }
       } catch {}
     }
   }, []);
 
-  // FIX [3]: handleSubscribe ahora envía token Bearer (requerido por create-payment.ts)
   const handleSubscribe = async (planId: string) => {
     if (!user) { setError('Necesitas una cuenta para suscribirte.'); return; }
     setLoading(planId); setError('');
     try {
-      // Obtener token de sesión actual
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.access_token) {
         setError('Sesión expirada. Recargá la página.');
@@ -257,7 +394,7 @@ export const PricingModal: React.FC<{ isOpen: boolean; onClose: () => void }> = 
         method: 'POST',
         headers: {
           'Content-Type':  'application/json',
-          'Authorization': `Bearer ${session.access_token}`, // FIX [3]
+          'Authorization': `Bearer ${session.access_token}`,
         },
         body: JSON.stringify({ planId, userEmail: user.email, userId: user.id }),
       });
@@ -316,7 +453,7 @@ export const PricingModal: React.FC<{ isOpen: boolean; onClose: () => void }> = 
           }}><X size={16} /></button>
         </div>
 
-        {/* Propuesta de valor (reemplaza al contador falso) */}
+        {/* Propuesta de valor */}
         <div style={{
           background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)',
           borderRadius: 10, padding: '10px 16px', margin: '12px 0 20px', textAlign: 'center',
@@ -328,6 +465,15 @@ export const PricingModal: React.FC<{ isOpen: boolean; onClose: () => void }> = 
             <br />Menos usuarios = más velocidad y mejor experiencia.
           </p>
         </div>
+
+        {/* Currency indicator */}
+        {currency.code !== 'USD' && (
+          <div style={{
+            textAlign: 'center', fontSize: 10, color: '#ffffff44', marginBottom: 12,
+          }}>
+            💱 Precios en {currency.code} · Tipo de cambio actualizado en tiempo real
+          </div>
+        )}
 
         {error && (
           <div style={{ padding: '8px 12px', marginBottom: 12, borderRadius: 8, background: 'rgba(200,60,60,0.15)', color: '#ff6b6b', fontSize: 11 }}>
@@ -341,6 +487,7 @@ export const PricingModal: React.FC<{ isOpen: boolean; onClose: () => void }> = 
             <WaterCard
               key={plan.id}
               plan={plan}
+              currency={currency}
               tiltX={tiltX}
               tiltY={tiltY}
               loading={loading}
@@ -358,6 +505,7 @@ export const PricingModal: React.FC<{ isOpen: boolean; onClose: () => void }> = 
           </p>
           <p style={{ fontSize: 9, color: '#ffffff18', marginTop: 10 }}>
             Pago seguro vía MercadoPago · Cancela cuando quieras
+            {currency.code !== 'USD' && ` · Precios en ${currency.code}`}
           </p>
         </div>
       </div>
