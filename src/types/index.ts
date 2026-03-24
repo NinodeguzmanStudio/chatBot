@@ -1,7 +1,9 @@
 // ═══════════════════════════════════════
-// AIdark — Type Definitions
+// AIdark — Type Definitions v2
 // src/types/index.ts
-// MEJORA: ModelId expandido con más modelos Venice
+// FIXES v2:
+//   [1] PlanType incluye TODOS los plan IDs (premium_* y aliases)
+//   [2] ModelId expandido con más modelos Venice
 // ═══════════════════════════════════════
 
 // ── Chat ──
@@ -69,7 +71,25 @@ export interface ChatSession {
 }
 
 // ── Auth & User ──
-export type PlanType = 'free' | 'basic_monthly' | 'pro_quarterly' | 'ultra_annual';
+// FIX v2 [1]: Todos los plan IDs posibles (backend usa premium_*, frontend usa basic_/pro_/ultra_)
+export type PlanType =
+  | 'free'
+  | 'basic_monthly'
+  | 'pro_quarterly'
+  | 'ultra_annual'
+  | 'premium_monthly'
+  | 'premium_quarterly'
+  | 'premium_annual';
+
+// Helper para verificar si un plan es premium (no free)
+export function isPremiumPlan(plan: string | null | undefined): boolean {
+  if (!plan) return false;
+  const premiumPlans = new Set([
+    'basic_monthly', 'pro_quarterly', 'ultra_annual',
+    'premium_monthly', 'premium_quarterly', 'premium_annual',
+  ]);
+  return premiumPlans.has(plan);
+}
 
 export interface UserProfile {
   id: string;
