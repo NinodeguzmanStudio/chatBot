@@ -15,7 +15,7 @@ import { generateId } from '@/lib/utils';
 import { APP_CONFIG, AI_CHARACTERS } from '@/lib/constants';
 import { MessageBubble } from './MessageBubble';
 import { CharacterSelector } from './CharacterSelector';
-import { TypingParticles } from './TypingParticles';
+import TypingParticles from './TypingParticles';
 import { ImageGenerator } from './ImageGenerator';
 import { useIsMobile } from '@/hooks/useIsMobile';
 import { t } from '@/lib/i18n';
