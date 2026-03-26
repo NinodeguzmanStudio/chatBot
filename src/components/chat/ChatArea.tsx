@@ -43,22 +43,76 @@ interface ChatAreaProps {
 }
 
 const MessageProgressCircle: React.FC<{ remaining: number; total: number; onClick: () => void }> = ({ remaining, total, onClick }) => {
-  const size = 32, stroke = 2.5;
+  const [spark, setSpark] = useState(false);
+  const prevRemaining = useRef(remaining);
+
+  // Chispa roja cuando se consume un mensaje
+  useEffect(() => {
+    if (remaining < prevRemaining.current) {
+      setSpark(true);
+      const t = setTimeout(() => setSpark(false), 400);
+      return () => clearTimeout(t);
+    }
+    prevRemaining.current = remaining;
+  }, [remaining]);
+
+  const size = 28; // 12% más chico (era 32)
+  const stroke = 2.5;
   const radius = (size - stroke) / 2;
   const circ   = 2 * Math.PI * radius;
-  const offset = circ * (1 - Math.min((total - remaining) / total, 1));
-  const color  = remaining <= 2 ? '#e05555' : remaining <= 5 ? '#c9944a' : '#6b8a5e';
+  const used   = total - remaining;
+  const pct    = Math.min(used / total, 1);
+  const offset = circ * (1 - pct);
+  const depleted = remaining <= 0;
+
+  // Color depredador: dorado → naranja → rojo conforme se consume
+  const color = depleted ? '#cc2222'
+    : remaining <= 2 ? '#d43a1a'   // rojo brasa
+    : remaining <= 5 ? '#c96a2a'   // naranja
+    : '#8b7355';                    // dorado depredador
+
+  // Segmentos: 12 divisiones visibles
+  const segmentGap  = circ * 0.02; // gap entre segmentos
+  const segmentFull = (circ - segmentGap * total) / total;
+  const dashArray   = `${segmentFull} ${segmentGap}`;
+
   return (
-    <button onClick={onClick} title={`${remaining} mensajes restantes hoy`}
-      style={{ position: 'relative', width: size, height: size, background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, flexShrink: 0 }}>
+    <button onClick={onClick} title={depleted ? 'Sin mensajes — hazte pro' : `${remaining} mensajes restantes`}
+      style={{
+        position: 'relative', width: size, height: size, background: 'none',
+        border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center',
+        justifyContent: 'center', padding: 0, flexShrink: 0,
+        animation: depleted ? 'emberPulse 1.5s ease-in-out infinite' : 'none',
+      }}>
+      <style>{`
+        @keyframes emberPulse { 0%,100%{filter:drop-shadow(0 0 2px #cc222244)} 50%{filter:drop-shadow(0 0 6px #cc222288)} }
+        @keyframes sparkFlash { 0%{opacity:1;transform:scale(1.3)} 100%{opacity:0;transform:scale(0.5)} }
+      `}</style>
       <svg width={size} height={size} style={{ transform: 'rotate(-90deg)' }}>
-        <circle cx={size/2} cy={size/2} r={radius} fill="none" stroke="var(--border-sub)" strokeWidth={stroke} />
-        <circle cx={size/2} cy={size/2} r={radius} fill="none" stroke={color} strokeWidth={stroke} strokeLinecap="round"
-          strokeDasharray={circ} strokeDashoffset={offset} style={{ transition: 'stroke-dashoffset 0.4s ease, stroke 0.3s ease' }} />
+        {/* Fondo: 12 segmentos apagados */}
+        <circle cx={size/2} cy={size/2} r={radius} fill="none" stroke="var(--border-sub)" strokeWidth={stroke}
+          strokeDasharray={dashArray} strokeLinecap="butt" opacity={0.4} />
+        {/* Progreso: segmentos encendidos que se van consumiendo */}
+        <circle cx={size/2} cy={size/2} r={radius} fill="none" stroke={color} strokeWidth={stroke}
+          strokeDasharray={dashArray} strokeDashoffset={offset} strokeLinecap="butt"
+          style={{ transition: 'stroke-dashoffset 0.5s ease, stroke 0.4s ease', filter: `drop-shadow(0 0 3px ${color}66)` }} />
       </svg>
-      <span style={{ position: 'absolute', fontSize: remaining >= 10 ? 9 : 10, fontWeight: 600, color, lineHeight: 1, userSelect: 'none' }}>
-        {remaining}
+      <span style={{
+        position: 'absolute', fontSize: remaining >= 10 ? 8 : 9, fontWeight: 700,
+        color: depleted ? '#cc2222' : color, lineHeight: 1, userSelect: 'none',
+        fontFamily: 'monospace',
+      }}>
+        {depleted ? '!' : remaining}
       </span>
+      {/* Chispa roja al consumir mensaje */}
+      {spark && (
+        <div style={{
+          position: 'absolute', width: size + 6, height: size + 6, borderRadius: '50%',
+          border: '2px solid #ff4422', opacity: 0,
+          animation: 'sparkFlash 0.4s ease-out forwards',
+          pointerEvents: 'none',
+        }} />
+      )}
     </button>
   );
 };
@@ -552,9 +606,11 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 6, padding: '0 4px' }}>
                 <span style={{ fontSize: 10, color: 'var(--txt-ghost)' }}>{t('app.chats_private')}</span>
                 {isFree && remaining <= 3 && (
-                  <span style={{ fontSize: 10, color: 'var(--danger)', fontWeight: 500 }}>
+                  <span style={{ fontSize: 10, color: remaining === 0 ? '#cc2222' : '#c96a2a', fontWeight: 500 }}>
                     {remaining === 0 ? 'Sin mensajes — ' : `${remaining} restantes — `}
-                    <span onClick={onOpenPricing} style={{ textDecoration: 'underline', cursor: 'pointer' }}>Obtener más</span>
+                    <span onClick={onOpenPricing} style={{ textDecoration: 'underline', cursor: 'pointer', color: '#8b7355' }}>
+                      {remaining === 0 ? 'Hazte Pro o vuelve mañana' : 'Obtener más'}
+                    </span>
                   </span>
                 )}
               </div>
