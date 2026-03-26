@@ -1,8 +1,11 @@
 // ═══════════════════════════════════════
-// AIdark — Admin API
+// AIdark — Admin API v2
 // api/admin.ts
-// Solo accesible por ADMIN_EMAILS.
-// Devuelve métricas: usuarios, revenue, actividad, búsquedas populares.
+// ═══════════════════════════════════════
+// CAMBIOS v2:
+//   [1] Nuevo: activeUsers — lista de usuarios activos con email,
+//       plan, último acceso y mensajes usados
+//   [2] onlineNow muestra usuarios reales (no solo count)
 // ═══════════════════════════════════════
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
@@ -12,7 +15,6 @@ const SUPABASE_URL         = process.env.VITE_SUPABASE_URL || process.env.SUPABA
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
-// Emails con acceso admin — agregar los que quieras
 const ADMIN_EMAILS = new Set([
   'ninodeguzmanstudio@gmail.com',
 ]);
@@ -20,7 +22,6 @@ const ADMIN_EMAILS = new Set([
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
 
-  // ── Auth: verificar que es admin ──
   const authHeader = req.headers.authorization;
   if (!authHeader?.startsWith('Bearer ')) {
     return res.status(401).json({ error: 'No autorizado.' });
@@ -39,6 +40,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const today     = now.toISOString().slice(0, 10);
     const weekAgo   = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
     const monthAgo  = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    const fifteenMinAgo = new Date(now.getTime() - 15 * 60 * 1000).toISOString();
 
     // ── 1. Totales de usuarios ──
     const { count: totalUsers } = await supabase
@@ -55,16 +57,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .select('*', { count: 'exact', head: true })
       .eq('plan', 'free');
 
-    // Registros últimos 7 días
     const { count: newUsersWeek } = await supabase
       .from('profiles')
       .select('*', { count: 'exact', head: true })
       .gte('created_at', weekAgo);
 
-    // ── 2. Revenue (pagos aprobados) ──
+    // ── 2. Revenue ──
     const { data: allPayments } = await supabase
       .from('payments')
-      .select('amount, currency, amount_usd, created_at, plan, email')
+      .select('amount, currency, amount_usd, created_at, plan_id, email')
       .eq('status', 'approved')
       .order('created_at', { ascending: false })
       .limit(100);
@@ -74,21 +75,60 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const monthRevenue    = monthPayments.reduce((s, p) => s + (p.amount_usd || p.amount || 0), 0);
     const recentPayments  = (allPayments || []).slice(0, 10);
 
-    // ── 3. Actividad: mensajes por día (últimos 7 días) ──
-    const { data: activeSessions } = await supabase
-      .from('chat_sessions')
-      .select('id, user_id, updated_at')
-      .gte('updated_at', weekAgo)
-      .order('updated_at', { ascending: false })
-      .limit(500);
-
-    // Usuarios activos hoy
+    // ── 3. Actividad ──
     const { count: activeToday } = await supabase
       .from('chat_sessions')
       .select('user_id', { count: 'exact', head: true })
       .gte('updated_at', today + 'T00:00:00Z');
 
-    // ── 4. Mensajes recientes (qué buscan los usuarios) ──
+    // ═══════════════════════════════════════
+    // FIX [1]: Usuarios activos CON EMAIL
+    // Obtiene los user_ids de sesiones recientes (hoy)
+    // y cruza con profiles para obtener email y plan
+    // ═══════════════════════════════════════
+    const { data: activeSessions } = await supabase
+      .from('chat_sessions')
+      .select('user_id, updated_at')
+      .gte('updated_at', today + 'T00:00:00Z')
+      .order('updated_at', { ascending: false })
+      .limit(200);
+
+    // Deduplicar por user_id, quedarnos con el más reciente
+    const uniqueActiveMap = new Map<string, string>();
+    for (const s of (activeSessions || [])) {
+      if (!uniqueActiveMap.has(s.user_id)) {
+        uniqueActiveMap.set(s.user_id, s.updated_at);
+      }
+    }
+    const activeUserIds = Array.from(uniqueActiveMap.keys());
+
+    // Obtener perfiles de usuarios activos
+    let activeUsersList: any[] = [];
+    if (activeUserIds.length > 0) {
+      const { data: activeProfiles } = await supabase
+        .from('profiles')
+        .select('id, email, plan, messages_used, images_today, created_at')
+        .in('id', activeUserIds);
+
+      activeUsersList = (activeProfiles || []).map(p => ({
+        email: p.email,
+        plan: p.plan,
+        messages_used: p.messages_used || 0,
+        images_today: p.images_today || 0,
+        last_active: uniqueActiveMap.get(p.id) || null,
+        is_online: uniqueActiveMap.get(p.id)! >= fifteenMinAgo, // activo en últimos 15 min
+        registered: p.created_at,
+      })).sort((a, b) => {
+        // Online primero, después por última actividad
+        if (a.is_online && !b.is_online) return -1;
+        if (!a.is_online && b.is_online) return 1;
+        return (b.last_active || '').localeCompare(a.last_active || '');
+      });
+    }
+
+    const onlineCount = activeUsersList.filter(u => u.is_online).length;
+
+    // ── 4. Mensajes recientes ──
     const { data: recentMessages } = await supabase
       .from('messages')
       .select('content, role, created_at, session_id')
@@ -96,7 +136,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .order('created_at', { ascending: false })
       .limit(50);
 
-    // Temas más frecuentes (palabras más usadas en los últimos mensajes)
     const wordCounts: Record<string, number> = {};
     const stopWords = new Set(['de', 'la', 'el', 'en', 'un', 'una', 'que', 'es', 'y', 'a', 'los', 'las', 'del', 'por', 'con', 'para', 'se', 'no', 'me', 'mi', 'lo', 'al', 'le', 'su', 'como', 'más', 'pero', 'si', 'ya', 'o', 'este', 'ser', 'también', 'fue', 'ha', 'yo', 'eso', 'todo', 'esta', 'son', 'dos', 'hay', 'bien', 'muy', 'sin', 'sobre', 'uno', 'vez', 'the', 'is', 'a', 'to', 'and', 'of', 'in', 'it', 'i', 'you', 'he', 'she', 'we', 'they', 'my', 'your', 'can', 'do', 'would', 'should', 'could', 'will', 'has', 'have', 'had', 'was', 'were', 'be', 'been', 'are', 'am', 'an', 'at', 'or', 'if', 'not', 'this', 'that', 'with', 'from', 'but', 'what', 'how', 'who', 'which', 'when', 'where', 'all', 'some', 'any', 'each']);
 
@@ -105,7 +144,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         .toLowerCase()
         .replace(/[^a-záéíóúñü\s]/g, '')
         .split(/\s+/)
-        .filter(w => w.length > 3 && !stopWords.has(w));
+        .filter((w: string) => w.length > 3 && !stopWords.has(w));
       for (const w of words) {
         wordCounts[w] = (wordCounts[w] || 0) + 1;
       }
@@ -126,21 +165,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       planCounts[p.plan] = (planCounts[p.plan] || 0) + 1;
     }
 
-    // ── 6. Imágenes generadas hoy ──
+    // ── 6. Imágenes hoy ──
     const { data: imgUsers } = await supabase
       .from('profiles')
       .select('images_today, images_date')
-      .eq('images_date', today)
+      .gte('images_date', today)
       .gt('images_today', 0);
 
     const totalImagestoday = (imgUsers || []).reduce((s, u) => s + (u.images_today || 0), 0);
-
-    // ── 7. Usuarios online estimados (activos en últimos 15 min) ──
-    const fifteenMinAgo = new Date(now.getTime() - 15 * 60 * 1000).toISOString();
-    const { count: onlineEstimate } = await supabase
-      .from('chat_sessions')
-      .select('user_id', { count: 'exact', head: true })
-      .gte('updated_at', fifteenMinAgo);
 
     return res.status(200).json({
       overview: {
@@ -148,7 +180,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         premiumUsers:   premiumUsers || 0,
         freeUsers:      freeUsers || 0,
         newUsersWeek:   newUsersWeek || 0,
-        onlineNow:      onlineEstimate || 0,
+        onlineNow:      onlineCount,
         activeToday:    activeToday || 0,
         imagesToday:    totalImagestoday,
       },
@@ -158,6 +190,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         paymentsCount:  (allPayments || []).length,
         recentPayments,
       },
+      // FIX [1]: Lista de usuarios activos con email
+      activeUsers: activeUsersList,
       plans: planCounts,
       topics: topTopics,
       recentMessages: (recentMessages || []).slice(0, 20).map(m => ({
