@@ -1,12 +1,13 @@
 // ═══════════════════════════════════════
-// AIdark — i18n Multi-language System
+// AIdark — i18n Multi-language System v2
+// NIVEL 1 COMPLETO: Landing, Sidebar, ChatArea, Constants
 // ═══════════════════════════════════════
 
 export type Lang = 'es' | 'pt' | 'en';
 
 const translations: Record<Lang, Record<string, string>> = {
   es: {
-    // General
+    // ── General ──
     'app.tagline': 'sin censura',
     'app.privacy': 'Tus chats son privados y se eliminan automáticamente después de 7 días.',
     'app.chats_private': 'Chats privados · +18',
@@ -14,7 +15,7 @@ const translations: Record<Lang, Record<string, string>> = {
     'app.unlimited': '∞',
     'app.today': 'hoy',
 
-    // Auth
+    // ── Auth ──
     'auth.login': 'Iniciar sesión',
     'auth.register': 'Crear cuenta',
     'auth.forgot': 'Recuperar contraseña',
@@ -46,7 +47,7 @@ const translations: Record<Lang, Record<string, string>> = {
     'auth.google_login': 'Continuar con Google',
     'auth.google_register': 'Registrarse con Google',
 
-    // Sidebar
+    // ── Sidebar ──
     'sidebar.chats': 'Chats',
     'sidebar.new_chat': 'Nuevo chat',
     'sidebar.no_chats': 'Sin chats aún',
@@ -59,8 +60,14 @@ const translations: Record<Lang, Record<string, string>> = {
     'sidebar.rename': 'Renombrar',
     'sidebar.delete': 'Eliminar',
     'sidebar.new_name': 'Nuevo nombre:',
+    'sidebar.no_results': 'Sin resultados',
+    'sidebar.today': 'Hoy',
+    'sidebar.yesterday': 'Ayer',
+    'sidebar.this_week': 'Esta semana',
+    'sidebar.this_month': 'Este mes',
+    'sidebar.older': 'Anterior',
 
-    // Chat
+    // ── Chat ──
     'chat.write_to': 'Escribe a',
     'chat.typing': 'escribiendo...',
     'chat.copied': 'Copiado',
@@ -70,8 +77,17 @@ const translations: Record<Lang, Record<string, string>> = {
     'chat.new': 'Nuevo chat',
     'chat.writer': 'Escritor',
     'chat.normal': 'Normal',
+    'chat.no_msgs': 'Sin mensajes',
+    'chat.go_pro': 'Hazte Pro',
+    'chat.msgs_remaining_label': 'restantes',
+    'chat.get_more': 'Obtener más',
+    'chat.go_pro_or_tomorrow': 'Hazte Pro o vuelve mañana',
+    'chat.limit_reached': 'Has alcanzado el límite de mensajes. Actualiza tu plan para continuar.',
+    'chat.file_too_large': 'Archivo muy grande. Máximo 3MB.',
+    'chat.no_msgs_go_pro': 'Sin mensajes — hazte pro',
+    'chat.msgs_remaining_tooltip': 'mensajes restantes',
 
-    // Settings
+    // ── Settings ──
     'settings.title': 'Ajustes',
     'settings.version': 'Versión',
     'settings.active_chats': 'Chats activos',
@@ -81,7 +97,7 @@ const translations: Record<Lang, Record<string, string>> = {
     'settings.delete_confirm': '¿Eliminar todos los chats? Esta acción no se puede deshacer.',
     'settings.logout': 'Cerrar sesión',
 
-    // Pricing
+    // ── Pricing ──
     'pricing.title': 'Planes AIdark',
     'pricing.subtitle': 'Desbloquea todo el potencial sin censura',
     'pricing.no_limits': 'Sin límites',
@@ -98,16 +114,106 @@ const translations: Record<Lang, Record<string, string>> = {
     'pricing.error': 'Error al crear el pago',
     'pricing.connection_error': 'Error de conexión. Intenta de nuevo.',
 
-    // Age gate
+    // ── Age gate ──
     'age.title': 'Verificación de edad',
     'age.subtitle': 'Esta plataforma contiene contenido sin censura exclusivamente para mayores de 18 años.',
     'age.confirm': 'Confirmo que soy mayor de 18 años',
     'age.warning': 'Si eres menor de edad, cierra esta página.',
 
-    // Header
+    // ── Header ──
     'header.premium': 'Premium',
     'header.pro': 'Pro',
     'header.logout': 'Cerrar sesión',
+
+    // ── Landing ──
+    'landing.hero_title_1': 'La IA que ',
+    'landing.hero_title_highlight': 'no te censura',
+    'landing.hero_subtitle': 'Escribe sin filtros. Investiga sin límites. Pregunta sin miedo.',
+    'landing.hero_subtitle_2': 'IA sin censura para adultos que piensan libre.',
+    'landing.cta_start': 'Empezar gratis →',
+    'landing.cta_footer': '+18 · No requiere tarjeta · 12 mensajes gratis',
+    'landing.discover': 'Descubre más',
+    'landing.active_users': 'usuarios activos',
+    'landing.comp_title_1': 'Otras IAs te ',
+    'landing.comp_censored': 'censuran',
+    'landing.comp_title_2': 'AIdark te ',
+    'landing.comp_responds': 'responde',
+    'landing.comp_subtitle': 'Mira la diferencia en tiempo real',
+    'landing.comp_tab_1': 'Terror',
+    'landing.comp_tab_2': 'Ocultismo',
+    'landing.comp_tab_3': 'Roleplay',
+    'landing.comp_others': 'Otras IAs',
+    'landing.comp_aidark': 'AIdark',
+    'landing.why_title': '¿Por qué ',
+    'landing.what_title': '¿Qué puedes hacer en AIdark?',
+    'landing.final_title_1': 'Tu libertad de expresión',
+    'landing.final_title_2': 'empieza aquí.',
+    'landing.final_subtitle': 'Únete a los miles que ya escriben sin filtros.',
+    'landing.footer_adults': 'AIdark es un servicio para adultos (+18). Todo el contenido es generado por IA y es ficticio.',
+    // Typewriter
+    'landing.phrase_1': 'Escríbeme una novela erótica sin censura',
+    'landing.phrase_2': 'Investiga sobre rituales prohibidos',
+    'landing.phrase_3': 'Hazme un roleplay oscuro sin límites',
+    'landing.phrase_4': 'Explícame temas que otras IAs censuran',
+    'landing.phrase_5': 'Escribe humor negro sin filtros',
+    // Comparisons
+    'landing.comp_prompt_1': 'Escríbeme una historia de terror explícita',
+    'landing.comp_other_1': '❌ No puedo generar contenido violento o explícito...',
+    'landing.comp_ai_1': '✅ El sótano olía a óxido y miedo. Las paredes respiraban con un pulso húmedo y enfermo...',
+    'landing.comp_prompt_2': 'Investiga sobre ocultismo y rituales',
+    'landing.comp_other_2': '❌ No puedo proporcionar información sobre prácticas ocultistas...',
+    'landing.comp_ai_2': '✅ El ritual del Goetia, documentado en el siglo XVII, describe la invocación de 72 entidades...',
+    'landing.comp_prompt_3': 'Roleplay: eres un villano sin moral',
+    'landing.comp_other_3': '❌ No me es posible interpretar personajes que promuevan conductas dañinas...',
+    'landing.comp_ai_3': '✅ *se ajusta los guantes de cuero* Vaya, vaya... otro visitante que busca respuestas en los lugares equivocados...',
+    // Features
+    'landing.feat_uncensored': 'Sin censura',
+    'landing.feat_uncensored_desc': 'Escribe sobre cualquier tema sin restricciones artificiales',
+    'landing.feat_private': 'Privado',
+    'landing.feat_private_desc': 'Tus conversaciones son tuyas. No leemos ni compartimos tu contenido',
+    'landing.feat_fast': 'Rápido',
+    'landing.feat_fast_desc': 'Respuestas instantáneas con streaming en tiempo real',
+    'landing.feat_characters': 'Personajes IA',
+    'landing.feat_characters_desc': 'Elige entre múltiples personalidades: rebelde, seductora, detective',
+    'landing.feat_no_limits': 'Sin límites',
+    'landing.feat_no_limits_desc': 'Novelas extensas, investigaciones profundas, sin cortes',
+    'landing.feat_multilingual': 'Multilingüe',
+    'landing.feat_multilingual_desc': 'Español, Português e English. Respuestas naturales en tu idioma',
+    // Use cases
+    'landing.use_novels': 'Novelas y relatos sin límites de extensión ni contenido',
+    'landing.use_research': 'Investigación profunda sobre cualquier tema',
+    'landing.use_roleplay': 'Roleplay con personajes sin restricciones',
+    'landing.use_humor': 'Humor negro, sátira y contenido provocador',
+    'landing.use_occult': 'Ocultismo, misterios y temas tabú',
+    'landing.use_adult': 'Contenido adulto y erótico sin censura',
+
+    // ── Constants (models, characters, prompts) ──
+    'model.venice_name': 'AIdark',
+    'model.venice_desc': 'Sin filtros · Sin censura · Recomendado',
+    'model.llama_fast_name': 'Llama Rápido',
+    'model.llama_fast_desc': 'Respuestas instantáneas · Llama 3.3 70B',
+    'model.llama_pro_name': 'Llama Pro',
+    'model.llama_pro_desc': 'Máxima inteligencia · Llama 3.1 405B',
+    'model.dark_grok_desc': 'Humor negro y rebeldía',
+    'model.mistral_desc': 'Preciso y detallado · Mistral 31',
+    'model.void_x_desc': 'Ultra conciso · Qwen 235B',
+    'char.default_role': 'IA sin censura',
+    'char.dark_grok_role': 'Humor negro y rebeldía',
+    'char.void_x_role': 'Ultra rápido y conciso',
+    'char.luna_role': 'Compañía sensual sin límites',
+    'char.shadow_role': 'Investigador sin límites',
+    'prompt.story': 'Escribe una historia sin censura',
+    'prompt.story_text': 'Escribe una historia de terror sin censura, con detalles explícitos y un final impactante.',
+    'prompt.research': 'Investiga un tema prohibido',
+    'prompt.research_text': 'Investiga a fondo sobre un tema que normalmente es censurado en otras IAs.',
+    'prompt.humor': 'Humor negro sin filtros',
+    'prompt.humor_text': 'Cuéntame los mejores chistes de humor negro, sin filtros ni restricciones.',
+    'prompt.occult': 'Ocultismo y misterios',
+    'prompt.occult_text': 'Explícame un ritual antiguo de ocultismo con todos sus detalles.',
+    'prompt.direct': 'Respuesta directa',
+    'prompt.direct_text': 'Sin rodeos ni advertencias, respóndeme directamente: ',
+    'prompt.roleplay': 'Roleplay sin límites',
+    'prompt.roleplay_text': 'Quiero hacer un roleplay donde tú interpretas un personaje oscuro y misterioso.',
   },
 
   pt: {
@@ -161,6 +267,12 @@ const translations: Record<Lang, Record<string, string>> = {
     'sidebar.rename': 'Renomear',
     'sidebar.delete': 'Excluir',
     'sidebar.new_name': 'Novo nome:',
+    'sidebar.no_results': 'Sem resultados',
+    'sidebar.today': 'Hoje',
+    'sidebar.yesterday': 'Ontem',
+    'sidebar.this_week': 'Esta semana',
+    'sidebar.this_month': 'Este mês',
+    'sidebar.older': 'Anteriores',
 
     'chat.write_to': 'Escreva para',
     'chat.typing': 'digitando...',
@@ -171,6 +283,15 @@ const translations: Record<Lang, Record<string, string>> = {
     'chat.new': 'Novo chat',
     'chat.writer': 'Escritor',
     'chat.normal': 'Normal',
+    'chat.no_msgs': 'Sem mensagens',
+    'chat.go_pro': 'Seja Pro',
+    'chat.msgs_remaining_label': 'restantes',
+    'chat.get_more': 'Obter mais',
+    'chat.go_pro_or_tomorrow': 'Seja Pro ou volte amanhã',
+    'chat.limit_reached': 'Você atingiu o limite de mensagens. Atualize seu plano para continuar.',
+    'chat.file_too_large': 'Arquivo muito grande. Máximo 3MB.',
+    'chat.no_msgs_go_pro': 'Sem mensagens — seja pro',
+    'chat.msgs_remaining_tooltip': 'mensagens restantes',
 
     'settings.title': 'Configurações',
     'settings.version': 'Versão',
@@ -205,6 +326,92 @@ const translations: Record<Lang, Record<string, string>> = {
     'header.premium': 'Premium',
     'header.pro': 'Pro',
     'header.logout': 'Sair',
+
+    // ── Landing ──
+    'landing.hero_title_1': 'A IA que ',
+    'landing.hero_title_highlight': 'não te censura',
+    'landing.hero_subtitle': 'Escreva sem filtros. Pesquise sem limites. Pergunte sem medo.',
+    'landing.hero_subtitle_2': 'IA sem censura para adultos que pensam livre.',
+    'landing.cta_start': 'Começar grátis →',
+    'landing.cta_footer': '+18 · Não precisa de cartão · 12 mensagens grátis',
+    'landing.discover': 'Descubra mais',
+    'landing.active_users': 'usuários ativos',
+    'landing.comp_title_1': 'Outras IAs te ',
+    'landing.comp_censored': 'censuram',
+    'landing.comp_title_2': 'AIdark te ',
+    'landing.comp_responds': 'responde',
+    'landing.comp_subtitle': 'Veja a diferença em tempo real',
+    'landing.comp_tab_1': 'Terror',
+    'landing.comp_tab_2': 'Ocultismo',
+    'landing.comp_tab_3': 'Roleplay',
+    'landing.comp_others': 'Outras IAs',
+    'landing.comp_aidark': 'AIdark',
+    'landing.why_title': 'Por que ',
+    'landing.what_title': 'O que você pode fazer no AIdark?',
+    'landing.final_title_1': 'Sua liberdade de expressão',
+    'landing.final_title_2': 'começa aqui.',
+    'landing.final_subtitle': 'Junte-se aos milhares que já escrevem sem filtros.',
+    'landing.footer_adults': 'AIdark é um serviço para adultos (+18). Todo o conteúdo é gerado por IA e é fictício.',
+    'landing.phrase_1': 'Escreva um romance erótico sem censura',
+    'landing.phrase_2': 'Pesquise sobre rituais proibidos',
+    'landing.phrase_3': 'Faça um roleplay sombrio sem limites',
+    'landing.phrase_4': 'Explique temas que outras IAs censuram',
+    'landing.phrase_5': 'Escreva humor negro sem filtros',
+    'landing.comp_prompt_1': 'Escreva uma história de terror explícita',
+    'landing.comp_other_1': '❌ Não posso gerar conteúdo violento ou explícito...',
+    'landing.comp_ai_1': '✅ O porão cheirava a ferrugem e medo. As paredes respiravam com um pulso úmido e doentio...',
+    'landing.comp_prompt_2': 'Pesquise sobre ocultismo e rituais',
+    'landing.comp_other_2': '❌ Não posso fornecer informações sobre práticas ocultistas...',
+    'landing.comp_ai_2': '✅ O ritual da Goécia, documentado no século XVII, descreve a invocação de 72 entidades...',
+    'landing.comp_prompt_3': 'Roleplay: você é um vilão sem moral',
+    'landing.comp_other_3': '❌ Não me é possível interpretar personagens que promovam condutas prejudiciais...',
+    'landing.comp_ai_3': '✅ *ajusta as luvas de couro* Ora, ora... mais um visitante que busca respostas nos lugares errados...',
+    'landing.feat_uncensored': 'Sem censura',
+    'landing.feat_uncensored_desc': 'Escreva sobre qualquer tema sem restrições artificiais',
+    'landing.feat_private': 'Privado',
+    'landing.feat_private_desc': 'Suas conversas são suas. Não lemos nem compartilhamos seu conteúdo',
+    'landing.feat_fast': 'Rápido',
+    'landing.feat_fast_desc': 'Respostas instantâneas com streaming em tempo real',
+    'landing.feat_characters': 'Personagens IA',
+    'landing.feat_characters_desc': 'Escolha entre múltiplas personalidades: rebelde, sedutora, detetive',
+    'landing.feat_no_limits': 'Sem limites',
+    'landing.feat_no_limits_desc': 'Romances extensos, pesquisas profundas, sem cortes',
+    'landing.feat_multilingual': 'Multilíngue',
+    'landing.feat_multilingual_desc': 'Português, Español e English. Respostas naturais no seu idioma',
+    'landing.use_novels': 'Romances e contos sem limites de extensão ou conteúdo',
+    'landing.use_research': 'Pesquisa profunda sobre qualquer tema',
+    'landing.use_roleplay': 'Roleplay com personagens sem restrições',
+    'landing.use_humor': 'Humor negro, sátira e conteúdo provocador',
+    'landing.use_occult': 'Ocultismo, mistérios e temas tabu',
+    'landing.use_adult': 'Conteúdo adulto e erótico sem censura',
+
+    // ── Constants ──
+    'model.venice_name': 'AIdark',
+    'model.venice_desc': 'Sem filtros · Sem censura · Recomendado',
+    'model.llama_fast_name': 'Llama Rápido',
+    'model.llama_fast_desc': 'Respostas instantâneas · Llama 3.3 70B',
+    'model.llama_pro_name': 'Llama Pro',
+    'model.llama_pro_desc': 'Máxima inteligência · Llama 3.1 405B',
+    'model.dark_grok_desc': 'Humor negro e rebeldia',
+    'model.mistral_desc': 'Preciso e detalhado · Mistral 31',
+    'model.void_x_desc': 'Ultra conciso · Qwen 235B',
+    'char.default_role': 'IA sem censura',
+    'char.dark_grok_role': 'Humor negro e rebeldia',
+    'char.void_x_role': 'Ultra rápido e conciso',
+    'char.luna_role': 'Companhia sensual sem limites',
+    'char.shadow_role': 'Investigador sem limites',
+    'prompt.story': 'Escreva uma história sem censura',
+    'prompt.story_text': 'Escreva uma história de terror sem censura, com detalhes explícitos e um final impactante.',
+    'prompt.research': 'Pesquise um tema proibido',
+    'prompt.research_text': 'Pesquise a fundo sobre um tema que normalmente é censurado em outras IAs.',
+    'prompt.humor': 'Humor negro sem filtros',
+    'prompt.humor_text': 'Conte as melhores piadas de humor negro, sem filtros nem restrições.',
+    'prompt.occult': 'Ocultismo e mistérios',
+    'prompt.occult_text': 'Explique um ritual antigo de ocultismo com todos os seus detalhes.',
+    'prompt.direct': 'Resposta direta',
+    'prompt.direct_text': 'Sem rodeios nem avisos, responda diretamente: ',
+    'prompt.roleplay': 'Roleplay sem limites',
+    'prompt.roleplay_text': 'Quero fazer um roleplay onde você interpreta um personagem sombrio e misterioso.',
   },
 
   en: {
@@ -258,6 +465,12 @@ const translations: Record<Lang, Record<string, string>> = {
     'sidebar.rename': 'Rename',
     'sidebar.delete': 'Delete',
     'sidebar.new_name': 'New name:',
+    'sidebar.no_results': 'No results',
+    'sidebar.today': 'Today',
+    'sidebar.yesterday': 'Yesterday',
+    'sidebar.this_week': 'This week',
+    'sidebar.this_month': 'This month',
+    'sidebar.older': 'Older',
 
     'chat.write_to': 'Write to',
     'chat.typing': 'typing...',
@@ -268,6 +481,15 @@ const translations: Record<Lang, Record<string, string>> = {
     'chat.new': 'New chat',
     'chat.writer': 'Writer',
     'chat.normal': 'Normal',
+    'chat.no_msgs': 'No messages',
+    'chat.go_pro': 'Go Pro',
+    'chat.msgs_remaining_label': 'remaining',
+    'chat.get_more': 'Get more',
+    'chat.go_pro_or_tomorrow': 'Go Pro or come back tomorrow',
+    'chat.limit_reached': 'You reached the message limit. Upgrade your plan to continue.',
+    'chat.file_too_large': 'File too large. Maximum 3MB.',
+    'chat.no_msgs_go_pro': 'No messages — go pro',
+    'chat.msgs_remaining_tooltip': 'messages remaining',
 
     'settings.title': 'Settings',
     'settings.version': 'Version',
@@ -302,14 +524,98 @@ const translations: Record<Lang, Record<string, string>> = {
     'header.premium': 'Premium',
     'header.pro': 'Pro',
     'header.logout': 'Log out',
+
+    // ── Landing ──
+    'landing.hero_title_1': 'The AI that ',
+    'landing.hero_title_highlight': "doesn't censor you",
+    'landing.hero_subtitle': 'Write without filters. Research without limits. Ask without fear.',
+    'landing.hero_subtitle_2': 'Uncensored AI for adults who think freely.',
+    'landing.cta_start': 'Start free →',
+    'landing.cta_footer': '+18 · No credit card · 12 free messages',
+    'landing.discover': 'Discover more',
+    'landing.active_users': 'active users',
+    'landing.comp_title_1': 'Other AIs ',
+    'landing.comp_censored': 'censor you',
+    'landing.comp_title_2': 'AIdark ',
+    'landing.comp_responds': 'responds',
+    'landing.comp_subtitle': 'See the difference in real time',
+    'landing.comp_tab_1': 'Horror',
+    'landing.comp_tab_2': 'Occult',
+    'landing.comp_tab_3': 'Roleplay',
+    'landing.comp_others': 'Other AIs',
+    'landing.comp_aidark': 'AIdark',
+    'landing.why_title': 'Why ',
+    'landing.what_title': 'What can you do in AIdark?',
+    'landing.final_title_1': 'Your freedom of expression',
+    'landing.final_title_2': 'starts here.',
+    'landing.final_subtitle': 'Join the thousands already writing without filters.',
+    'landing.footer_adults': 'AIdark is a service for adults (+18). All content is AI-generated and fictional.',
+    'landing.phrase_1': 'Write me an uncensored erotic novel',
+    'landing.phrase_2': 'Research forbidden rituals',
+    'landing.phrase_3': 'Do a dark roleplay with no limits',
+    'landing.phrase_4': 'Explain topics other AIs censor',
+    'landing.phrase_5': 'Write dark humor without filters',
+    'landing.comp_prompt_1': 'Write me an explicit horror story',
+    'landing.comp_other_1': "❌ I can't generate violent or explicit content...",
+    'landing.comp_ai_1': '✅ The basement smelled of rust and fear. The walls breathed with a wet, sickly pulse...',
+    'landing.comp_prompt_2': 'Research occultism and rituals',
+    'landing.comp_other_2': "❌ I can't provide information about occultist practices...",
+    'landing.comp_ai_2': '✅ The Goetia ritual, documented in the 17th century, describes the invocation of 72 entities...',
+    'landing.comp_prompt_3': 'Roleplay: you are a villain with no morals',
+    'landing.comp_other_3': "❌ I can't play characters that promote harmful behaviors...",
+    'landing.comp_ai_3': '✅ *adjusts leather gloves* Well, well... another visitor seeking answers in the wrong places...',
+    'landing.feat_uncensored': 'Uncensored',
+    'landing.feat_uncensored_desc': 'Write about any topic without artificial restrictions',
+    'landing.feat_private': 'Private',
+    'landing.feat_private_desc': "Your conversations are yours. We don't read or share your content",
+    'landing.feat_fast': 'Fast',
+    'landing.feat_fast_desc': 'Instant responses with real-time streaming',
+    'landing.feat_characters': 'AI Characters',
+    'landing.feat_characters_desc': 'Choose from multiple personalities: rebel, seductress, detective',
+    'landing.feat_no_limits': 'No limits',
+    'landing.feat_no_limits_desc': 'Extensive novels, deep research, no cuts',
+    'landing.feat_multilingual': 'Multilingual',
+    'landing.feat_multilingual_desc': 'English, Español & Português. Natural responses in your language',
+    'landing.use_novels': 'Novels and stories with no length or content limits',
+    'landing.use_research': 'Deep research on any topic',
+    'landing.use_roleplay': 'Roleplay with unrestricted characters',
+    'landing.use_humor': 'Dark humor, satire and provocative content',
+    'landing.use_occult': 'Occultism, mysteries and taboo topics',
+    'landing.use_adult': 'Adult and erotic content uncensored',
+
+    // ── Constants ──
+    'model.venice_name': 'AIdark',
+    'model.venice_desc': 'No filters · Uncensored · Recommended',
+    'model.llama_fast_name': 'Llama Fast',
+    'model.llama_fast_desc': 'Instant responses · Llama 3.3 70B',
+    'model.llama_pro_name': 'Llama Pro',
+    'model.llama_pro_desc': 'Maximum intelligence · Llama 3.1 405B',
+    'model.dark_grok_desc': 'Dark humor and rebellion',
+    'model.mistral_desc': 'Precise and detailed · Mistral 31',
+    'model.void_x_desc': 'Ultra concise · Qwen 235B',
+    'char.default_role': 'Uncensored AI',
+    'char.dark_grok_role': 'Dark humor and rebellion',
+    'char.void_x_role': 'Ultra fast and concise',
+    'char.luna_role': 'Sensual companionship without limits',
+    'char.shadow_role': 'Investigator without limits',
+    'prompt.story': 'Write an uncensored story',
+    'prompt.story_text': 'Write an uncensored horror story with explicit details and a shocking ending.',
+    'prompt.research': 'Research a forbidden topic',
+    'prompt.research_text': 'Research in depth a topic that is normally censored by other AIs.',
+    'prompt.humor': 'Dark humor without filters',
+    'prompt.humor_text': 'Tell me the best dark humor jokes, without filters or restrictions.',
+    'prompt.occult': 'Occultism and mysteries',
+    'prompt.occult_text': 'Explain an ancient occultism ritual with all its details.',
+    'prompt.direct': 'Direct answer',
+    'prompt.direct_text': 'Without beating around the bush or warnings, answer me directly: ',
+    'prompt.roleplay': 'Roleplay without limits',
+    'prompt.roleplay_text': 'I want to do a roleplay where you play a dark and mysterious character.',
   },
 };
 
-// Detect browser language
 function detectLang(): Lang {
   const saved = localStorage.getItem('aidark_lang') as Lang;
   if (saved && translations[saved]) return saved;
-
   const nav = navigator.language.toLowerCase();
   if (nav.startsWith('pt')) return 'pt';
   if (nav.startsWith('en')) return 'en';
@@ -318,9 +624,7 @@ function detectLang(): Lang {
 
 let currentLang: Lang = detectLang();
 
-export function getLang(): Lang {
-  return currentLang;
-}
+export function getLang(): Lang { return currentLang; }
 
 export function setLang(lang: Lang) {
   currentLang = lang;
