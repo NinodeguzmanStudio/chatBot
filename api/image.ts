@@ -232,10 +232,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .map((img: any) => typeof img === 'string' ? img : (img.b64_json || img.url || ''))
       .filter(Boolean);
 
+    // Detectar formato real del base64
+    const detectMime = (b64: string): string => {
+      if (b64.startsWith('/9j/')) return 'image/jpeg';
+      if (b64.startsWith('iVBOR')) return 'image/png';
+      if (b64.startsWith('UklGR')) return 'image/webp';
+      return 'image/png';
+    };
+    const mime_type = images.length > 0 ? detectMime(images[0]) : 'image/png';
+
     return res.status(200).json({
       images, used: newCount, limit: dailyLimit,
       remaining: dailyLimit - newCount,
       is_free: !isPremium,
+      mime_type,
     });
 
   } catch (err: any) {
