@@ -417,8 +417,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // FIX [2]: Incrementar DESPUÉS de respuesta exitosa
       // Solo se cuenta si el proveedor respondió OK
       // ═══════════════════════════════════════
-      await supabase.rpc('increment_message_count', { p_user_id: user.id }).catch(() => {});
-
+      try { await supabase.rpc('increment_message_count', { p_user_id: user.id }); } catch { /* no crítico */ }
       if (stream && providerRes.body) {
         res.setHeader('Content-Type', 'text/event-stream');
         res.setHeader('Cache-Control', 'no-cache');
