@@ -15,7 +15,8 @@ import { supabase } from '@/lib/supabase';
 import type { ChatSession, Message, ModelId } from '@/types';
 
 const MAX_MESSAGES_PER_SESSION = 50;
-const MAX_SESSIONS_TO_LOAD     = 30;  // FIX [3]: límite de sesiones por carga
+const MAX_SESSIONS_TO_LOAD     = 15;  // FIX VELOCIDAD: 30→15 sesiones en carga inicial
+const MAX_SESSIONS_WITH_MSGS   = 10;  // Solo cargar mensajes de las 10 más recientes
 
 // FIX [1]: días de retención por plan
 const RETENTION_DAYS: Record<string, number> = {
@@ -49,16 +50,23 @@ export async function loadUserSessions(userId: string): Promise<ChatSession[]> {
 
   if (error || !sessions || sessions.length === 0) return [];
 
-  // Todos los mensajes de todas las sesiones en una sola query
-  const sessionIds = sessions.map((s) => s.id);
-  const { data: allMessages } = await supabase
-    .from('messages')
-    .select('*')
-    .in('session_id', sessionIds)
-    .order('created_at', { ascending: true });
+  // FIX VELOCIDAD: Solo cargar mensajes de las N sesiones más recientes
+  // Las demás sesiones aparecen en el sidebar pero sin mensajes precargados
+  const sessionsForMessages = sessions.slice(0, MAX_SESSIONS_WITH_MSGS);
+  const sessionIds = sessionsForMessages.map((s) => s.id);
+  
+  let allMessages: any[] = [];
+  if (sessionIds.length > 0) {
+    const { data: msgs } = await supabase
+      .from('messages')
+      .select('*')
+      .in('session_id', sessionIds)
+      .order('created_at', { ascending: true });
+    allMessages = msgs || [];
+  }
 
   const messagesBySession = new Map<string, any[]>();
-  for (const msg of allMessages || []) {
+  for (const msg of allMessages) {
     const list = messagesBySession.get(msg.session_id) || [];
     list.push(msg);
     messagesBySession.set(msg.session_id, list);
