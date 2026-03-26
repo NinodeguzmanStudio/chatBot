@@ -409,10 +409,11 @@ export const ImageGenerator: React.FC<{ onOpenPricing: () => void }> = ({ onOpen
         throw new Error(data.error || 'Error generando imagen');
       }
       if (data.images?.length) {
+        const mime = data.mime_type || 'image/png';
         setUsedToday(data.used);
         setGallery(prev => [
           ...data.images.map((b64: string, i: number) => ({
-            src: `data:image/webp;base64,${b64}`,
+            src: `data:${mime};base64,${b64}`,
             prompt: prompt.trim(), category,
             id: `${Date.now()}-${i}`,
           })),
@@ -427,8 +428,9 @@ export const ImageGenerator: React.FC<{ onOpenPricing: () => void }> = ({ onOpen
   };
 
   const handleDownload = (img: GeneratedImage) => {
+    const ext = img.src.includes('image/jpeg') ? 'jpg' : img.src.includes('image/webp') ? 'webp' : 'png';
     const a = document.createElement('a');
-    a.href = img.src; a.download = `aidark-${img.category}-${Date.now()}.webp`; a.click();
+    a.href = img.src; a.download = `aidark-${img.category}-${Date.now()}.${ext}`; a.click();
   };
 
   // FIX v4: Free users can generate 2 images
