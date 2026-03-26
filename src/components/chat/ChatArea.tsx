@@ -97,6 +97,8 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
   const abortRef      = useRef<AbortController | null>(null);
   const fileInputRef  = useRef<HTMLInputElement>(null);
   const attachMenuRef = useRef<HTMLDivElement>(null);
+  const lastResponseRef = useRef<HTMLDivElement>(null);
+  const wasTypingRef    = useRef(false);
   const isMobile      = useIsMobile();
 
   const activeSession = sessions.find((s) => s.id === activeSessionId);
@@ -108,8 +110,28 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
   const isFree        = !user?.plan || user.plan === 'free';
   const canAttach     = userPlan !== 'free';
 
+  // Smart scroll:
+  // - Durante streaming → bajar al final (el usuario ve el texto apareciendo)
+  // - Cuando termina la respuesta → scroll al INICIO de la respuesta de la IA
   useEffect(() => {
-    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    if (!scrollRef.current) return;
+
+    if (isTyping) {
+      // Streaming activo: bajar al final
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+      wasTypingRef.current = true;
+    } else if (wasTypingRef.current) {
+      // Acaba de terminar de escribir: scroll al inicio de la última respuesta
+      wasTypingRef.current = false;
+      setTimeout(() => {
+        if (lastResponseRef.current && scrollRef.current) {
+          const container = scrollRef.current;
+          const element   = lastResponseRef.current;
+          const offset    = element.offsetTop - container.offsetTop - 16; // 16px de padding arriba
+          container.scrollTo({ top: offset, behavior: 'smooth' });
+        }
+      }, 100); // Pequeño delay para que el DOM se actualice
+    }
   }, [messages, isTyping, streamingContent]);
 
   useEffect(() => { textareaRef.current?.focus(); }, [activeSessionId]);
@@ -401,11 +423,13 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
                   const isLastMsg = idx === messages.length - 1;
                   const isLastAI  = isLastMsg && msg.role === 'assistant';
                   return (
-                    <MessageBubble
-                      key={msg.id} message={msg} index={idx} isLast={isLastAI}
-                      onEdit={msg.role === 'user' ? handleEdit : undefined}
-                      onRegenerate={isLastAI ? handleRegenerate : undefined}
-                    />
+                    <div key={msg.id} ref={isLastAI ? lastResponseRef : undefined}>
+                      <MessageBubble
+                        message={msg} index={idx} isLast={isLastAI}
+                        onEdit={msg.role === 'user' ? handleEdit : undefined}
+                        onRegenerate={isLastAI ? handleRegenerate : undefined}
+                      />
+                    </div>
                   );
                 })}
                 {isTyping && streamingContent && (
