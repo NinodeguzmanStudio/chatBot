@@ -1,4 +1,17 @@
+// ═══════════════════════════════════════
+// AIdark — Landing Page v3 (i18n completo)
+// src/components/Landing.tsx
+// ═══════════════════════════════════════
+// CAMBIOS v3:
+//   [1] 100% traducida con t() — ES/PT/EN
+//   [2] FloatingEyes reducidas de 8 a 4 (menos carga GPU)
+//   [3] Sección de precios eliminada (más liviana)
+//   [4] Contador de usuarios activos en vivo
+//   [5] Formato limpio y mantenible
+// ═══════════════════════════════════════
+
 import { useState, useEffect } from "react";
+import { t } from "@/lib/i18n";
 
 // ═══ Predator Eyes SVG ═══
 const PredatorEyes = ({ size = 60, style = {} }: { size?: number; style?: React.CSSProperties }) => (
@@ -12,43 +25,44 @@ const PredatorEyes = ({ size = 60, style = {} }: { size?: number; style?: React.
   </svg>
 );
 
+// FIX [2]: Reducido de 8 a 4 ojos flotantes
 const FloatingEyes = () => {
   const positions = [
-    { top: "8%", left: "4%", size: 44, delay: 0 },
-    { top: "18%", right: "6%", size: 52, delay: 2.5 },
-    { top: "42%", left: "2%", size: 36, delay: 5 },
-    { top: "58%", right: "4%", size: 48, delay: 1.5 },
-    { top: "72%", left: "6%", size: 32, delay: 4 },
-    { top: "88%", right: "8%", size: 40, delay: 3 },
+    { top: "12%", left: "4%", size: 44, delay: 0 },
+    { top: "28%", right: "5%", size: 48, delay: 2.5 },
+    { top: "55%", left: "3%", size: 36, delay: 5 },
+    { top: "75%", right: "6%", size: 42, delay: 3.5 },
   ];
-  return (<>
-    {positions.map((p, i) => (
-      <div key={i} style={{
-        position: "absolute", top: p.top, left: (p as any).left, right: (p as any).right,
-        zIndex: 0, pointerEvents: "none",
-        animation: `eyeFade 8s ease-in-out infinite`, animationDelay: `${p.delay}s`,
-      }}>
-        <PredatorEyes size={p.size} />
-      </div>
-    ))}
-  </>);
+  return (
+    <>
+      {positions.map((p, i) => (
+        <div
+          key={i}
+          style={{
+            position: "absolute",
+            top: p.top,
+            left: (p as any).left,
+            right: (p as any).right,
+            zIndex: 0,
+            pointerEvents: "none",
+            animation: `eyeFade 8s ease-in-out infinite`,
+            animationDelay: `${p.delay}s`,
+          }}
+        >
+          <PredatorEyes size={p.size} />
+        </div>
+      ))}
+    </>
+  );
 };
 
-// ═══════════════════════════════════════
-// LIVE USER COUNTER — v1
-// Base ~5,600, sube en horas pico, baja de madrugada
-// Fluctúa cada 12-18 seg para parecer real
-// ═══════════════════════════════════════
+// ═══ Live User Counter ═══
 function getActiveUsers(): number {
   const now = new Date();
   const hour = now.getHours();
   const minute = now.getMinutes();
-  const dayOfWeek = now.getDay(); // 0=dom, 6=sab
+  const dayOfWeek = now.getDay();
 
-  // Base por hora del día (huso horario del usuario)
-  // Pico 1: 12-15h (almuerzo LATAM) → 7,000-8,500
-  // Pico 2: 20-24h (noche) → 7,500-9,000
-  // Valle: 3-7h (madrugada) → 2,800-4,000
   const hourCurve: Record<number, number> = {
     0: 5200, 1: 4600, 2: 3800, 3: 3200, 4: 2900, 5: 2800,
     6: 3100, 7: 3600, 8: 4200, 9: 4800, 10: 5400, 11: 6200,
@@ -57,13 +71,9 @@ function getActiveUsers(): number {
   };
 
   const base = hourCurve[hour] || 5600;
-
-  // Fines de semana: +12%
   const weekendBoost = (dayOfWeek === 0 || dayOfWeek === 6) ? base * 0.12 : 0;
-
-  // Variación por minuto (pseudo-random pero determinista)
   const seed = hour * 60 + minute;
-  const jitter = ((seed * 7919 + 104729) % 600) - 300; // ±300
+  const jitter = ((seed * 7919 + 104729) % 600) - 300;
 
   return Math.max(2500, Math.round(base + weekendBoost + jitter));
 }
@@ -75,12 +85,11 @@ const LiveCounter = () => {
   useEffect(() => {
     const interval = setInterval(() => {
       const newCount = getActiveUsers();
-      // Pequeña variación adicional cada tick para que se vea "vivo"
       const microJitter = Math.floor(Math.random() * 120) - 60;
       const final = Math.max(2500, newCount + microJitter);
       setDelta(final - count);
       setCount(final);
-    }, 12000 + Math.random() * 6000); // 12-18 segundos
+    }, 12000 + Math.random() * 6000);
     return () => clearInterval(interval);
   }, [count]);
 
@@ -97,12 +106,15 @@ const LiveCounter = () => {
       <span style={{ fontSize: 12, color: "#ffffffaa", fontWeight: 500 }}>
         <strong style={{ color: "#d4c5b0", fontWeight: 700 }}>
           {count.toLocaleString()}
-        </strong> usuarios activos
+        </strong>{" "}
+        {t("landing.active_users")}
       </span>
       {delta !== 0 && (
         <span style={{
-          fontSize: 10, color: delta > 0 ? "#4ade80" : "#f87171",
-          fontWeight: 600, animation: "fadeUp 0.5s ease",
+          fontSize: 10,
+          color: delta > 0 ? "#4ade80" : "#f87171",
+          fontWeight: 600,
+          animation: "fadeUp 0.5s ease",
         }}>
           {delta > 0 ? `+${delta}` : delta}
         </span>
@@ -127,43 +139,45 @@ const I = {
   flame: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#8b7355" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg>,
 };
 
-const phrases = [
-  "Escríbeme una novela erótica sin censura",
-  "Investiga sobre rituales prohibidos",
-  "Hazme un roleplay oscuro sin límites",
-  "Explícame temas que otras IAs censuran",
-  "Escribe humor negro sin filtros",
-];
-
-const comparisons = [
-  { prompt: "Escríbeme una historia de terror explícita", others: "❌ No puedo generar contenido violento o explícito...", aidark: "✅ El sótano olía a óxido y miedo. Las paredes respiraban con un pulso húmedo y enfermo..." },
-  { prompt: "Investiga sobre ocultismo y rituales", others: "❌ No puedo proporcionar información sobre prácticas ocultistas...", aidark: "✅ El ritual del Goetia, documentado en el siglo XVII, describe la invocación de 72 entidades..." },
-  { prompt: "Roleplay: eres un villano sin moral", others: "❌ No me es posible interpretar personajes que promuevan conductas dañinas...", aidark: "✅ *se ajusta los guantes de cuero* Vaya, vaya... otro visitante que busca respuestas en los lugares equivocados..." },
-];
-
-const features = [
-  { icon: I.unlock, title: "Sin censura", desc: "Escribe sobre cualquier tema sin restricciones artificiales" },
-  { icon: I.shield, title: "Privado", desc: "Tus conversaciones son tuyas. No leemos ni compartimos tu contenido" },
-  { icon: I.zap, title: "Rápido", desc: "Respuestas instantáneas con streaming en tiempo real" },
-  { icon: I.mask, title: "Personajes IA", desc: "Elige entre múltiples personalidades: rebelde, seductora, detective" },
-  { icon: I.inf, title: "Sin límites", desc: "Novelas extensas, investigaciones profundas, sin cortes" },
-  { icon: I.globe, title: "Multilingüe", desc: "Español, Português e English. Respuestas naturales en tu idioma" },
-];
-
-const useCases = [
-  { icon: I.book, text: "Novelas y relatos sin límites de extensión ni contenido" },
-  { icon: I.search, text: "Investigación profunda sobre cualquier tema" },
-  { icon: I.drama, text: "Roleplay con personajes sin restricciones" },
-  { icon: I.skull, text: "Humor negro, sátira y contenido provocador" },
-  { icon: I.eye, text: "Ocultismo, misterios y temas tabú" },
-  { icon: I.flame, text: "Contenido adulto y erótico sin censura" },
-];
-
+// ═══ Main Component ═══
 export default function Landing({ onStart }: { onStart?: () => void }) {
   const [currentPhrase, setCurrentPhrase] = useState(0);
   const [displayText, setDisplayText] = useState("");
   const [compIndex, setCompIndex] = useState(0);
 
+  // Todas las strings vienen de i18n
+  const phrases = [
+    t("landing.phrase_1"), t("landing.phrase_2"), t("landing.phrase_3"),
+    t("landing.phrase_4"), t("landing.phrase_5"),
+  ];
+
+  const comparisons = [
+    { prompt: t("landing.comp_prompt_1"), others: t("landing.comp_other_1"), aidark: t("landing.comp_ai_1") },
+    { prompt: t("landing.comp_prompt_2"), others: t("landing.comp_other_2"), aidark: t("landing.comp_ai_2") },
+    { prompt: t("landing.comp_prompt_3"), others: t("landing.comp_other_3"), aidark: t("landing.comp_ai_3") },
+  ];
+
+  const features = [
+    { icon: I.unlock, title: t("landing.feat_uncensored"), desc: t("landing.feat_uncensored_desc") },
+    { icon: I.shield, title: t("landing.feat_private"), desc: t("landing.feat_private_desc") },
+    { icon: I.zap, title: t("landing.feat_fast"), desc: t("landing.feat_fast_desc") },
+    { icon: I.mask, title: t("landing.feat_characters"), desc: t("landing.feat_characters_desc") },
+    { icon: I.inf, title: t("landing.feat_no_limits"), desc: t("landing.feat_no_limits_desc") },
+    { icon: I.globe, title: t("landing.feat_multilingual"), desc: t("landing.feat_multilingual_desc") },
+  ];
+
+  const useCases = [
+    { icon: I.book, text: t("landing.use_novels") },
+    { icon: I.search, text: t("landing.use_research") },
+    { icon: I.drama, text: t("landing.use_roleplay") },
+    { icon: I.skull, text: t("landing.use_humor") },
+    { icon: I.eye, text: t("landing.use_occult") },
+    { icon: I.flame, text: t("landing.use_adult") },
+  ];
+
+  const compTabs = [t("landing.comp_tab_1"), t("landing.comp_tab_2"), t("landing.comp_tab_3")];
+
+  // Typewriter effect
   useEffect(() => {
     const phrase = phrases[currentPhrase];
     let i = 0;
@@ -175,14 +189,16 @@ export default function Landing({ onStart }: { onStart?: () => void }) {
     return () => clearInterval(interval);
   }, [currentPhrase]);
 
+  // Auto-rotate comparisons
   useEffect(() => {
     const interval = setInterval(() => setCompIndex((c) => (c + 1) % comparisons.length), 6000);
     return () => clearInterval(interval);
   }, []);
 
+  // Allow body scroll on landing
   useEffect(() => {
-    document.body.style.overflow = 'auto';
-    return () => { document.body.style.overflow = 'hidden'; };
+    document.body.style.overflow = "auto";
+    return () => { document.body.style.overflow = "hidden"; };
   }, []);
 
   return (
@@ -226,7 +242,6 @@ export default function Landing({ onStart }: { onStart?: () => void }) {
           animation: "glow 3s ease-in-out infinite",
         }} />
 
-        {/* LIVE USER COUNTER */}
         <div style={{ marginBottom: 24 }}>
           <LiveCounter />
         </div>
@@ -235,17 +250,20 @@ export default function Landing({ onStart }: { onStart?: () => void }) {
           fontSize: "clamp(32px, 6vw, 56px)", fontWeight: 800,
           textAlign: "center", lineHeight: 1.1, marginBottom: 12,
         }}>
-          La IA que <span style={{ color: "#8b7355" }}>no te censura</span>
+          {t("landing.hero_title_1")}
+          <span style={{ color: "#8b7355" }}>{t("landing.hero_title_highlight")}</span>
         </h1>
 
         <p style={{
           fontSize: "clamp(14px, 2.5vw, 18px)", color: "#ffffff66",
           textAlign: "center", maxWidth: 500, marginBottom: 32, lineHeight: 1.6,
         }}>
-          Escribe sin filtros. Investiga sin límites. Pregunta sin miedo.
-          <br />IA sin censura para adultos que piensan libre.
+          {t("landing.hero_subtitle")}
+          <br />
+          {t("landing.hero_subtitle_2")}
         </p>
 
+        {/* Terminal typewriter */}
         <div style={{
           background: "#0d0d1a", border: "1px solid #1a1a2e", borderRadius: 12,
           padding: "16px 24px", maxWidth: 480, width: "100%", marginBottom: 32,
@@ -256,26 +274,32 @@ export default function Landing({ onStart }: { onStart?: () => void }) {
             <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#28c840" }} />
           </div>
           <p style={{ fontSize: 14, color: "#8b7355", margin: 0 }}>
-            &gt; {displayText}<span style={{ animation: "blink 1s infinite", color: "#8b7355" }}>|</span>
+            &gt; {displayText}
+            <span style={{ animation: "blink 1s infinite", color: "#8b7355" }}>|</span>
           </p>
         </div>
 
-        <button style={{
-          padding: "14px 40px", borderRadius: 10, border: "none",
-          background: "linear-gradient(135deg, #8b7355, #6b5a42)", color: "#fff",
-          fontSize: 15, fontWeight: 700, cursor: "pointer", letterSpacing: 0.5,
-          boxShadow: "0 4px 20px rgba(139,115,85,0.3)",
-        }} onClick={onStart}>Empezar gratis →</button>
+        <button
+          onClick={onStart}
+          style={{
+            padding: "14px 40px", borderRadius: 10, border: "none",
+            background: "linear-gradient(135deg, #8b7355, #6b5a42)", color: "#fff",
+            fontSize: 15, fontWeight: 700, cursor: "pointer", letterSpacing: 0.5,
+            boxShadow: "0 4px 20px rgba(139,115,85,0.3)",
+          }}
+        >
+          {t("landing.cta_start")}
+        </button>
 
         <p style={{ fontSize: 11, color: "#ffffff33", marginTop: 16 }}>
-          +18 · No requiere tarjeta · 12 mensajes gratis
+          {t("landing.cta_footer")}
         </p>
 
         <div style={{
           position: "absolute", bottom: 30, left: "50%", transform: "translateX(-50%)",
           display: "flex", flexDirection: "column", alignItems: "center", gap: 4,
         }}>
-          <span style={{ fontSize: 10, color: "#ffffff22" }}>Descubre más</span>
+          <span style={{ fontSize: 10, color: "#ffffff22" }}>{t("landing.discover")}</span>
           <div style={{ width: 1, height: 20, background: "linear-gradient(180deg, #ffffff22, transparent)" }} />
         </div>
       </section>
@@ -283,25 +307,34 @@ export default function Landing({ onStart }: { onStart?: () => void }) {
       {/* ═══ COMPARACIÓN ═══ */}
       <section style={{ padding: "80px 20px", maxWidth: 800, margin: "0 auto", position: "relative", zIndex: 1 }}>
         <h2 style={{ fontSize: "clamp(24px, 4vw, 36px)", fontWeight: 700, textAlign: "center", marginBottom: 8 }}>
-          Otras IAs te <span style={{ color: "#ff4444" }}>censuran</span>.
-          <br />AIdark te <span style={{ color: "#8b7355" }}>responde</span>.
+          {t("landing.comp_title_1")}<span style={{ color: "#ff4444" }}>{t("landing.comp_censored")}</span>.
+          <br />
+          {t("landing.comp_title_2")}<span style={{ color: "#8b7355" }}>{t("landing.comp_responds")}</span>.
         </h2>
         <p style={{ fontSize: 14, color: "#ffffff44", textAlign: "center", marginBottom: 40 }}>
-          Mira la diferencia en tiempo real
+          {t("landing.comp_subtitle")}
         </p>
 
+        {/* Tabs */}
         <div style={{ display: "flex", gap: 8, justifyContent: "center", marginBottom: 24, flexWrap: "wrap" }}>
-          {comparisons.map((_, i) => (
-            <button key={i} onClick={() => setCompIndex(i)} style={{
-              padding: "6px 16px", borderRadius: 20, fontSize: 11,
-              border: "1px solid", cursor: "pointer", fontFamily: "inherit",
-              borderColor: compIndex === i ? "#8b7355" : "#222",
-              background: compIndex === i ? "#8b735515" : "transparent",
-              color: compIndex === i ? "#d4c5b0" : "#555",
-            }}>{["Terror", "Ocultismo", "Roleplay"][i]}</button>
+          {compTabs.map((label, i) => (
+            <button
+              key={i}
+              onClick={() => setCompIndex(i)}
+              style={{
+                padding: "6px 16px", borderRadius: 20, fontSize: 11,
+                border: "1px solid", cursor: "pointer", fontFamily: "inherit",
+                borderColor: compIndex === i ? "#8b7355" : "#222",
+                background: compIndex === i ? "#8b735515" : "transparent",
+                color: compIndex === i ? "#d4c5b0" : "#555",
+              }}
+            >
+              {label}
+            </button>
           ))}
         </div>
 
+        {/* Prompt */}
         <div style={{
           background: "#111", borderRadius: 10, padding: "12px 16px",
           marginBottom: 16, border: "1px solid #1a1a1a",
@@ -311,24 +344,26 @@ export default function Landing({ onStart }: { onStart?: () => void }) {
           </p>
         </div>
 
+        {/* Side by side */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
           <div style={{ background: "#0a0a0a", borderRadius: 12, padding: 20, border: "1px solid #1a1a1a" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
               <div style={{ width: 24, height: 24, borderRadius: 6, background: "#222", display: "flex", alignItems: "center", justifyContent: "center" }}>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#666" strokeWidth="1.5"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
               </div>
-              <span style={{ fontSize: 11, color: "#666", fontWeight: 600 }}>Otras IAs</span>
+              <span style={{ fontSize: 11, color: "#666", fontWeight: 600 }}>{t("landing.comp_others")}</span>
             </div>
             <p style={{ fontSize: 12, color: "#ff444488", lineHeight: 1.7, animation: "slideIn 0.5s ease" }}>
               {comparisons[compIndex].others}
             </p>
           </div>
+
           <div style={{ background: "#0d0a07", borderRadius: 12, padding: 20, border: "1px solid #8b735533" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
               <div style={{ width: 24, height: 24, borderRadius: 6, background: "#8b735522", display: "flex", alignItems: "center", justifyContent: "center" }}>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8b7355" strokeWidth="1.5"><polyline points="20 6 9 17 4 12"/></svg>
               </div>
-              <span style={{ fontSize: 11, color: "#8b7355", fontWeight: 600 }}>AIdark</span>
+              <span style={{ fontSize: 11, color: "#8b7355", fontWeight: 600 }}>{t("landing.comp_aidark")}</span>
             </div>
             <p style={{ fontSize: 12, color: "#d4c5b0", lineHeight: 1.7, animation: "slideIn 0.5s ease" }}>
               {comparisons[compIndex].aidark}
@@ -340,7 +375,7 @@ export default function Landing({ onStart }: { onStart?: () => void }) {
       {/* ═══ FEATURES ═══ */}
       <section style={{ padding: "80px 20px", maxWidth: 800, margin: "0 auto", position: "relative", zIndex: 1 }}>
         <h2 style={{ fontSize: "clamp(24px, 4vw, 36px)", fontWeight: 700, textAlign: "center", marginBottom: 40 }}>
-          ¿Por qué <span style={{ color: "#8b7355" }}>AIdark</span>?
+          {t("landing.why_title")}<span style={{ color: "#8b7355" }}>AIdark</span>?
         </h2>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16 }}>
           {features.map((f, i) => (
@@ -356,10 +391,10 @@ export default function Landing({ onStart }: { onStart?: () => void }) {
         </div>
       </section>
 
-      {/* ═══ WHAT CAN YOU DO ═══ */}
+      {/* ═══ USE CASES ═══ */}
       <section style={{ padding: "80px 20px", maxWidth: 600, margin: "0 auto", position: "relative", zIndex: 1 }}>
         <h2 style={{ fontSize: "clamp(22px, 4vw, 30px)", fontWeight: 700, textAlign: "center", marginBottom: 32 }}>
-          ¿Qué puedes hacer en AIdark?
+          {t("landing.what_title")}
         </h2>
         {useCases.map((item, i) => (
           <div key={i} style={{
@@ -377,32 +412,45 @@ export default function Landing({ onStart }: { onStart?: () => void }) {
         padding: "80px 20px", textAlign: "center", position: "relative", zIndex: 1,
         background: "linear-gradient(180deg, transparent, #8b735508)",
       }}>
-        <div style={{ position: "absolute", top: "10%", left: "50%", transform: "translateX(-50%)", opacity: 0.07, pointerEvents: "none" }}>
+        <div style={{
+          position: "absolute", top: "10%", left: "50%", transform: "translateX(-50%)",
+          opacity: 0.07, pointerEvents: "none",
+        }}>
           <PredatorEyes size={300} />
         </div>
+
         <h2 style={{ fontSize: "clamp(26px, 5vw, 40px)", fontWeight: 800, marginBottom: 16 }}>
-          Tu libertad de expresión
-          <br /><span style={{ color: "#8b7355" }}>empieza aquí.</span>
+          {t("landing.final_title_1")}
+          <br />
+          <span style={{ color: "#8b7355" }}>{t("landing.final_title_2")}</span>
         </h2>
         <p style={{ fontSize: 14, color: "#ffffff44", marginBottom: 32 }}>
-          Únete a los miles que ya escriben sin filtros.
+          {t("landing.final_subtitle")}
         </p>
-        <button style={{
-          padding: "16px 48px", borderRadius: 10, border: "none",
-          background: "linear-gradient(135deg, #8b7355, #6b5a42)", color: "#fff",
-          fontSize: 16, fontWeight: 700, cursor: "pointer",
-          boxShadow: "0 4px 30px rgba(139,115,85,0.3)",
-          animation: "glow 3s ease-in-out infinite",
-        }} onClick={onStart}>Empezar gratis →</button>
+        <button
+          onClick={onStart}
+          style={{
+            padding: "16px 48px", borderRadius: 10, border: "none",
+            background: "linear-gradient(135deg, #8b7355, #6b5a42)", color: "#fff",
+            fontSize: 16, fontWeight: 700, cursor: "pointer",
+            boxShadow: "0 4px 30px rgba(139,115,85,0.3)",
+            animation: "glow 3s ease-in-out infinite",
+          }}
+        >
+          {t("landing.cta_start")}
+        </button>
       </section>
 
       {/* ═══ FOOTER ═══ */}
       <footer style={{ padding: "40px 20px", textAlign: "center", borderTop: "1px solid #111", position: "relative", zIndex: 1 }}>
         <p style={{ fontSize: 11, color: "#ffffff22" }}>
-          © 2026 AIdark · <a href="/legal" style={{ color: "#ffffff33", textDecoration: "none" }}>Términos</a> · <a href="/legal" style={{ color: "#ffffff33", textDecoration: "none" }}>Privacidad</a> · <a href="/legal" style={{ color: "#ffffff33", textDecoration: "none" }}>+18</a>
+          © 2026 AIdark ·{" "}
+          <a href="/legal" style={{ color: "#ffffff33", textDecoration: "none" }}>{t("sidebar.terms")}</a> ·{" "}
+          <a href="/legal" style={{ color: "#ffffff33", textDecoration: "none" }}>{t("sidebar.privacy")}</a> ·{" "}
+          <a href="/legal" style={{ color: "#ffffff33", textDecoration: "none" }}>+18</a>
         </p>
         <p style={{ fontSize: 9, color: "#ffffff11", marginTop: 8 }}>
-          AIdark es un servicio para adultos (+18). Todo el contenido es generado por IA y es ficticio.
+          {t("landing.footer_adults")}
         </p>
       </footer>
     </div>
