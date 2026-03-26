@@ -76,7 +76,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   loadFromSupabase: async (userId: string) => {
     try {
-      await cleanOldChats(userId);
+      // FIX VELOCIDAD: cleanOldChats en background, no bloquea la carga
+      cleanOldChats(userId).catch(() => {});
       const sessions = await loadUserSessions(userId);
       set({ sessions, sessionsLoaded: true });
     } catch (err) {
@@ -211,6 +212,15 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   incrementMessages: () => {
+    const { user } = get();
+    // FIX SYNC: Para usuarios logueados, incrementar en el perfil (sincronizado entre dispositivos)
+    // El API ya incrementa en la BD — aquí solo actualizamos el estado local
+    if (user) {
+      const updated = { ...user, messages_used: (user.messages_used || 0) + 1 };
+      set({ user: updated });
+      return;
+    }
+    // Fallback localStorage para no-logueados
     if (get().isInBonusMode()) {
       incrementBonusMessages();
     } else {
@@ -220,8 +230,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   canSendMessage: () => {
     const { user } = get();
-    // FIX v2 [2]: usar isPremiumPlan para check robusto
     if (isPremiumPlan(user?.plan)) return true;
+    // FIX SYNC: Usar messages_used del perfil (sincronizado entre dispositivos)
+    if (user) {
+      return (user.messages_used || 0) < FREE_LIMIT;
+    }
+    // Fallback localStorage
     const bonusActive = wasBonusGiven();
     if (bonusActive) return getBonusMessagesUsed() < FREE_LIMIT;
     return getDeviceMessagesUsed() < FREE_LIMIT;
@@ -230,6 +244,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   getRemainingMessages: () => {
     const { user } = get();
     if (isPremiumPlan(user?.plan)) return 999;
+    // FIX SYNC: Usar messages_used del perfil
+    if (user) {
+      return Math.max(0, FREE_LIMIT - (user.messages_used || 0));
+    }
+    // Fallback localStorage
     const bonusActive = wasBonusGiven();
     if (bonusActive) return Math.max(0, FREE_LIMIT - getBonusMessagesUsed());
     return Math.max(0, FREE_LIMIT - getDeviceMessagesUsed());
@@ -242,6 +261,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   shouldShowBonus: () => {
     const { user } = get();
     if (isPremiumPlan(user?.plan)) return false;
+    // FIX SYNC: Usar messages_used del perfil
+    if (user) {
+      return (user.messages_used || 0) >= FREE_LIMIT && !wasBonusGiven();
+    }
     return getDeviceMessagesUsed() >= FREE_LIMIT && !wasBonusGiven();
   },
 
