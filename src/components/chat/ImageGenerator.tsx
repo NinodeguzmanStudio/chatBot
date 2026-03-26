@@ -1,6 +1,10 @@
 // ═══════════════════════════════════════
-// AIdark — Image Generator v3
-// FIX: ultra_annual, basic_monthly, pro_quarterly agregados a DAILY_LIMITS y ANIME_PLANS
+// AIdark — Image Generator v4 (FIXED)
+// CAMBIOS v4:
+//   [1] Free users get 2 images/day (before: blocked entirely)
+//   [2] Premium banner shows AFTER free limit, not before
+//   [3] FREE_IMAGE_LIMIT error code handled
+//   [4] Button opens pricing when free limit reached
 // ═══════════════════════════════════════
 
 import React, { useState, useEffect, useRef } from 'react';
@@ -15,8 +19,9 @@ const ANIME_PLANS = new Set([
   'pro_quarterly', 'ultra_annual',
 ]);
 
-// FIX: agregados basic_monthly, pro_quarterly, ultra_annual
+// FIX v4: free users get 2 images/day
 const DAILY_LIMITS: Record<string, number> = {
+  free:              2,
   premium_monthly:   10,
   premium_quarterly: 25,
   premium_annual:    50,
@@ -360,7 +365,7 @@ export const ImageGenerator: React.FC<{ onOpenPricing: () => void }> = ({ onOpen
   const plan       = (user as any)?.plan || 'free';
   const isPremium  = plan !== 'free';
   const canAnime   = ANIME_PLANS.has(plan);
-  const dailyLimit = DAILY_LIMITS[plan] || 0;
+  const dailyLimit = DAILY_LIMITS[plan] || 2;
 
   const [showBanner, setShowBanner] = useState(true);
   const [showToast, setShowToast]   = useState(false);
@@ -400,7 +405,7 @@ export const ImageGenerator: React.FC<{ onOpenPricing: () => void }> = ({ onOpen
       });
       const data = await res.json();
       if (!res.ok) {
-        if (data.code === 'PREMIUM_REQUIRED' || data.code === 'ANIME_PLAN_REQUIRED') { onOpenPricing(); return; }
+        if (data.code === 'PREMIUM_REQUIRED' || data.code === 'ANIME_PLAN_REQUIRED' || data.code === 'FREE_IMAGE_LIMIT') { onOpenPricing(); return; }
         throw new Error(data.error || 'Error generando imagen');
       }
       if (data.images?.length) {
@@ -426,7 +431,11 @@ export const ImageGenerator: React.FC<{ onOpenPricing: () => void }> = ({ onOpen
     a.href = img.src; a.download = `aidark-${img.category}-${Date.now()}.webp`; a.click();
   };
 
-  if (!isPremium && showBanner) {
+  // FIX v4: Free users can generate 2 images
+  // Show premium banner only AFTER they used their free images
+  const freeUsedUp = !isPremium && usedToday >= 2;
+
+  if (!isPremium && showBanner && freeUsedUp) {
     return (
       <>
         <PremiumBanner onOpenPricing={onOpenPricing} onClose={handleCloseBanner} />
@@ -450,8 +459,11 @@ export const ImageGenerator: React.FC<{ onOpenPricing: () => void }> = ({ onOpen
             <p style={{ fontSize: 11, color: 'var(--txt-mut)', margin: '3px 0 0' }}>Sin censura · HD · Privado</p>
           </div>
           <div style={{ textAlign: 'right', fontSize: 11, color: 'var(--txt-mut)' }}>
-            <div style={{ fontWeight: 700, color: remaining <= 3 ? '#e67e22' : 'var(--txt-sec)', fontSize: 13 }}>{remaining}/{dailyLimit}</div>
-            <div>imágenes hoy</div>
+            <div style={{ fontWeight: 700, color: remaining <= 1 ? '#e67e22' : 'var(--txt-sec)', fontSize: 13 }}>{remaining}/{dailyLimit}</div>
+            <div>{!isPremium ? 'gratis hoy' : 'imágenes hoy'}</div>
+            {!isPremium && remaining > 0 && (
+              <div style={{ fontSize: 9, color: '#e67e22', marginTop: 2 }}>⭐ Premium = hasta 50/día</div>
+            )}
           </div>
         </div>
 
@@ -549,19 +561,19 @@ export const ImageGenerator: React.FC<{ onOpenPricing: () => void }> = ({ onOpen
           </div>
         )}
 
-        <button onClick={handleGenerate} disabled={!prompt.trim() || loading || remaining <= 0} style={{
+        <button onClick={() => { if (!isPremium && remaining <= 0) { onOpenPricing(); return; } handleGenerate(); }} disabled={!prompt.trim() || loading || (isPremium && remaining <= 0)} style={{
           width: '100%', padding: '12px 0', borderRadius: 10, border: 'none',
-          background: prompt.trim() && !loading && remaining > 0 ? 'var(--border-str)' : 'var(--bg-el)',
-          color: prompt.trim() && !loading && remaining > 0 ? 'var(--txt-pri)' : 'var(--txt-mut)',
+          background: prompt.trim() && !loading && (remaining > 0 || !isPremium) ? 'var(--border-str)' : 'var(--bg-el)',
+          color: prompt.trim() && !loading && (remaining > 0 || !isPremium) ? 'var(--txt-pri)' : 'var(--txt-mut)',
           fontSize: 13, fontWeight: 600,
-          cursor: prompt.trim() && !loading && remaining > 0 ? 'pointer' : 'default',
+          cursor: prompt.trim() && !loading && (remaining > 0 || !isPremium) ? 'pointer' : 'default',
           fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
         }}>
           {loading
             ? <><div style={{ width: 14, height: 14, border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'var(--txt-pri)', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />Generando...</>
             : remaining <= 0
-            ? '⛔ Límite diario alcanzado'
-            : <><Sparkles size={14} />Generar imagen · {remaining} restantes</>
+            ? (!isPremium ? '🔒 Hazte Premium para más imágenes' : '⛔ Límite diario alcanzado')
+            : <><Sparkles size={14} />Generar imagen · {remaining} {!isPremium ? 'gratis' : 'restantes'}</>
           }
         </button>
 
