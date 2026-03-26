@@ -268,7 +268,7 @@ export default function Landing({ onStart }: { onStart?: () => void }) {
         }} onClick={onStart}>Empezar gratis →</button>
 
         <p style={{ fontSize: 11, color: "#ffffff33", marginTop: 16 }}>
-          +18 · No requiere tarjeta · 12 mensajes gratis · 2 imágenes gratis
+          +18 · No requiere tarjeta · 12 mensajes gratis
         </p>
 
         <div style={{
