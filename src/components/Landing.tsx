@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 
-// ═══ Predator Eyes SVG (appear/disappear around page) ═══
-const PredatorEyes = ({ size = 60, style = {} }) => (
+// ═══ Predator Eyes SVG ═══
+const PredatorEyes = ({ size = 60, style = {} }: { size?: number; style?: React.CSSProperties }) => (
   <svg width={size} height={size * 0.45} viewBox="0 0 120 50" style={style}>
     <ellipse cx="30" cy="25" rx="20" ry="12" fill="none" stroke="#8b7355" strokeWidth="1" opacity="0.5" />
     <ellipse cx="30" cy="25" rx="6" ry="10" fill="#8b7355" opacity="0.7" />
@@ -20,13 +20,11 @@ const FloatingEyes = () => {
     { top: "58%", right: "4%", size: 48, delay: 1.5 },
     { top: "72%", left: "6%", size: 32, delay: 4 },
     { top: "88%", right: "8%", size: 40, delay: 3 },
-    { top: "35%", right: "2%", size: 28, delay: 6.5 },
-    { top: "65%", left: "8%", size: 42, delay: 7.5 },
   ];
   return (<>
     {positions.map((p, i) => (
       <div key={i} style={{
-        position: "absolute", top: p.top, left: p.left, right: p.right,
+        position: "absolute", top: p.top, left: (p as any).left, right: (p as any).right,
         zIndex: 0, pointerEvents: "none",
         animation: `eyeFade 8s ease-in-out infinite`, animationDelay: `${p.delay}s`,
       }}>
@@ -34,6 +32,83 @@ const FloatingEyes = () => {
       </div>
     ))}
   </>);
+};
+
+// ═══════════════════════════════════════
+// LIVE USER COUNTER — v1
+// Base ~5,600, sube en horas pico, baja de madrugada
+// Fluctúa cada 12-18 seg para parecer real
+// ═══════════════════════════════════════
+function getActiveUsers(): number {
+  const now = new Date();
+  const hour = now.getHours();
+  const minute = now.getMinutes();
+  const dayOfWeek = now.getDay(); // 0=dom, 6=sab
+
+  // Base por hora del día (huso horario del usuario)
+  // Pico 1: 12-15h (almuerzo LATAM) → 7,000-8,500
+  // Pico 2: 20-24h (noche) → 7,500-9,000
+  // Valle: 3-7h (madrugada) → 2,800-4,000
+  const hourCurve: Record<number, number> = {
+    0: 5200, 1: 4600, 2: 3800, 3: 3200, 4: 2900, 5: 2800,
+    6: 3100, 7: 3600, 8: 4200, 9: 4800, 10: 5400, 11: 6200,
+    12: 7100, 13: 7800, 14: 8200, 15: 7600, 16: 6800, 17: 6200,
+    18: 6500, 19: 7000, 20: 7800, 21: 8500, 22: 8800, 23: 7200,
+  };
+
+  const base = hourCurve[hour] || 5600;
+
+  // Fines de semana: +12%
+  const weekendBoost = (dayOfWeek === 0 || dayOfWeek === 6) ? base * 0.12 : 0;
+
+  // Variación por minuto (pseudo-random pero determinista)
+  const seed = hour * 60 + minute;
+  const jitter = ((seed * 7919 + 104729) % 600) - 300; // ±300
+
+  return Math.max(2500, Math.round(base + weekendBoost + jitter));
+}
+
+const LiveCounter = () => {
+  const [count, setCount] = useState(getActiveUsers());
+  const [delta, setDelta] = useState(0);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const newCount = getActiveUsers();
+      // Pequeña variación adicional cada tick para que se vea "vivo"
+      const microJitter = Math.floor(Math.random() * 120) - 60;
+      const final = Math.max(2500, newCount + microJitter);
+      setDelta(final - count);
+      setCount(final);
+    }, 12000 + Math.random() * 6000); // 12-18 segundos
+    return () => clearInterval(interval);
+  }, [count]);
+
+  return (
+    <div style={{
+      display: "inline-flex", alignItems: "center", gap: 8,
+      background: "rgba(139,115,85,0.08)", border: "1px solid rgba(139,115,85,0.15)",
+      borderRadius: 20, padding: "6px 14px",
+    }}>
+      <div style={{
+        width: 7, height: 7, borderRadius: "50%", background: "#4ade80",
+        boxShadow: "0 0 6px #4ade80", animation: "pulse 2s ease-in-out infinite",
+      }} />
+      <span style={{ fontSize: 12, color: "#ffffffaa", fontWeight: 500 }}>
+        <strong style={{ color: "#d4c5b0", fontWeight: 700 }}>
+          {count.toLocaleString()}
+        </strong> usuarios activos
+      </span>
+      {delta !== 0 && (
+        <span style={{
+          fontSize: 10, color: delta > 0 ? "#4ade80" : "#f87171",
+          fontWeight: 600, animation: "fadeUp 0.5s ease",
+        }}>
+          {delta > 0 ? `+${delta}` : delta}
+        </span>
+      )}
+    </div>
+  );
 };
 
 // ═══ SVG Icons ═══
@@ -72,7 +147,7 @@ const features = [
   { icon: I.zap, title: "Rápido", desc: "Respuestas instantáneas con streaming en tiempo real" },
   { icon: I.mask, title: "Personajes IA", desc: "Elige entre múltiples personalidades: rebelde, seductora, detective" },
   { icon: I.inf, title: "Sin límites", desc: "Novelas extensas, investigaciones profundas, sin cortes" },
-  { icon: I.globe, title: "En español", desc: "Pensado para hispanohablantes. Respuestas naturales en tu idioma" },
+  { icon: I.globe, title: "Multilingüe", desc: "Español, Português e English. Respuestas naturales en tu idioma" },
 ];
 
 const useCases = [
@@ -83,11 +158,6 @@ const useCases = [
   { icon: I.eye, text: "Ocultismo, misterios y temas tabú" },
   { icon: I.flame, text: "Contenido adulto y erótico sin censura" },
 ];
-
-// FIX: función para scroll suave a la sección de precios
-function scrollToPricing() {
-  document.getElementById('pricing-section')?.scrollIntoView({ behavior: 'smooth' });
-}
 
 export default function Landing({ onStart }: { onStart?: () => void }) {
   const [currentPhrase, setCurrentPhrase] = useState(0);
@@ -126,6 +196,7 @@ export default function Landing({ onStart }: { onStart?: () => void }) {
         @keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0; } }
         @keyframes glow { 0%,100% { box-shadow: 0 0 20px rgba(139,115,85,0.2); } 50% { box-shadow: 0 0 40px rgba(139,115,85,0.4); } }
         @keyframes slideIn { from { opacity: 0; transform: translateX(-20px); } to { opacity: 1; transform: translateX(0); } }
+        @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
         @keyframes eyeFade {
           0% { opacity: 0; transform: scale(0.85); }
           12% { opacity: 0.18; transform: scale(1); }
@@ -151,9 +222,14 @@ export default function Landing({ onStart }: { onStart?: () => void }) {
         }} />
 
         <img src="/icon-512.png" alt="AIdark" style={{
-          width: 100, height: 100, borderRadius: 20, marginBottom: 24,
+          width: 100, height: 100, borderRadius: 20, marginBottom: 20,
           animation: "glow 3s ease-in-out infinite",
         }} />
+
+        {/* LIVE USER COUNTER */}
+        <div style={{ marginBottom: 24 }}>
+          <LiveCounter />
+        </div>
 
         <h1 style={{
           fontSize: "clamp(32px, 6vw, 56px)", fontWeight: 800,
@@ -167,7 +243,7 @@ export default function Landing({ onStart }: { onStart?: () => void }) {
           textAlign: "center", maxWidth: 500, marginBottom: 32, lineHeight: 1.6,
         }}>
           Escribe sin filtros. Investiga sin límites. Pregunta sin miedo.
-          <br />La primera IA en español diseñada para adultos que piensan libre.
+          <br />IA sin censura para adultos que piensan libre.
         </p>
 
         <div style={{
@@ -184,25 +260,15 @@ export default function Landing({ onStart }: { onStart?: () => void }) {
           </p>
         </div>
 
-        <div style={{ display: "flex", gap: 12, flexWrap: "wrap", justifyContent: "center" }}>
-          <button style={{
-            padding: "14px 32px", borderRadius: 10, border: "none",
-            background: "linear-gradient(135deg, #8b7355, #6b5a42)", color: "#fff",
-            fontSize: 15, fontWeight: 700, cursor: "pointer", letterSpacing: 0.5,
-            boxShadow: "0 4px 20px rgba(139,115,85,0.3)",
-          }} onClick={onStart}>Empezar gratis →</button>
+        <button style={{
+          padding: "14px 40px", borderRadius: 10, border: "none",
+          background: "linear-gradient(135deg, #8b7355, #6b5a42)", color: "#fff",
+          fontSize: 15, fontWeight: 700, cursor: "pointer", letterSpacing: 0.5,
+          boxShadow: "0 4px 20px rgba(139,115,85,0.3)",
+        }} onClick={onStart}>Empezar gratis →</button>
 
-          {/* FIX: Ver planes ahora hace scroll a la sección de precios */}
-          <button style={{
-            padding: "14px 32px", borderRadius: 10,
-            border: "1px solid #333", background: "transparent", color: "#999",
-            fontSize: 15, fontWeight: 500, cursor: "pointer",
-          }} onClick={scrollToPricing}>Ver planes</button>
-        </div>
-
-        {/* FIX: 5 → 12 mensajes gratis */}
         <p style={{ fontSize: 11, color: "#ffffff33", marginTop: 16 }}>
-          +18 · No requiere tarjeta · 12 mensajes gratis
+          +18 · No requiere tarjeta · 12 mensajes gratis · 2 imágenes gratis
         </p>
 
         <div style={{
@@ -288,50 +354,6 @@ export default function Landing({ onStart }: { onStart?: () => void }) {
             </div>
           ))}
         </div>
-      </section>
-
-      {/* ═══ SCARCITY + PRICING — FIX: id="pricing-section" para scroll ═══ */}
-      <section id="pricing-section" style={{
-        padding: "60px 20px", textAlign: "center", position: "relative", zIndex: 1,
-        background: "linear-gradient(180deg, transparent, #0d0a0722, transparent)",
-      }}>
-        <h2 style={{ fontSize: "clamp(22px, 4vw, 32px)", fontWeight: 700, marginBottom: 12 }}>
-          Solo <span style={{ color: "#e67e22" }}>10,000</span> miembros
-        </h2>
-        <p style={{ fontSize: 14, color: "#ffffff55", maxWidth: 440, margin: "0 auto 32px", lineHeight: 1.7 }}>
-          Para garantizar tu libertad de expresión y privacidad, limitamos el acceso.
-          Menos usuarios = más velocidad y mejor experiencia.
-        </p>
-        <div style={{ display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap", marginBottom: 32 }}>
-          {[
-            { price: "$12", period: "/mes", color: "#e67e22", pct: "70%" },
-            { price: "$29.99", period: "/3 meses", color: "#2eaadc", pct: "46%", label: "~$10/mes" },
-            { price: "$99.99", period: "/año", color: "#9b59b6", pct: "30%", label: "~$8.33/mes" },
-          ].map((p, i) => (
-            <div key={i} style={{
-              background: "#0d0d1a", borderRadius: 12, padding: "20px 24px",
-              border: `1px solid ${p.color}33`, minWidth: 140, textAlign: "center",
-            }}>
-              <div style={{ fontSize: 28, fontWeight: 800, color: "#fff" }}>{p.price}</div>
-              <div style={{ fontSize: 11, color: "#ffffff55" }}>{p.period}</div>
-              {p.label && <div style={{ fontSize: 10, color: p.color, marginTop: 4 }}>{p.label}</div>}
-              <div style={{ height: 3, background: "#1a1a2e", borderRadius: 2, marginTop: 12, overflow: "hidden" }}>
-                <div style={{ height: "100%", width: p.pct, background: p.color, borderRadius: 2 }} />
-              </div>
-              <div style={{ fontSize: 9, color: "#ffffff33", marginTop: 4 }}>{p.pct} ocupado</div>
-            </div>
-          ))}
-        </div>
-        <button style={{
-          padding: "16px 40px", borderRadius: 10, border: "none",
-          background: "linear-gradient(135deg, #8b7355, #6b5a42)", color: "#fff",
-          fontSize: 16, fontWeight: 700, cursor: "pointer",
-          boxShadow: "0 4px 30px rgba(139,115,85,0.3)",
-        }} onClick={onStart}>Obtener acceso ahora →</button>
-        {/* FIX: 5 → 12 mensajes gratis */}
-        <p style={{ fontSize: 11, color: "#ffffff33", marginTop: 12 }}>
-          12 mensajes gratis · No requiere tarjeta · Cancela cuando quieras
-        </p>
       </section>
 
       {/* ═══ WHAT CAN YOU DO ═══ */}
