@@ -1,7 +1,7 @@
 // ═══════════════════════════════════════
-// AIdark — Admin Dashboard
+// AIdark — Admin Dashboard v2
 // src/components/modals/AdminDashboard.tsx
-// Solo visible para ADMIN_EMAILS
+// NUEVO v2: Tab "Usuarios" con emails, plan, estado online
 // ═══════════════════════════════════════
 
 import React, { useState, useEffect } from 'react';
@@ -18,7 +18,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [tab, setTab]   = useState<'overview' | 'messages' | 'topics' | 'payments'>('overview');
+  const [tab, setTab]   = useState<'overview' | 'users' | 'messages' | 'topics' | 'payments'>('overview');
   const isMobile = useIsMobile();
 
   const fetchData = async () => {
@@ -67,6 +67,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
 
   const tabs = [
     { id: 'overview',  label: 'General' },
+    { id: 'users',     label: 'Usuarios' },
     { id: 'messages',  label: 'Mensajes' },
     { id: 'topics',    label: 'Tendencias' },
     { id: 'payments',  label: 'Pagos' },
@@ -194,6 +195,64 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
               </div>
             )}
           </>
+        )}
+
+        {/* ── TAB: Users (NUEVO) ── */}
+        {tab === 'users' && data && (
+          <div style={{
+            background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)',
+            borderRadius: 10, padding: 14,
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <div style={{ fontSize: 10, color: '#ffffff55', textTransform: 'uppercase' }}>
+                Usuarios activos hoy · {(data.activeUsers || []).length} total · {(data.activeUsers || []).filter((u: any) => u.is_online).length} online
+              </div>
+            </div>
+            {(data.activeUsers || []).length === 0 && (
+              <div style={{ fontSize: 11, color: '#ffffff33', padding: 16, textAlign: 'center' }}>Sin usuarios activos hoy</div>
+            )}
+            <div style={{ maxHeight: 400, overflowY: 'auto' }}>
+              {(data.activeUsers || []).map((u: any, i: number) => (
+                <div key={i} style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  padding: '10px 0',
+                  borderBottom: i < data.activeUsers.length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 }}>
+                    <div style={{
+                      width: 8, height: 8, borderRadius: '50%', flexShrink: 0,
+                      background: u.is_online ? '#4ade80' : '#555',
+                      boxShadow: u.is_online ? '0 0 6px #4ade80' : 'none',
+                    }} />
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div style={{
+                        fontSize: 12, color: u.is_online ? '#ffffffdd' : '#ffffff88',
+                        fontWeight: u.is_online ? 600 : 400,
+                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                      }}>
+                        {u.email}
+                      </div>
+                      <div style={{ fontSize: 9, color: '#ffffff44', marginTop: 2 }}>
+                        {u.is_online ? '🟢 Online ahora' : `Último acceso: ${new Date(u.last_active).toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' })}`}
+                        {' · '}{u.messages_used} msgs
+                        {u.images_today > 0 && ` · ${u.images_today} imgs`}
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{ flexShrink: 0, marginLeft: 8 }}>
+                    <span style={{
+                      fontSize: 9, padding: '3px 8px', borderRadius: 6, fontWeight: 600,
+                      background: u.plan === 'free' ? 'rgba(100,100,100,0.2)' : 'rgba(245,158,11,0.15)',
+                      color: u.plan === 'free' ? '#888' : '#f59e0b',
+                      border: `1px solid ${u.plan === 'free' ? 'rgba(100,100,100,0.2)' : 'rgba(245,158,11,0.2)'}`,
+                    }}>
+                      {u.plan === 'free' ? 'FREE' : u.plan.replace('premium_', '').replace('basic_', '').replace('pro_', '').replace('ultra_', '').toUpperCase()}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
         )}
 
         {/* ── TAB: Messages ── */}
