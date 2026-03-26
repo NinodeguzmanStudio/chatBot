@@ -1,9 +1,16 @@
 // ═══════════════════════════════════════
-// AIdark — Image API v2
+// AIdark — Image API v3 (FIXED)
 // api/image.ts
-// FIX: ALLOWED_DIMENSIONS ahora incluye 720 y 1280
-//   Antes: solo 512, 768, 1024 → ratios 9:16 y 16:9 caían a 1024x1024
-//   Ahora: 512, 720, 768, 1024, 1280 → todos los ratios funcionan
+// ═══════════════════════════════════════
+// CAMBIOS v3:
+//   [1] FREE_DAILY_LIMIT: 2 imágenes gratis/día para usuarios free
+//       Antes: bloqueaba a free completamente
+//       Ahora: 2 imágenes gratis, después banner premium
+//   [2] PROMPT ENHANCEMENT INTELIGENTE:
+//       Se analiza el prompt del usuario y se enriquece automáticamente
+//       con detalles de iluminación, composición, calidad y estilo
+//       para que las imágenes salgan más profesionales y lógicas
+//   [3] Free users solo pueden generar "realistic" (no anime)
 // ═══════════════════════════════════════
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
@@ -14,7 +21,9 @@ const SUPABASE_URL         = process.env.VITE_SUPABASE_URL || process.env.SUPABA
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
+// FIX [1]: Ahora incluye 'free' con 2 imágenes
 const DAILY_LIMITS: Record<string, number> = {
+  free:              2,
   premium_monthly:   10,
   premium_quarterly: 25,
   premium_annual:    50,
@@ -26,31 +35,89 @@ const ANIME_PLANS = new Set([
   'premium_quarterly', 'premium_annual',
   'pro_quarterly', 'ultra_annual',
 ]);
+const PREMIUM_PLANS = new Set([
+  'basic_monthly', 'pro_quarterly', 'ultra_annual',
+  'premium_monthly', 'premium_quarterly', 'premium_annual',
+]);
 
-// FIX: agregados 720 y 1280 para soportar 9:16 y 16:9
 const ALLOWED_DIMENSIONS = new Set([512, 720, 768, 1024, 1280]);
 const DEFAULT_SIZE = 1024;
 
 const ALLOWED_CATEGORIES = new Set(['realistic', 'anime']);
 const ALLOWED_STYLES      = new Set(['hentai', 'manhwa', 'manga', 'ecchi', 'realistic']);
 
-const ENHANCE_REALISTIC = 'photorealistic, hyperrealistic, 8K resolution, sharp focus, cinematic lighting, professional photography, detailed skin texture, bokeh background, studio quality, RAW photo, high dynamic range';
-const ENHANCE_ANIME     = 'hentai art style, highly detailed anime illustration, uncensored, vibrant colors, clean lineart, masterpiece, best quality, detailed anatomy, professional illustration';
-const ENHANCE_MANHWA    = 'manhwa art style, webtoon aesthetic, korean comic style, clean lineart, soft cel shading, detailed, high quality, professional manhwa illustration, uncensored';
-const ENHANCE_MANGA     = 'dark manga style, high contrast ink, seinen aesthetic, detailed shadows, dramatic lighting, professional manga art, uncensored, masterpiece';
-const ENHANCE_ECCHI     = 'ecchi anime style, soft pastel colors, detailed eyes, moe aesthetic, suggestive, high quality illustration, detailed, vibrant, uncensored';
+// ═══════════════════════════════════════
+// FIX [2]: PROMPT ENHANCEMENT INTELIGENTE
+// En vez de solo concatenar keywords genéricos,
+// analizamos qué pide el usuario y añadimos
+// lo que falta para una imagen profesional
+// ═══════════════════════════════════════
 
-const NEGATIVE_BASE = 'minor, child, teen, underage, loli, shota, juvenile, kid, infant, baby, low quality, blurry, watermark, bad anatomy, deformed, ugly, duplicate';
+const QUALITY_BASE = '8K UHD, masterpiece, best quality, highly detailed, sharp focus, professional';
 
-function getEnhancer(category: string, style: string): string {
-  if (category === 'anime') {
-    if (style === 'manhwa') return ENHANCE_MANHWA;
-    if (style === 'manga')  return ENHANCE_MANGA;
-    if (style === 'ecchi')  return ENHANCE_ECCHI;
-    return ENHANCE_ANIME;
-  }
-  return ENHANCE_REALISTIC;
+// Detecta si el prompt ya menciona ciertos aspectos
+function hasAspect(prompt: string, keywords: string[]): boolean {
+  const lower = prompt.toLowerCase();
+  return keywords.some(k => lower.includes(k));
 }
+
+function enhanceRealisticPrompt(userPrompt: string): string {
+  const parts = [userPrompt.trim()];
+
+  // Calidad base siempre
+  parts.push(QUALITY_BASE);
+
+  // Si no menciona iluminación, agregar
+  if (!hasAspect(userPrompt, ['lighting', 'light', 'iluminación', 'iluminacion', 'luz', 'shadow', 'sombra', 'backlit', 'golden hour', 'neon'])) {
+    parts.push('cinematic lighting, soft shadows, volumetric light');
+  }
+
+  // Si no menciona cámara/foto
+  if (!hasAspect(userPrompt, ['photo', 'foto', 'camera', 'cámara', 'lens', 'lente', 'bokeh', 'dslr', 'raw', 'canon', 'nikon', 'sony'])) {
+    parts.push('photorealistic, RAW photo, shot on Canon EOS R5, 85mm lens, shallow depth of field');
+  }
+
+  // Si no menciona textura de piel (para retratos)
+  if (hasAspect(userPrompt, ['mujer', 'woman', 'girl', 'chica', 'hombre', 'man', 'persona', 'person', 'retrato', 'portrait', 'face', 'rostro', 'cuerpo', 'body'])) {
+    if (!hasAspect(userPrompt, ['skin', 'piel', 'texture', 'textura', 'pores', 'poros'])) {
+      parts.push('detailed skin texture, natural skin pores, subsurface scattering');
+    }
+  }
+
+  // Si no menciona ambiente/fondo
+  if (!hasAspect(userPrompt, ['background', 'fondo', 'room', 'habitación', 'habitacion', 'outdoor', 'exterior', 'interior', 'city', 'ciudad', 'beach', 'playa', 'forest', 'bosque', 'studio'])) {
+    parts.push('detailed background, atmospheric perspective');
+  }
+
+  // Si no menciona composición
+  if (!hasAspect(userPrompt, ['composition', 'composición', 'composicion', 'rule of thirds', 'centered', 'close-up', 'full body', 'cuerpo completo', 'half body', 'medio cuerpo'])) {
+    parts.push('professional composition');
+  }
+
+  return parts.join(', ');
+}
+
+function enhanceAnimePrompt(userPrompt: string, style: string): string {
+  const parts = [userPrompt.trim()];
+
+  const STYLE_ENHANCERS: Record<string, string> = {
+    hentai: 'hentai art style, highly detailed anime illustration, uncensored, vibrant colors, clean lineart, masterpiece, best quality, detailed anatomy, professional illustration, expressive eyes',
+    manhwa: 'manhwa art style, webtoon aesthetic, korean comic style, clean lineart, soft cel shading, detailed, high quality, professional manhwa illustration, uncensored, beautiful coloring',
+    manga: 'dark manga style, high contrast ink, seinen aesthetic, detailed shadows, dramatic lighting, professional manga art, uncensored, masterpiece, intricate linework',
+    ecchi: 'ecchi anime style, soft pastel colors, detailed eyes, moe aesthetic, suggestive, high quality illustration, detailed, vibrant, uncensored, beautiful shading',
+  };
+
+  parts.push(STYLE_ENHANCERS[style] || STYLE_ENHANCERS['hentai']);
+
+  // Agregar detalles anatómicos si no se especifican
+  if (!hasAspect(userPrompt, ['eyes', 'ojos', 'hair', 'cabello', 'pelo'])) {
+    parts.push('detailed eyes with reflections, flowing detailed hair');
+  }
+
+  return parts.join(', ');
+}
+
+const NEGATIVE_BASE = 'minor, child, teen, underage, loli, shota, juvenile, kid, infant, baby, low quality, blurry, watermark, bad anatomy, deformed, ugly, duplicate, extra limbs, extra fingers, mutated hands, poorly drawn face, disfigured, bad proportions, gross proportions, text, logo, signature';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
@@ -74,11 +141,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (profileError || !profile) return res.status(403).json({ error: 'Perfil no encontrado.' });
 
-  if (profile.plan === 'free' || !DAILY_LIMITS[profile.plan]) {
-    return res.status(403).json({ error: 'La generación de imágenes es exclusiva para usuarios premium.', code: 'PREMIUM_REQUIRED' });
-  }
+  const plan = profile.plan || 'free';
+  const isPremium = PREMIUM_PLANS.has(plan);
 
-  if (profile.plan_expires_at && new Date(profile.plan_expires_at) < new Date()) {
+  // FIX [1]: Free users get 2 images, premium get their plan limit
+  const dailyLimit = DAILY_LIMITS[plan] || 2;
+
+  if (isPremium && profile.plan_expires_at && new Date(profile.plan_expires_at) < new Date()) {
     await supabase.from('profiles').update({ plan: 'free', plan_id: null, updated_at: new Date().toISOString() }).eq('id', user.id);
     return res.status(403).json({ error: 'Tu plan premium ha expirado.', code: 'PLAN_EXPIRED' });
   }
@@ -86,9 +155,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const today      = new Date().toISOString().slice(0, 10);
   const lastDate   = profile.images_date?.slice(0, 10);
   const usedToday  = lastDate === today ? (profile.images_today || 0) : 0;
-  const dailyLimit = DAILY_LIMITS[profile.plan];
 
   if (usedToday >= dailyLimit) {
+    // FIX [1]: Different message for free vs premium
+    if (!isPremium) {
+      return res.status(403).json({
+        error: 'Has usado tus 2 imágenes gratuitas de hoy. Hazte Premium para generar más.',
+        code: 'FREE_IMAGE_LIMIT', limit: dailyLimit, used: usedToday,
+      });
+    }
     return res.status(429).json({
       error: `Alcanzaste tu límite de ${dailyLimit} imágenes diarias.`,
       code: 'DAILY_LIMIT_REACHED', limit: dailyLimit, used: usedToday,
@@ -104,14 +179,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const safeWidth  = ALLOWED_DIMENSIONS.has(Number(width))  ? Number(width)  : DEFAULT_SIZE;
   const safeHeight = ALLOWED_DIMENSIONS.has(Number(height)) ? Number(height) : DEFAULT_SIZE;
 
-  if (category === 'anime' && !ANIME_PLANS.has(profile.plan)) {
+  // FIX [3]: Free users can only do realistic
+  if (category === 'anime' && !ANIME_PLANS.has(plan)) {
     return res.status(403).json({ error: 'Anime/Hentai es exclusivo del plan Trimestral o Anual.', code: 'ANIME_PLAN_REQUIRED' });
   }
 
-  const enhancer     = getEnhancer(category, style);
-  const model        = category === 'anime' ? 'lustify-sdxl' : 'venice-sd35';
-  const safePrompt   = `${prompt.trim().slice(0, 1000)}, ${enhancer}`;
+  // FIX [2]: Smart prompt enhancement
+  const safePrompt = category === 'anime'
+    ? enhanceAnimePrompt(prompt.trim().slice(0, 1000), style)
+    : enhanceRealisticPrompt(prompt.trim().slice(0, 1000));
+
   const safeNegative = `${NEGATIVE_BASE}${negative_prompt ? ', ' + String(negative_prompt).slice(0, 500) : ''}`;
+
+  const model = category === 'anime' ? 'lustify-sdxl' : 'venice-sd35';
 
   const newCount = usedToday + 1;
   const { error: updateError } = await supabase
@@ -152,7 +232,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .map((img: any) => typeof img === 'string' ? img : (img.b64_json || img.url || ''))
       .filter(Boolean);
 
-    return res.status(200).json({ images, used: newCount, limit: dailyLimit, remaining: dailyLimit - newCount });
+    return res.status(200).json({
+      images, used: newCount, limit: dailyLimit,
+      remaining: dailyLimit - newCount,
+      is_free: !isPremium,
+    });
 
   } catch (err: any) {
     await supabase.from('profiles').update({ images_today: usedToday, updated_at: new Date().toISOString() }).eq('id', user.id);
