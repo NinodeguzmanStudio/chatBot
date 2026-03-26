@@ -460,9 +460,9 @@ export const ImageGenerator: React.FC<{ onOpenPricing: () => void }> = ({ onOpen
           </div>
           <div style={{ textAlign: 'right', fontSize: 11, color: 'var(--txt-mut)' }}>
             <div style={{ fontWeight: 700, color: remaining <= 1 ? '#e67e22' : 'var(--txt-sec)', fontSize: 13 }}>{remaining}/{dailyLimit}</div>
-            <div>{!isPremium ? 'gratis hoy' : 'imágenes hoy'}</div>
-            {!isPremium && remaining > 0 && (
-              <div style={{ fontSize: 9, color: '#e67e22', marginTop: 2 }}>⭐ Premium = hasta 50/día</div>
+            <div>imágenes hoy</div>
+            {!isPremium && remaining <= 0 && (
+              <div style={{ fontSize: 9, color: '#e67e22', marginTop: 2 }}>⭐ Hazte Premium</div>
             )}
           </div>
         </div>
@@ -572,8 +572,8 @@ export const ImageGenerator: React.FC<{ onOpenPricing: () => void }> = ({ onOpen
           {loading
             ? <><div style={{ width: 14, height: 14, border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'var(--txt-pri)', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />Generando...</>
             : remaining <= 0
-            ? (!isPremium ? '🔒 Hazte Premium para más imágenes' : '⛔ Límite diario alcanzado')
-            : <><Sparkles size={14} />Generar imagen · {remaining} {!isPremium ? 'gratis' : 'restantes'}</>
+            ? (!isPremium ? '🔒 Límite alcanzado · Hazte Premium' : '⛔ Límite diario alcanzado')
+            : <><Sparkles size={14} />Generar imagen · {remaining} restantes</>
           }
         </button>
 
