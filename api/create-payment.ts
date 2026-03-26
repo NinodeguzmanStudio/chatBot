@@ -115,7 +115,11 @@ async function getMPAccountCurrency(accessToken: string): Promise<{ currency: st
   } catch (e) {
     console.warn('[Payment] No se pudo detectar país de cuenta MP:', e);
   }
-  return { currency: 'ARS', country: 'AR' };
+  // FIX: Fallback a Perú (antes era Argentina, causaba rechazos de Yape)
+  // Si tienes cuenta MP en otro país, cambia estos valores
+  const defaultCountry = process.env.MP_DEFAULT_COUNTRY || 'PE';
+  const defaultCurrency = MP_COUNTRY_CURRENCY[defaultCountry] || 'PEN';
+  return { currency: defaultCurrency, country: defaultCountry };
 }
 
 function convertPrice(priceUSD: number, currency: string, rates: Record<string, number>): number {
@@ -211,9 +215,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       external_reference: `${user.id}|${plan.plan_id}|${Date.now()}`,
       payment_methods: {
         excluded_payment_types: [],
+        // No excluir ningún método — permite Yape, tarjetas, efectivo, etc.
+        excluded_payment_methods: [],
         installments:         3,
         default_installments: 1,
       },
+      // FIX: Agregar statement_descriptor para que aparezca "AIDARK" en el estado de cuenta
+      statement_descriptor: 'AIDARK',
     };
 
     const mpRes = await fetch('https://api.mercadopago.com/checkout/preferences', {
