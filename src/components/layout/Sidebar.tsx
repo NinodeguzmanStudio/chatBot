@@ -27,14 +27,14 @@ function getGroup(ts: number): string {
   const now = Date.now();
   const diff = now - ts;
   const d = 1000 * 60 * 60 * 24;
-  if (diff < d) return 'Hoy';
-  if (diff < 2 * d) return 'Ayer';
-  if (diff < 7 * d) return 'Esta semana';
-  if (diff < 30 * d) return 'Este mes';
-  return 'Anterior';
+  if (diff < d) return t('sidebar.today');
+  if (diff < 2 * d) return t('sidebar.yesterday');
+  if (diff < 7 * d) return t('sidebar.this_week');
+  if (diff < 30 * d) return t('sidebar.this_month');
+  return t('sidebar.older');
 }
 
-const GROUP_ORDER = ['Hoy', 'Ayer', 'Esta semana', 'Este mes', 'Anterior'];
+const GROUP_ORDER = () => [t('sidebar.today'), t('sidebar.yesterday'), t('sidebar.this_week'), t('sidebar.this_month'), t('sidebar.older')];
 
 export const Sidebar: React.FC<SidebarProps> = ({ onOpenSettings, onOpenPrivacy, onOpenAdmin }) => {
   const { sessions, activeSessionId, sidebarOpen, setSidebarOpen, createSession, setActiveSession, deleteSession, renameSession } = useChatStore();
@@ -229,12 +229,12 @@ export const Sidebar: React.FC<SidebarProps> = ({ onOpenSettings, onOpenPrivacy,
           {filtered.length === 0 && (
             <div style={{ padding: '20px 10px', textAlign: 'center' }}>
               <span style={{ fontSize: 11, color: 'var(--txt-mut)' }}>
-                {search ? 'Sin resultados' : t('sidebar.no_chats')}
+                {search ? t('sidebar.no_results') : t('sidebar.no_chats')}
               </span>
             </div>
           )}
 
-          {GROUP_ORDER.filter((g) => grouped[g]?.length).map((group) => (
+          {GROUP_ORDER().filter((g) => grouped[g]?.length).map((group) => (
             <div key={group}>
               <div style={{ fontSize: 9, color: 'var(--txt-ghost)', textTransform: 'uppercase', letterSpacing: 0.8, padding: '8px 10px 4px', fontWeight: 600 }}>
                 {group}
