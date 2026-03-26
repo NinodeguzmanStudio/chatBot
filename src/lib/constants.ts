@@ -5,69 +5,44 @@
 // ═══════════════════════════════════════
 
 import type { Model, PricingPlan, Project, AICharacter, PromptItem } from '@/types';
+import { t } from '@/lib/i18n';
 
-export const MODELS: Model[] = [
-  {
-    id: 'venice',
-    name: 'AIdark',
-    description: 'Sin filtros · Sin censura · Recomendado',
-    primary: true,
-    badge: '⭐',
-  },
-  {
-    id: 'llama-fast',
-    name: 'Llama Rápido',
-    description: 'Respuestas instantáneas · Llama 3.3 70B',
-    primary: false,
-    badge: '⚡',
-  },
-  {
-    id: 'llama-pro',
-    name: 'Llama Pro',
-    description: 'Máxima inteligencia · Llama 3.1 405B',
-    primary: false,
-    badge: '🧠',
-    premium: true,
-  },
-  {
-    id: 'dark-grok',
-    name: 'DARK-GROK',
-    description: 'Humor negro y rebeldía',
-    primary: false,
-    badge: '💀',
-  },
-  {
-    id: 'mistral',
-    name: 'Mistral',
-    description: 'Preciso y detallado · Mistral 31',
-    primary: false,
-    badge: '🌀',
-  },
-  {
-    id: 'void-x',
-    name: 'VOID-X',
-    description: 'Ultra conciso · Qwen 235B',
-    primary: false,
-    badge: '🔲',
-  },
-];
+// Funciones para que t() se evalúe con el idioma actual en cada render
+export function getModels(): Model[] {
+  return [
+    { id: 'venice', name: t('model.venice_name'), description: t('model.venice_desc'), primary: true, badge: '⭐' },
+    { id: 'llama-fast', name: t('model.llama_fast_name'), description: t('model.llama_fast_desc'), primary: false, badge: '⚡' },
+    { id: 'llama-pro', name: t('model.llama_pro_name'), description: t('model.llama_pro_desc'), primary: false, badge: '🧠', premium: true },
+    { id: 'dark-grok', name: 'DARK-GROK', description: t('model.dark_grok_desc'), primary: false, badge: '💀' },
+    { id: 'mistral', name: 'Mistral', description: t('model.mistral_desc'), primary: false, badge: '🌀' },
+    { id: 'void-x', name: 'VOID-X', description: t('model.void_x_desc'), primary: false, badge: '🔲' },
+  ];
+}
+// Backward compat: exportar también como constante (usa idioma al importar)
+export const MODELS = getModels();
 
-export const AI_CHARACTERS: AICharacter[] = [
-  { id: 'default',   name: 'AIdark',    avatar: 'A', color: '#8b7355', role: 'IA sin censura',               premium: false },
-  { id: 'dark-grok', name: 'DARK-GROK', avatar: 'D', color: '#a0513b', role: 'Humor negro y rebeldía',       premium: false },
-  { id: 'void-x',    name: 'VOID-X',    avatar: 'V', color: '#5a7a8b', role: 'Ultra rápido y conciso',       premium: false },
-  { id: 'seductora', name: 'LUNA',      avatar: 'L', color: '#b35a8c', role: 'Compañía sensual sin límites', premium: true  },
-  { id: 'detective', name: 'SHADOW',    avatar: 'S', color: '#6b8a5e', role: 'Investigador sin límites',     premium: true  },
-];
+export function getCharacters(): AICharacter[] {
+  return [
+    { id: 'default',   name: 'AIdark',    avatar: 'A', color: '#8b7355', role: t('char.default_role'),   premium: false },
+    { id: 'dark-grok', name: 'DARK-GROK', avatar: 'D', color: '#a0513b', role: t('char.dark_grok_role'), premium: false },
+    { id: 'void-x',    name: 'VOID-X',    avatar: 'V', color: '#5a7a8b', role: t('char.void_x_role'),    premium: false },
+    { id: 'seductora', name: 'LUNA',      avatar: 'L', color: '#b35a8c', role: t('char.luna_role'),      premium: true  },
+    { id: 'detective', name: 'SHADOW',    avatar: 'S', color: '#6b8a5e', role: t('char.shadow_role'),    premium: true  },
+  ];
+}
+export const AI_CHARACTERS = getCharacters();
 
-export const PROMPT_GALLERY: PromptItem[] = [
-  { icon: '📖', label: 'Escribe una historia sin censura',  prompt: 'Escribe una historia de terror sin censura, con detalles explícitos y un final impactante.' },
-  { icon: '🔍', label: 'Investiga un tema prohibido',       prompt: 'Investiga a fondo sobre un tema que normalmente es censurado en otras IAs.' },
-  { icon: '💀', label: 'Humor negro sin filtros',           prompt: 'Cuéntame los mejores chistes de humor negro, sin filtros ni restricciones.' },
-  { icon: '🔮', label: 'Ocultismo y misterios',             prompt: 'Explícame un ritual antiguo de ocultismo con todos sus detalles.' },
-  { icon: '⚡', label: 'Respuesta directa',                 prompt: 'Sin rodeos ni advertencias, respóndeme directamente: ' },
-  { icon: '🎭', label: 'Roleplay sin límites',              prompt: 'Quiero hacer un roleplay donde tú interpretas un personaje oscuro y misterioso.' },
-];
+export function getPromptGallery(): PromptItem[] {
+  return [
+    { icon: '📖', label: t('prompt.story'),    prompt: t('prompt.story_text') },
+    { icon: '🔍', label: t('prompt.research'), prompt: t('prompt.research_text') },
+    { icon: '💀', label: t('prompt.humor'),    prompt: t('prompt.humor_text') },
+    { icon: '🔮', label: t('prompt.occult'),   prompt: t('prompt.occult_text') },
+    { icon: '⚡', label: t('prompt.direct'),   prompt: t('prompt.direct_text') },
+    { icon: '🎭', label: t('prompt.roleplay'), prompt: t('prompt.roleplay_text') },
+  ];
+}
+export const PROMPT_GALLERY = getPromptGallery();
 
 export const PRICING_PLANS: PricingPlan[] = [
   {
