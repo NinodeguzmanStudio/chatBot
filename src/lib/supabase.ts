@@ -1,5 +1,19 @@
 // ═══════════════════════════════════════
-// AIdark — Supabase Client (v4 — IMPLICIT FLOW)
+// AIdark — Supabase Client (v5 — PKCE FLOW)
+// src/lib/supabase.ts
+// ═══════════════════════════════════════
+// CAMBIOS v5:
+//   [1] Migrado de implicit → PKCE flow
+//       PKCE usa code exchange (más robusto que hash tokens)
+//       La sesión persiste correctamente en localStorage
+//       Elimina desconexiones al cerrar/reabrir pestaña
+//   [2] autoRefreshToken: true mantiene sesión viva en background
+//   [3] storageKey explícito para evitar conflictos
+//
+// ⚠️  REQUISITO EN SUPABASE DASHBOARD:
+//     Authentication → URL Configuration:
+//     - Site URL: https://aidark.es (tu dominio)
+//     - Redirect URLs: https://aidark.es (agregar también localhost para dev)
 // ═══════════════════════════════════════
 
 import { createClient } from '@supabase/supabase-js';
@@ -21,18 +35,24 @@ export const supabase = createClient(
     auth: {
       autoRefreshToken: true,
       persistSession: true,
+      storageKey: 'aidark-auth',
       // ══════════════════════════════════════════════════════════
-      // IMPLICIT FLOW: El token viene directo en el hash (#)
-      // de la URL, sin necesidad de code exchange ni PKCE.
-      // Esto elimina el error "code challenge does not match
-      // previously saved code verifier".
+      // PKCE FLOW (v5): Más seguro y confiable que implicit.
+      // El token se intercambia via ?code= en la URL (no hash).
+      // Supabase maneja el code exchange automáticamente.
       //
-      // detectSessionInUrl: true → Supabase lee el #access_token
-      // automáticamente al cargar la página. No hay race condition
-      // porque no hay exchange asíncrono — el token ya está ahí.
+      // Para que funcione correctamente:
+      // 1. En Supabase Dashboard → Authentication → URL Configuration
+      //    - Site URL: https://aidark.es
+      //    - Redirect URLs: https://aidark.es, http://localhost:5173
+      // 2. El code verifier se guarda en localStorage automáticamente
+      //    por lo que la sesión sobrevive al cerrar la pestaña.
+      //
+      // Esto elimina las desconexiones al salir/volver porque
+      // PKCE no depende del hash de la URL para persistir.
       // ══════════════════════════════════════════════════════════
       detectSessionInUrl: true,
-      flowType: 'implicit',
+      flowType: 'pkce',
     },
   }
 );
