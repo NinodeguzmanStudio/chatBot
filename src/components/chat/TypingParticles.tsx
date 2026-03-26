@@ -1,362 +1,206 @@
 // ═══════════════════════════════════════
-// AIdark — Main App v4 (FIXED)
-// src/App.tsx
-// ═══════════════════════════════════════
-// CAMBIOS v4:
-//   [1] getSessionSafe timeout: 2.5s → 10s (evita logout en redes lentas)
-//   [2] resolveUserProfile: NO hace upsert si falla (evita sobreescribir premium con free)
-//   [3] resolveUserProfile timeout: 3s → 6s
-//   [4] Race condition fix: lock en processSession para evitar ejecución doble
-//   [5] BrowserRouter envuelve TODO — /payment/* funciona sin sesión activa
-//   [6] Fallback timeout: 5s → 12s
-//   [7] getSessionSafe timeout NO borra auth — deja que onAuthStateChange lo resuelva
-//   [8] PKCE: detecta ?code= en URL (en vez de #access_token para implicit)
+// AIdark — Yautja Particles
+// src/components/chat/TypingParticles.tsx
+// FIX: colores rojo fosforescente más visibles, opacidad más alta
+//      nuevo prop streamTrigger para activarse durante la respuesta de la IA
 // ═══════════════════════════════════════
 
-import React, { useState, useEffect, useRef } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { Sidebar, Header, ChatArea, AgeGate, PricingModal, PromoModal, SettingsModal, PrivacyModal, AuthModal, AdminDashboard } from '@/components';
-import { useAuthStore, useChatStore } from '@/lib/store';
-import { supabase } from '@/lib/supabase';
-import { useIsMobile } from '@/hooks/useIsMobile';
-import { LegalPages } from '@/components/LegalPages';
-import Landing from '@/components/Landing';
-import { InstallBanner } from '@/components/modals/InstallBanner';
+import React, { useRef, useEffect, useCallback } from 'react';
 
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').catch(() => {});
-  });
+interface Particle {
+  x: number; y: number; vy: number;
+  life: number; maxLife: number;
+  size: number; glyphIndex: number;
+  color: number[]; rotation: number;
 }
 
-async function registerPush(accessToken: string): Promise<void> {
-  try {
-    if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
-    const vapidKey = import.meta.env.VITE_VAPID_PUBLIC_KEY;
-    if (!vapidKey) return;
-    const reg      = await navigator.serviceWorker.ready;
-    const existing = await reg.pushManager.getSubscription();
-    const sub      = existing || await reg.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: vapidKey,
-    });
-    await fetch('/api/push-subscribe', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${accessToken}` },
-      body: JSON.stringify({ subscription: sub }),
-    });
-  } catch (err) {
-    console.warn('[Push] No se pudo registrar:', err);
+// Colores rojo depredador fosforescente — más brillantes y visibles
+const COLORS_USER: number[][] = [
+  [255, 35,  15],   // rojo puro fosforescente
+  [220, 50,  0],    // naranja-rojo depredador
+  [255, 70,  30],   // rojo cálido
+  [200, 20,  5],    // rojo oscuro intenso
+  [255, 110, 20],   // naranja fuego
+];
+
+// Durante streaming — mismos colores pero aún más brillantes
+const COLORS_STREAM: number[][] = [
+  [255, 50,  20],
+  [255, 30,  0],
+  [230, 60,  10],
+  [255, 90,  40],
+  [210, 25,  5],
+];
+
+const MAX_PARTICLES   = 35;
+const SPAWN_THROTTLE  = 100; // ms entre spawns
+
+function drawGlyph(ctx: CanvasRenderingContext2D, idx: number, s: number) {
+  const h = s * 0.45;
+  ctx.lineWidth = Math.max(1.3, s * 0.07);
+  ctx.lineCap = 'square';
+  ctx.lineJoin = 'miter';
+  ctx.beginPath();
+  switch (idx % 24) {
+    case 0: ctx.moveTo(-h*.4,-h);ctx.lineTo(-h*.4,h);ctx.moveTo(0,-h*.7);ctx.lineTo(0,h*.7);ctx.moveTo(h*.4,-h);ctx.lineTo(h*.4,h);break;
+    case 1: ctx.moveTo(-h,0);ctx.lineTo(h,0);ctx.moveTo(-h*.6,-h*.5);ctx.lineTo(h*.6,-h*.5);ctx.moveTo(0,-h);ctx.lineTo(0,h);break;
+    case 2: ctx.moveTo(-h*.5,-h*.8);ctx.lineTo(-h*.5,h*.8);ctx.moveTo(-h*.15,-h*.8);ctx.lineTo(-h*.15,h*.8);ctx.moveTo(h*.15,-h*.8);ctx.lineTo(h*.15,h*.8);ctx.moveTo(h*.5,-h*.8);ctx.lineTo(h*.5,h*.8);ctx.moveTo(-h*.6,h*.5);ctx.lineTo(h*.6,-h*.5);break;
+    case 3: ctx.moveTo(-h*.3,-h);ctx.lineTo(-h*.3,h);ctx.moveTo(h*.3,-h);ctx.lineTo(h*.3,h);ctx.moveTo(-h,-h*.3);ctx.lineTo(h,-h*.3);ctx.moveTo(-h,h*.3);ctx.lineTo(h,h*.3);break;
+    case 4: ctx.moveTo(h*.4,-h);ctx.lineTo(-h*.4,0);ctx.lineTo(h*.4,h);break;
+    case 5: ctx.moveTo(-h*.4,-h);ctx.lineTo(h*.4,0);ctx.lineTo(-h*.4,h);break;
+    case 6: ctx.moveTo(-h*.6,h*.2);ctx.lineTo(0,-h*.4);ctx.lineTo(h*.6,h*.2);ctx.moveTo(-h*.6,h*.7);ctx.lineTo(0,h*.1);ctx.lineTo(h*.6,h*.7);break;
+    case 7: ctx.moveTo(-h,0);ctx.lineTo(h*.5,0);ctx.moveTo(h*.2,-h*.4);ctx.lineTo(h*.7,0);ctx.lineTo(h*.2,h*.4);break;
+    case 8: ctx.moveTo(-h*.7,-h*.7);ctx.lineTo(h*.7,h*.7);ctx.moveTo(h*.7,-h*.7);ctx.lineTo(-h*.7,h*.7);break;
+    case 9: ctx.moveTo(0,-h*.8);ctx.lineTo(0,h*.8);ctx.moveTo(-h*.8,0);ctx.lineTo(h*.8,0);ctx.stroke();ctx.beginPath();ctx.arc(-h*.5,-h*.5,s*.04,0,Math.PI*2);ctx.arc(h*.5,-h*.5,s*.04,0,Math.PI*2);ctx.arc(-h*.5,h*.5,s*.04,0,Math.PI*2);ctx.arc(h*.5,h*.5,s*.04,0,Math.PI*2);ctx.fill();break;
+    case 10: for(let a=0;a<3;a++){const ang=(a*Math.PI)/3;ctx.moveTo(Math.cos(ang)*h*.8,Math.sin(ang)*h*.8);ctx.lineTo(-Math.cos(ang)*h*.8,-Math.sin(ang)*h*.8);}break;
+    case 11: ctx.rect(-h*.5,-h*.5,h,h);break;
+    case 12: ctx.moveTo(0,-h*.8);ctx.lineTo(h*.5,0);ctx.lineTo(0,h*.8);ctx.lineTo(-h*.5,0);ctx.closePath();break;
+    case 13: ctx.moveTo(0,-h*.8);ctx.lineTo(h*.7,h*.6);ctx.lineTo(-h*.7,h*.6);ctx.closePath();break;
+    case 14: ctx.moveTo(-h*.2,-h*.8);ctx.lineTo(-h*.5,-h*.8);ctx.lineTo(-h*.5,h*.8);ctx.lineTo(-h*.2,h*.8);ctx.moveTo(h*.2,-h*.8);ctx.lineTo(h*.5,-h*.8);ctx.lineTo(h*.5,h*.8);ctx.lineTo(h*.2,h*.8);break;
+    case 15: ctx.moveTo(0,-h);ctx.lineTo(0,h*.3);ctx.lineTo(h*.7,h*.3);ctx.moveTo(0,-h*.3);ctx.lineTo(-h*.4,-h*.3);break;
+    case 16: ctx.moveTo(-h,0);ctx.lineTo(-h*.4,-h*.5);ctx.lineTo(h*.1,h*.3);ctx.lineTo(h*.6,-h*.5);ctx.lineTo(h,0);break;
+    case 17: ctx.moveTo(-h*.7,-h);ctx.lineTo(-h*.2,h);ctx.moveTo(h*.2,-h);ctx.lineTo(h*.7,h);break;
+    case 18: ctx.moveTo(-h*.6,-h*.6);ctx.lineTo(h*.6,-h*.6);ctx.moveTo(0,-h*.6);ctx.lineTo(0,h*.8);ctx.moveTo(-h*.3,h*.8);ctx.lineTo(h*.3,h*.8);break;
+    case 19: ctx.moveTo(-h*.7,h*.5);ctx.lineTo(-h*.7,0);ctx.lineTo(-h*.2,0);ctx.lineTo(-h*.2,-h*.5);ctx.lineTo(h*.3,-h*.5);ctx.lineTo(h*.3,-h);ctx.lineTo(h*.7,-h);break;
+    case 20: ctx.stroke();ctx.beginPath();ctx.arc(0,-h*.6,s*.06,0,Math.PI*2);ctx.arc(0,0,s*.06,0,Math.PI*2);ctx.arc(0,h*.6,s*.06,0,Math.PI*2);ctx.fill();break;
+    case 21: ctx.moveTo(-h*.7,0);ctx.lineTo(h*.7,0);ctx.stroke();ctx.beginPath();ctx.arc(0,-h*.55,s*.055,0,Math.PI*2);ctx.arc(0,h*.55,s*.055,0,Math.PI*2);ctx.fill();break;
+    case 22: ctx.moveTo(0,h);ctx.lineTo(0,0);ctx.moveTo(0,0);ctx.lineTo(-h*.6,-h);ctx.moveTo(0,0);ctx.lineTo(h*.6,-h);break;
+    case 23: ctx.moveTo(0,h);ctx.lineTo(0,-h);ctx.moveTo(0,-h*.2);ctx.lineTo(-h*.6,-h);ctx.moveTo(0,-h*.2);ctx.lineTo(h*.6,-h);ctx.moveTo(-h*.4,-h*.6);ctx.lineTo(h*.4,-h*.6);break;
   }
+  ctx.stroke();
 }
 
-const PaymentSuccess: React.FC = () => (
-  <div style={{ minHeight: '100dvh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-primary)', flexDirection: 'column', gap: 16 }}>
-    <span style={{ fontSize: 48 }}>✅</span>
-    <h1 style={{ fontSize: 22, color: 'var(--txt-pri)', fontWeight: 500 }}>¡Pago exitoso!</h1>
-    <p style={{ fontSize: 13, color: 'var(--txt-sec)', textAlign: 'center', maxWidth: 300 }}>Tu plan premium está activo. Disfruta AIdark sin límites.</p>
-    <a href="/" style={{ marginTop: 12, padding: '10px 24px', background: 'var(--accent)', color: '#fff', borderRadius: 8, textDecoration: 'none', fontSize: 13 }}>Ir al chat</a>
-  </div>
-);
+const NUM_COLUMNS = 7;
 
-const PaymentFailure: React.FC = () => (
-  <div style={{ minHeight: '100dvh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-primary)', flexDirection: 'column', gap: 16 }}>
-    <span style={{ fontSize: 48 }}>❌</span>
-    <h1 style={{ fontSize: 22, color: 'var(--txt-pri)', fontWeight: 500 }}>Pago fallido</h1>
-    <p style={{ fontSize: 13, color: 'var(--txt-sec)', textAlign: 'center', maxWidth: 300 }}>Hubo un problema con tu pago. Intenta de nuevo.</p>
-    <a href="/" style={{ marginTop: 12, padding: '10px 24px', background: 'var(--bg-el)', color: 'var(--txt-pri)', borderRadius: 8, textDecoration: 'none', fontSize: 13, border: '1px solid var(--border-sub)' }}>Volver</a>
-  </div>
-);
-
-const PaymentPending: React.FC = () => (
-  <div style={{ minHeight: '100dvh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-primary)', flexDirection: 'column', gap: 16 }}>
-    <span style={{ fontSize: 48 }}>⏳</span>
-    <h1 style={{ fontSize: 22, color: 'var(--txt-pri)', fontWeight: 500 }}>Pago pendiente</h1>
-    <p style={{ fontSize: 13, color: 'var(--txt-sec)', textAlign: 'center', maxWidth: 300 }}>Tu pago está siendo procesado. Te notificaremos cuando se confirme.</p>
-    <a href="/" style={{ marginTop: 12, padding: '10px 24px', background: 'var(--bg-el)', color: 'var(--txt-pri)', borderRadius: 8, textDecoration: 'none', fontSize: 13, border: '1px solid var(--border-sub)' }}>Ir al chat</a>
-  </div>
-);
-
-const ChatLayout: React.FC = () => {
-  const { sidebarOpen } = useChatStore();
-  const [pricingOpen, setPricingOpen]   = useState(false);
-  const [promoOpen, setPromoOpen]       = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [privacyOpen, setPrivacyOpen]   = useState(false);
-  const [adminOpen, setAdminOpen]       = useState(false);
-  const isMobile = useIsMobile();
-
-  return (
-    <div style={{ height: '100dvh', display: 'flex', background: 'var(--bg-primary)', overflow: 'hidden' }}>
-      {!isMobile && sidebarOpen && (
-        <aside style={{ width: 260, display: 'flex', flexDirection: 'column', background: 'var(--bg-secondary)', borderRight: '1px solid var(--border-sub)', flexShrink: 0 }}>
-          <Sidebar onOpenPricing={() => setPricingOpen(true)} onOpenSettings={() => setSettingsOpen(true)} onOpenPrivacy={() => setPrivacyOpen(true)} onOpenAdmin={() => setAdminOpen(true)} />
-        </aside>
-      )}
-      {isMobile && sidebarOpen && (
-        <>
-          <div onClick={() => useChatStore.getState().setSidebarOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 99 }} />
-          <aside style={{ position: 'fixed', left: 0, top: 0, bottom: 0, width: 280, display: 'flex', flexDirection: 'column', background: 'var(--bg-secondary)', borderRight: '1px solid var(--border-sub)', zIndex: 100 }}>
-            <Sidebar onOpenPricing={() => setPricingOpen(true)} onOpenSettings={() => setSettingsOpen(true)} onOpenPrivacy={() => setPrivacyOpen(true)} onOpenAdmin={() => setAdminOpen(true)} isMobile />
-          </aside>
-        </>
-      )}
-      <main style={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100dvh', minWidth: 0 }}>
-        <Header onOpenPricing={() => setPricingOpen(true)} />
-        <ChatArea onOpenPricing={() => setPromoOpen(true)} />
-      </main>
-      <PricingModal isOpen={pricingOpen} onClose={() => setPricingOpen(false)} />
-      <PromoModal
-        isOpen={promoOpen}
-        onClose={() => setPromoOpen(false)}
-        onOpenPricing={() => { setPromoOpen(false); setPricingOpen(true); }}
-      />
-      <SettingsModal
-        isOpen={settingsOpen}
-        onClose={() => setSettingsOpen(false)}
-        onOpenPricing={() => { setSettingsOpen(false); setPricingOpen(true); }}
-      />
-      <PrivacyModal isOpen={privacyOpen} onClose={() => setPrivacyOpen(false)} />
-      <InstallBanner />
-      <AdminDashboard isOpen={adminOpen} onClose={() => setAdminOpen(false)} />
-    </div>
-  );
-};
-
-// ═══════════════════════════════════════
-// FIX [1]: Timeout subido a 10 segundos
-// En redes móviles 3G/4G lentas, 2.5s era insuficiente
-// y causaba que se borre la sesión innecesariamente.
-// ═══════════════════════════════════════
-async function getSessionSafe() {
-  try {
-    const result = await Promise.race([
-      supabase.auth.getSession(),
-      new Promise<null>(resolve => setTimeout(() => resolve(null), 10000)),
-    ]);
-    return result;
-  } catch {
-    return null;
-  }
+interface TypingParticlesProps {
+  trigger: number;       // keystroke del usuario
+  streamTrigger?: number; // chunks del streaming de la IA
 }
 
-// ═══════════════════════════════════════
-// FIX [2] + [3]: resolveUserProfile
-// - Timeout subido a 6 segundos
-// - Si falla: retorna perfil temporal en MEMORIA
-//   SIN hacer upsert a la BD (antes sobreescribía
-//   un perfil premium con plan:'free')
-// - El perfil real se cargará en el próximo refresh
-// ═══════════════════════════════════════
-async function resolveUserProfile(userId: string, email: string) {
-  for (let attempt = 0; attempt < 2; attempt++) {
-    try {
-      const result = await Promise.race([
-        supabase.from('profiles').select('*').eq('id', userId).single(),
-        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 6000)),
-      ]) as any;
-      if (result?.data) return result.data;
-    } catch { /* timeout o error */ }
-    if (attempt < 1) await new Promise(r => setTimeout(r, 500));
-  }
-  // FIX [2]: Retornar perfil temporal SIN escribir en BD
-  // Esto evita sobreescribir un perfil premium existente con plan:'free'
-  console.warn('[Auth] No se pudo cargar perfil — usando temporal en memoria (NO se escribe en BD)');
-  return {
-    id: userId,
-    email,
-    plan: 'free',
-    created_at: new Date().toISOString(),
-    messages_used: 0,
-    messages_limit: 12,
-    plan_expires_at: null,
-    _temporary: true, // Flag para saber que es temporal
-  };
-}
+export const TypingParticles: React.FC<TypingParticlesProps> = ({ trigger, streamTrigger = 0 }) => {
+  const canvasRef      = useRef<HTMLCanvasElement>(null);
+  const particlesRef   = useRef<Particle[]>([]);
+  const animFrameRef   = useRef<number>(0);
+  const isRunning      = useRef(false);
+  const colIndexRef    = useRef(0);
+  const lastSpawnRef   = useRef(0);
 
-function clearAllAuthState(setUser: any, setAuthenticated: any) {
-  setUser(null);
-  setAuthenticated(false);
-  localStorage.removeItem('aidark_authenticated');
-}
+  const spawnBurst = useCallback((isStream = false) => {
+    const now = Date.now();
+    if (now - lastSpawnRef.current < SPAWN_THROTTLE) return;
+    lastSpawnRef.current = now;
 
-// ═══════════════════════════════════════
-// FIX [4]: Lock para evitar race condition
-// Antes, initAuth() y onAuthStateChange podían
-// ejecutar processSession() en paralelo y duplicar
-// operaciones de carga.
-// ═══════════════════════════════════════
-let processingSession = false;
+    const canvas = canvasRef.current;
+    if (!canvas || canvas.width === 0) return;
 
-async function processSession(session: any, setUser: any, setAuthenticated: any, loadFromSupabase: any) {
-  if (processingSession) return; // FIX [4]: evitar ejecución doble
-  processingSession = true;
-  try {
-    const profile = await resolveUserProfile(session.user.id, session.user.email || '');
-    setUser(profile as any);
-    setAuthenticated(true);
-    localStorage.setItem('aidark_was_authenticated', 'true');
-    loadFromSupabase(session.user.id).catch(console.error);
-    if (session.access_token) registerPush(session.access_token);
-  } finally {
-    processingSession = false;
-  }
-}
+    const w = canvas.width, h = canvas.height;
+    const colWidth = w / NUM_COLUMNS;
+    const col = colIndexRef.current % NUM_COLUMNS;
+    colIndexRef.current++;
 
-const App: React.FC = () => {
-  const { isAgeVerified, setUser, setAuthenticated, setLoading } = useAuthStore();
-  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
-  const { loadFromSupabase } = useChatStore();
+    const palette = isStream ? COLORS_STREAM : COLORS_USER;
+    const colorArr = palette[Math.floor(Math.random() * palette.length)];
 
-  const [authComplete, setAuthComplete] = useState(false);
-  const [authError, setAuthError]       = useState('');
-  const [showAuth, setShowAuth]         = useState(false);
-  const initialized = useRef(false);
-  const doneRef     = useRef(false);
-
-  const done = (clearAuth = false) => {
-    if (doneRef.current) return;
-    doneRef.current = true;
-    if (clearAuth) {
-      clearAllAuthState(setUser, setAuthenticated);
-      localStorage.removeItem('aidark_was_authenticated');
+    // Durante streaming spawn 2 partículas para más efecto visual
+    const count = isStream ? 2 : 1;
+    for (let i = 0; i < count; i++) {
+      const p: Particle = {
+        x:          colWidth * ((col + i) % NUM_COLUMNS) + colWidth * 0.5 + (Math.random() - 0.5) * colWidth * 0.4,
+        y:          h * 0.1 + Math.random() * h * 0.75,
+        vy:         -(0.15 + Math.random() * 0.35),
+        life:       1.0,
+        maxLife:    400 + Math.random() * 600,
+        size:       16 + Math.random() * 16,
+        glyphIndex: Math.floor(Math.random() * 24),
+        color:      colorArr,
+        rotation:   (Math.floor(Math.random() * 8) * Math.PI) / 4,
+      };
+      particlesRef.current.push(p);
     }
-    setAuthComplete(true);
-    setLoading(false);
-  };
 
-  useEffect(() => {
-    if (initialized.current) return;
-    initialized.current = true;
-
-    const initAuth = async () => {
-      try {
-        // FIX [8]: PKCE usa ?code= en query params (no #access_token)
-        const urlParams = new URLSearchParams(window.location.search);
-        const hasCode = urlParams.has('code');
-        const hasHash = window.location.hash.includes('access_token');
-
-        if (hasCode || hasHash) {
-          // Dar tiempo a Supabase para procesar el code exchange
-          await new Promise(r => setTimeout(r, 500));
-        }
-
-        const sessionResult = await getSessionSafe();
-
-        // FIX [7]: Si hay timeout, NO borrar auth
-        // Solo loguear warning y dejar que onAuthStateChange lo resuelva
-        if (sessionResult === null) {
-          console.warn('[Auth] getSession timeout — esperando onAuthStateChange...');
-          // NO llamar done(true) aquí — el fallback timeout lo resolverá
-          return;
-        }
-
-        const { data: { session }, error } = sessionResult as any;
-        if (error) { done(true); return; }
-
-        if (session?.user) {
-          const expiresAt = session.expires_at ? session.expires_at * 1000 : 0;
-          if (expiresAt > 0 && expiresAt < Date.now()) {
-            const { data: refreshed, error: refreshErr } = await supabase.auth.refreshSession();
-            if (refreshErr || !refreshed.session) { done(true); return; }
-            await processSession(refreshed.session, setUser, setAuthenticated, loadFromSupabase);
-            done(); return;
-          }
-          await processSession(session, setUser, setAuthenticated, loadFromSupabase);
-          done(); return;
-        }
-        done(true);
-      } catch (err: any) {
-        console.error('[Auth] Error:', err);
-        done(true);
-      }
-    };
-
-    initAuth();
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log('[Auth] onAuthStateChange →', event);
-
-      if ((event === 'INITIAL_SESSION' || event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') && session?.user && !doneRef.current) {
-        try {
-          // FIX [8]: Limpiar ?code= de la URL después de PKCE exchange
-          if (window.location.search.includes('code=') || window.location.hash.includes('access_token')) {
-            window.history.replaceState({}, '', window.location.pathname);
-          }
-          await processSession(session, setUser, setAuthenticated, loadFromSupabase);
-        } catch (err: any) {
-          setAuthError('Error al cargar tu perfil. Intenta de nuevo.');
-        }
-        done(); return;
-      }
-
-      if (event === 'INITIAL_SESSION' && !session && !doneRef.current) { done(true); return; }
-
-      if (event === 'TOKEN_REFRESHED' && session?.user && doneRef.current) {
-        try {
-          const profile = await resolveUserProfile(session.user.id, session.user.email || '');
-          setUser(profile as any);
-        } catch { /* no crítico */ }
-      }
-
-      if (event === 'SIGNED_OUT') {
-        localStorage.removeItem('aidark_was_authenticated');
-        done(true);
-      }
-    });
-
-    // FIX [6]: Fallback timeout subido a 12 segundos
-    const fallback = setTimeout(() => {
-      if (!doneRef.current) {
-        console.warn('[Auth] Fallback timeout alcanzado (12s)');
-        done(true);
-      }
-    }, 12000);
-
-    return () => { clearTimeout(fallback); subscription.unsubscribe(); };
+    if (particlesRef.current.length > MAX_PARTICLES) {
+      particlesRef.current = particlesRef.current.slice(-MAX_PARTICLES);
+    }
   }, []);
 
-  if (!authComplete) {
-    return (
-      <div style={{ minHeight: '100dvh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#000', flexDirection: 'column', gap: 20 }}>
-        <img src="/icon-512.png" alt="AIdark" style={{ width: 120, height: 120, borderRadius: 24, animation: 'fadeIn 0.6s ease, pulse 2s ease-in-out infinite' }} />
-        <span style={{ fontSize: 13, color: '#8b7355', fontWeight: 600, letterSpacing: 1 }}>AIdark</span>
-        <div style={{ width: 32, height: 2, borderRadius: 2, background: '#8b735544', overflow: 'hidden', marginTop: 4 }}>
-          <div style={{ width: '50%', height: '100%', background: '#8b7355', animation: 'slideLoad 1.2s ease-in-out infinite' }} />
-        </div>
-      </div>
-    );
-  }
+  const render = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
 
-  // ═══════════════════════════════════════
-  // FIX [5]: BrowserRouter envuelve TODO.
-  // Antes, las rutas de /payment/* estaban dentro
-  // del check de auth, así que si el usuario volvía
-  // de MercadoPago con sesión expirada, no veía la
-  // página de éxito/fallo — ahora sí.
-  // ═══════════════════════════════════════
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    if (particlesRef.current.length === 0) {
+      isRunning.current = false;
+      return;
+    }
+
+    const dt = 16;
+    particlesRef.current = particlesRef.current.filter((p) => {
+      p.life -= dt / p.maxLife;
+      if (p.life <= 0) return false;
+      p.y += p.vy;
+
+      const fadeIn  = p.life > 0.88 ? (1 - p.life) / 0.12 : 1;
+      const fadeOut = p.life < 0.35 ? p.life / 0.35 : 1;
+      // FIX: opacidad subida de 0.22 → 0.52 para que se vean
+      const opacity = fadeIn * fadeOut * 0.52;
+
+      if (opacity <= 0.005) return true;
+
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.rotation);
+      ctx.globalAlpha = opacity;
+
+      // Glow rojo fosforescente
+      ctx.shadowColor  = `rgba(${p.color[0]},${p.color[1]},${p.color[2]},0.8)`;
+      ctx.shadowBlur   = 8;
+      ctx.strokeStyle  = `rgba(${p.color[0]},${p.color[1]},${p.color[2]},1)`;
+      ctx.fillStyle    = `rgba(${p.color[0]},${p.color[1]},${p.color[2]},1)`;
+
+      drawGlyph(ctx, p.glyphIndex, p.size);
+      ctx.restore();
+      return true;
+    });
+
+    animFrameRef.current = requestAnimationFrame(render);
+  }, []);
+
+  const startLoop = useCallback(() => {
+    if (!isRunning.current) {
+      isRunning.current = true;
+      animFrameRef.current = requestAnimationFrame(render);
+    }
+  }, [render]);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const resize = () => {
+      const parent = canvas.parentElement;
+      if (parent) { canvas.width = parent.offsetWidth; canvas.height = parent.offsetHeight; }
+    };
+    resize();
+    const observer = new ResizeObserver(resize);
+    if (canvas.parentElement) observer.observe(canvas.parentElement);
+    return () => { cancelAnimationFrame(animFrameRef.current); isRunning.current = false; observer.disconnect(); };
+  }, []);
+
+  // Trigger del usuario (teclas)
+  useEffect(() => {
+    if (trigger > 0) { spawnBurst(false); startLoop(); }
+  }, [trigger, spawnBurst, startLoop]);
+
+  // Trigger del streaming (respuesta de la IA)
+  useEffect(() => {
+    if (streamTrigger > 0) { spawnBurst(true); startLoop(); }
+  }, [streamTrigger, spawnBurst, startLoop]);
+
   return (
-    <BrowserRouter>
-      <Routes>
-        {/* Rutas de pago: accesibles SIN autenticación */}
-        <Route path="/payment/success" element={<PaymentSuccess />} />
-        <Route path="/payment/failure" element={<PaymentFailure />} />
-        <Route path="/payment/pending" element={<PaymentPending />} />
-        <Route path="/legal" element={<LegalPages />} />
-
-        {/* Ruta principal: requiere auth */}
-        <Route path="*" element={
-          !isAuthenticated && !showAuth
-            ? <Landing onStart={() => setShowAuth(true)} />
-            : !isAuthenticated
-              ? <AuthModal onSuccess={() => { doneRef.current = true; setAuthComplete(true); }} initialError={authError} />
-              : !isAgeVerified
-                ? <AgeGate />
-                : <ChatLayout />
-        } />
-      </Routes>
-    </BrowserRouter>
+    <canvas ref={canvasRef} style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 1 }} />
   );
 };
 
-export default App;
+export default TypingParticles;
