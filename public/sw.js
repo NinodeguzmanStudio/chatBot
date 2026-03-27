@@ -1,15 +1,26 @@
 // ═══════════════════════════════════════
-// AIdark — Service Worker (PWA + Push)
+// AIdark — Service Worker v3 (MINIMAL)
+// Solo push notifications. CERO cache.
 // ═══════════════════════════════════════
-const CACHE = 'aidark-v1';
 
+// Al instalar: limpiar cualquier cache viejo y activar inmediatamente
 self.addEventListener('install', e => {
+  e.waitUntil(
+    caches.keys().then(names => Promise.all(names.map(n => caches.delete(n))))
+  );
   self.skipWaiting();
 });
 
+// Al activar: tomar control inmediato de todas las páginas
 self.addEventListener('activate', e => {
-  e.waitUntil(clients.claim());
+  e.waitUntil(
+    caches.keys()
+      .then(names => Promise.all(names.map(n => caches.delete(n))))
+      .then(() => clients.claim())
+  );
 });
+
+// NO interceptar fetch — dejar que el navegador maneje todo normalmente
 
 // Push notification recibida
 self.addEventListener('push', e => {
