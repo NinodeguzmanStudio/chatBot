@@ -1,16 +1,15 @@
 // ═══════════════════════════════════════
-// AIdark — Image API v3 (FIXED)
+// AIdark — Image API v4 (FIXED)
 // api/image.ts
 // ═══════════════════════════════════════
-// CAMBIOS v3:
-//   [1] FREE_DAILY_LIMIT: 2 imágenes gratis/día para usuarios free
-//       Antes: bloqueaba a free completamente
-//       Ahora: 2 imágenes gratis, después banner premium
-//   [2] PROMPT ENHANCEMENT INTELIGENTE:
-//       Se analiza el prompt del usuario y se enriquece automáticamente
-//       con detalles de iluminación, composición, calidad y estilo
-//       para que las imágenes salgan más profesionales y lógicas
-//   [3] Free users solo pueden generar "realistic" (no anime)
+// CAMBIOS v4:
+//   [1] TRADUCCIÓN AUTOMÁTICA: El prompt del usuario se traduce a inglés
+//       antes de enviarse al modelo. Diccionario extenso ES→EN + PT→EN
+//   [2] PROMPT REESTRUCTURADO: El prompt del usuario va PRIMERO con peso
+//       dominante. Enhancement reducido a lo esencial.
+//   [3] cfg_scale bajado de 9 → 7 para que el modelo interprete mejor
+//   [4] steps subido de 30 → 35 para mayor calidad
+//   [5] Se mantiene todo lo de v3 (free limits, anime plans, etc.)
 // ═══════════════════════════════════════
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
@@ -21,7 +20,6 @@ const SUPABASE_URL         = process.env.VITE_SUPABASE_URL || process.env.SUPABA
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
-// FIX [1]: Ahora incluye 'free' con 2 imágenes
 const DAILY_LIMITS: Record<string, number> = {
   free:              2,
   premium_monthly:   10,
@@ -47,72 +45,262 @@ const ALLOWED_CATEGORIES = new Set(['realistic', 'anime']);
 const ALLOWED_STYLES      = new Set(['hentai', 'manhwa', 'manga', 'ecchi', 'realistic']);
 
 // ═══════════════════════════════════════
-// FIX [2]: PROMPT ENHANCEMENT INTELIGENTE
-// En vez de solo concatenar keywords genéricos,
-// analizamos qué pide el usuario y añadimos
-// lo que falta para una imagen profesional
+// FIX v4 [1]: DICCIONARIO DE TRADUCCIÓN ES/PT → EN
+// Cubre los términos más usados en prompts de imagen
 // ═══════════════════════════════════════
 
-const QUALITY_BASE = '8K UHD, masterpiece, best quality, highly detailed, sharp focus, professional';
+const TRANSLATION_MAP: Record<string, string> = {
+  // --- Personas y cuerpo ---
+  'mujer': 'woman', 'hombre': 'man', 'chica': 'girl', 'chico': 'boy',
+  'persona': 'person', 'joven': 'young', 'adulta': 'adult', 'adulto': 'adult',
+  'anciana': 'elderly woman', 'anciano': 'elderly man',
+  'pareja': 'couple', 'grupo': 'group',
+  'cabello': 'hair', 'pelo': 'hair', 'ojos': 'eyes', 'rostro': 'face',
+  'cara': 'face', 'cuerpo': 'body', 'piel': 'skin', 'labios': 'lips',
+  'manos': 'hands', 'piernas': 'legs', 'brazos': 'arms', 'espalda': 'back',
+  'cintura': 'waist', 'caderas': 'hips', 'pecho': 'chest', 'pechos': 'breasts',
+  'trasero': 'butt', 'cuello': 'neck', 'hombros': 'shoulders',
+  'muslos': 'thighs', 'abdomen': 'abdomen', 'vientre': 'belly',
+  // Pelo colores
+  'rubio': 'blonde', 'rubia': 'blonde', 'moreno': 'brunette', 'morena': 'brunette',
+  'pelirrojo': 'redhead', 'pelirroja': 'redhead', 'negro': 'black', 'castaño': 'brown',
+  'blanco': 'white', 'gris': 'gray', 'platino': 'platinum',
+  'largo': 'long', 'corto': 'short', 'rizado': 'curly', 'lacio': 'straight',
+  'ondulado': 'wavy', 'recogido': 'updo', 'suelto': 'loose', 'trenza': 'braid',
+  'coleta': 'ponytail',
+  // Ojos
+  'azules': 'blue', 'verdes': 'green', 'marrones': 'brown', 'negros': 'black',
+  'claros': 'light', 'oscuros': 'dark',
+  // Cuerpo
+  'delgada': 'slim', 'delgado': 'slim', 'atletica': 'athletic', 'atletico': 'athletic',
+  'atlética': 'athletic', 'atlético': 'athletic',
+  'curvilínea': 'curvy', 'curvilinea': 'curvy', 'voluptuosa': 'voluptuous',
+  'musculoso': 'muscular', 'musculosa': 'muscular',
+  'alta': 'tall', 'alto': 'tall', 'baja': 'short', 'bajo': 'short',
+  'sexy': 'sexy', 'sensual': 'sensual', 'hermosa': 'beautiful', 'hermoso': 'handsome',
+  'guapa': 'beautiful', 'guapo': 'handsome', 'atractiva': 'attractive', 'atractivo': 'attractive',
+  'linda': 'pretty', 'lindo': 'pretty',
+  // Etnias
+  'latina': 'latina', 'latino': 'latino', 'asiática': 'asian', 'asiático': 'asian',
+  'europea': 'european', 'europeo': 'european', 'africana': 'african', 'africano': 'african',
+  'árabe': 'arab',
+  // Edades
+  'años': 'years old',
 
-// Detecta si el prompt ya menciona ciertos aspectos
-function hasAspect(prompt: string, keywords: string[]): boolean {
-  const lower = prompt.toLowerCase();
-  return keywords.some(k => lower.includes(k));
+  // --- Ropa ---
+  'vestido': 'dress', 'vestida': 'wearing', 'vestido de': 'dress',
+  'falda': 'skirt', 'pantalones': 'pants', 'jeans': 'jeans',
+  'camisa': 'shirt', 'blusa': 'blouse', 'camiseta': 't-shirt',
+  'bikini': 'bikini', 'traje de baño': 'swimsuit', 'lencería': 'lingerie',
+  'lenceria': 'lingerie', 'ropa interior': 'underwear',
+  'medias': 'stockings', 'tacones': 'high heels', 'zapatos': 'shoes',
+  'botas': 'boots', 'sombrero': 'hat', 'gafas': 'glasses',
+  'collar': 'necklace', 'aretes': 'earrings', 'anillo': 'ring',
+  'desnuda': 'nude', 'desnudo': 'nude', 'semidesnuda': 'semi-nude',
+  'transparente': 'sheer', 'ajustado': 'tight', 'ajustada': 'tight',
+  'escotado': 'low-cut', 'escotada': 'low-cut', 'corta': 'short', 'minifalda': 'miniskirt',
+  'corsé': 'corset', 'corse': 'corset', 'tanga': 'thong', 'sujetador': 'bra',
+  'traje': 'suit', 'uniforme': 'uniform', 'cosplay': 'cosplay',
+  'enfermera': 'nurse', 'secretaria': 'secretary', 'policía': 'police',
+  'policia': 'police', 'colegiala': 'schoolgirl',
+
+  // --- Poses ---
+  'sentada': 'sitting', 'sentado': 'sitting',
+  'acostada': 'lying down', 'acostado': 'lying down',
+  'de pie': 'standing', 'parada': 'standing', 'parado': 'standing',
+  'de rodillas': 'kneeling', 'agachada': 'bending over', 'agachado': 'bending over',
+  'recostada': 'reclining', 'recostado': 'reclining',
+  'caminando': 'walking', 'corriendo': 'running',
+  'mirando': 'looking at', 'mirando a la cámara': 'looking at camera',
+  'mirando a la camara': 'looking at camera',
+  'de espaldas': 'from behind', 'de frente': 'front view',
+  'de lado': 'side view', 'de perfil': 'profile view',
+  'pose': 'pose', 'posando': 'posing', 'provocativa': 'provocative',
+  'seductora': 'seductive', 'sugestiva': 'suggestive',
+  'sonriendo': 'smiling', 'seria': 'serious', 'serio': 'serious',
+
+  // --- Lugares y ambiente ---
+  'playa': 'beach', 'mar': 'sea', 'océano': 'ocean', 'oceano': 'ocean',
+  'piscina': 'pool', 'alberca': 'pool',
+  'habitación': 'bedroom', 'habitacion': 'bedroom', 'dormitorio': 'bedroom',
+  'cama': 'bed', 'sofá': 'couch', 'sofa': 'couch', 'silla': 'chair',
+  'baño': 'bathroom', 'bano': 'bathroom', 'ducha': 'shower', 'bañera': 'bathtub',
+  'cocina': 'kitchen', 'sala': 'living room', 'salón': 'living room', 'salon': 'living room',
+  'oficina': 'office', 'escritorio': 'desk',
+  'hotel': 'hotel', 'suite': 'suite', 'mansión': 'mansion', 'mansion': 'mansion',
+  'jardín': 'garden', 'jardin': 'garden', 'parque': 'park', 'bosque': 'forest',
+  'montaña': 'mountain', 'montana': 'mountain', 'campo': 'field', 'pradera': 'meadow',
+  'ciudad': 'city', 'calle': 'street', 'callejón': 'alley', 'callejon': 'alley',
+  'balcón': 'balcony', 'balcon': 'balcony', 'terraza': 'terrace', 'azotea': 'rooftop',
+  'iglesia': 'church', 'castillo': 'castle', 'templo': 'temple',
+  'bar': 'bar', 'restaurante': 'restaurant', 'club': 'nightclub',
+  'gimnasio': 'gym', 'estudio': 'studio',
+  'noche': 'night', 'día': 'day', 'dia': 'day',
+  'atardecer': 'sunset', 'amanecer': 'sunrise', 'anochecer': 'dusk',
+  'lluvia': 'rain', 'nieve': 'snow', 'niebla': 'fog', 'tormenta': 'storm',
+  'exterior': 'outdoor', 'interior': 'indoor',
+
+  // --- Iluminación ---
+  'iluminación': 'lighting', 'iluminacion': 'lighting',
+  'luz': 'light', 'sombra': 'shadow', 'sombras': 'shadows',
+  'suave': 'soft', 'fuerte': 'strong', 'natural': 'natural',
+  'neón': 'neon', 'neon': 'neon', 'cálida': 'warm', 'calida': 'warm',
+  'fría': 'cold', 'fria': 'cold', 'dorada': 'golden', 'dorado': 'golden',
+  'velas': 'candlelight', 'contraluz': 'backlit',
+  'dramática': 'dramatic', 'dramatica': 'dramatic', 'tenue': 'dim',
+
+  // --- Estilo y calidad ---
+  'fotorrealista': 'photorealistic', 'realista': 'realistic', 'artístico': 'artistic',
+  'artistico': 'artistic', 'cinematográfico': 'cinematic', 'cinematografico': 'cinematic',
+  'retrato': 'portrait', 'primer plano': 'close-up', 'plano medio': 'medium shot',
+  'cuerpo completo': 'full body', 'medio cuerpo': 'half body',
+  'detallado': 'detailed', 'detallada': 'detailed',
+  'profesional': 'professional', 'elegante': 'elegant',
+
+  // --- Colores ---
+  'rojo': 'red', 'roja': 'red', 'azul': 'blue', 'verde': 'green',
+  'amarillo': 'yellow', 'amarilla': 'yellow', 'rosa': 'pink', 'rosado': 'pink',
+  'morado': 'purple', 'naranja': 'orange', 'dorado': 'golden', 'plateado': 'silver',
+
+  // --- Português comuns ---
+  'mulher': 'woman', 'homem': 'man', 'garota': 'girl', 'menina': 'girl',
+  'cabelo': 'hair', 'olhos': 'eyes', 'rosto': 'face', 'corpo': 'body',
+  'pele': 'skin', 'loira': 'blonde', 'loiro': 'blonde', 'morena': 'brunette',
+  'ruiva': 'redhead', 'bonita': 'beautiful', 'bonito': 'handsome',
+  'vestido': 'dress', 'saia': 'skirt', 'calça': 'pants', 'calca': 'pants',
+  'sentada': 'sitting', 'deitada': 'lying down', 'em pé': 'standing',
+  'praia': 'beach', 'quarto': 'bedroom', 'cozinha': 'kitchen',
+  'noite': 'night', 'pôr do sol': 'sunset', 'iluminação': 'lighting',
+  'iluminacao': 'lighting', 'sombra': 'shadow',
+  'nua': 'nude', 'nu': 'nude', 'seminua': 'semi-nude',
+  'anos': 'years old', 'alta': 'tall', 'magra': 'slim', 'gorda': 'chubby',
+  'sexy': 'sexy', 'sensual': 'sensual',
+
+  // --- Conectores (se eliminan o traducen) ---
+  'con': 'with', 'en': 'in', 'de': 'of', 'una': 'a', 'un': 'a',
+  'el': 'the', 'la': 'the', 'los': 'the', 'las': 'the',
+  'sobre': 'on', 'debajo': 'under', 'junto': 'next to',
+  'al': 'at the', 'del': 'of the', 'por': 'by',
+  'muy': 'very', 'más': 'more', 'mas': 'more',
+  'y': 'and', 'o': 'or', 'pero': 'but', 'sin': 'without',
+  'como': 'like', 'estilo': 'style',
+};
+
+// Frases multi-palabra (se procesan ANTES que palabras sueltas)
+const PHRASE_MAP: [RegExp, string][] = [
+  [/mirando a la c[aá]mara/gi, 'looking at camera'],
+  [/de espaldas/gi, 'from behind'],
+  [/de frente/gi, 'front view'],
+  [/de lado/gi, 'side view'],
+  [/de perfil/gi, 'profile view'],
+  [/de pie/gi, 'standing'],
+  [/de rodillas/gi, 'kneeling'],
+  [/primer plano/gi, 'close-up'],
+  [/plano medio/gi, 'medium shot'],
+  [/cuerpo completo/gi, 'full body'],
+  [/medio cuerpo/gi, 'half body'],
+  [/cuerpo entero/gi, 'full body'],
+  [/ropa interior/gi, 'underwear'],
+  [/traje de ba[nñ]o/gi, 'swimsuit'],
+  [/cabello largo/gi, 'long hair'],
+  [/cabello corto/gi, 'short hair'],
+  [/pelo largo/gi, 'long hair'],
+  [/pelo corto/gi, 'short hair'],
+  [/ojos azules/gi, 'blue eyes'],
+  [/ojos verdes/gi, 'green eyes'],
+  [/ojos marrones/gi, 'brown eyes'],
+  [/ojos negros/gi, 'dark eyes'],
+  [/piel morena/gi, 'tan skin'],
+  [/piel clara/gi, 'fair skin'],
+  [/piel oscura/gi, 'dark skin'],
+  [/luz natural/gi, 'natural lighting'],
+  [/luz suave/gi, 'soft lighting'],
+  [/hora dorada/gi, 'golden hour'],
+  [/en la/gi, 'in the'],
+  [/en el/gi, 'in the'],
+  [/en un/gi, 'in a'],
+  [/en una/gi, 'in a'],
+  [/p[oô]r do sol/gi, 'sunset'],
+  [/em p[eé]/gi, 'standing'],
+];
+
+function translatePrompt(userPrompt: string): string {
+  // Si ya parece estar en inglés (más del 60% palabras inglesas comunes), no traducir
+  const englishIndicators = /\b(the|with|in|on|at|woman|man|girl|boy|wearing|sitting|standing|looking|beautiful|sexy|nude|bedroom|beach|lighting|hair|eyes|body|skin)\b/gi;
+  const matches = userPrompt.match(englishIndicators);
+  const words = userPrompt.split(/\s+/).length;
+  if (matches && matches.length / words > 0.3) {
+    return userPrompt; // Ya está mayormente en inglés
+  }
+
+  let translated = userPrompt;
+
+  // Paso 1: Traducir frases multi-palabra primero
+  for (const [regex, replacement] of PHRASE_MAP) {
+    translated = translated.replace(regex, replacement);
+  }
+
+  // Paso 2: Traducir palabras individuales
+  // Usar regex de palabras completas para no romper palabras parciales
+  for (const [es, en] of Object.entries(TRANSLATION_MAP)) {
+    // Escapar caracteres especiales de regex
+    const escaped = es.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regex = new RegExp(`\\b${escaped}\\b`, 'gi');
+    translated = translated.replace(regex, en);
+  }
+
+  // Paso 3: Limpiar artículos duplicados y espacios extra
+  translated = translated
+    .replace(/\b(the the|a a|in in|of of)\b/gi, (m) => m.split(' ')[0])
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  return translated;
 }
 
+// ═══════════════════════════════════════
+// FIX v4 [2]: ENHANCEMENT MÍNIMO Y RELEVANTE
+// El prompt del usuario es la PRIORIDAD.
+// Solo se agrega calidad base, NO se ahoga con keywords.
+// ═══════════════════════════════════════
+
 function enhanceRealisticPrompt(userPrompt: string): string {
-  const parts = [userPrompt.trim()];
+  // Traducir primero
+  const translated = translatePrompt(userPrompt);
 
-  // Calidad base siempre
-  parts.push(QUALITY_BASE);
+  // Prompt del usuario va PRIMERO (máxima prioridad para SD)
+  const parts = [translated];
 
-  // Si no menciona iluminación, agregar
-  if (!hasAspect(userPrompt, ['lighting', 'light', 'iluminación', 'iluminacion', 'luz', 'shadow', 'sombra', 'backlit', 'golden hour', 'neon'])) {
-    parts.push('cinematic lighting, soft shadows, volumetric light');
+  // Solo agregar calidad base mínima
+  parts.push('masterpiece, best quality, highly detailed, sharp focus');
+
+  // Solo agregar iluminación si el usuario no mencionó nada de luz
+  const lower = translated.toLowerCase();
+  if (!/(light|shadow|backlit|golden hour|neon|sunset|sunrise|candle|dim|dramatic)/.test(lower)) {
+    parts.push('cinematic lighting');
   }
 
-  // Si no menciona cámara/foto
-  if (!hasAspect(userPrompt, ['photo', 'foto', 'camera', 'cámara', 'lens', 'lente', 'bokeh', 'dslr', 'raw', 'canon', 'nikon', 'sony'])) {
-    parts.push('photorealistic, RAW photo, shot on Canon EOS R5, 85mm lens, shallow depth of field');
-  }
-
-  // Si no menciona textura de piel (para retratos)
-  if (hasAspect(userPrompt, ['mujer', 'woman', 'girl', 'chica', 'hombre', 'man', 'persona', 'person', 'retrato', 'portrait', 'face', 'rostro', 'cuerpo', 'body'])) {
-    if (!hasAspect(userPrompt, ['skin', 'piel', 'texture', 'textura', 'pores', 'poros'])) {
-      parts.push('detailed skin texture, natural skin pores, subsurface scattering');
-    }
-  }
-
-  // Si no menciona ambiente/fondo
-  if (!hasAspect(userPrompt, ['background', 'fondo', 'room', 'habitación', 'habitacion', 'outdoor', 'exterior', 'interior', 'city', 'ciudad', 'beach', 'playa', 'forest', 'bosque', 'studio'])) {
-    parts.push('detailed background, atmospheric perspective');
-  }
-
-  // Si no menciona composición
-  if (!hasAspect(userPrompt, ['composition', 'composición', 'composicion', 'rule of thirds', 'centered', 'close-up', 'full body', 'cuerpo completo', 'half body', 'medio cuerpo'])) {
-    parts.push('professional composition');
+  // Solo agregar foto si no se mencionó cámara
+  if (!/(photo|camera|lens|bokeh|dslr|raw|canon|nikon|sony|shot on)/.test(lower)) {
+    parts.push('photorealistic');
   }
 
   return parts.join(', ');
 }
 
 function enhanceAnimePrompt(userPrompt: string, style: string): string {
-  const parts = [userPrompt.trim()];
+  const translated = translatePrompt(userPrompt);
+
+  const parts = [translated];
 
   const STYLE_ENHANCERS: Record<string, string> = {
-    hentai: 'hentai art style, highly detailed anime illustration, uncensored, vibrant colors, clean lineart, masterpiece, best quality, detailed anatomy, professional illustration, expressive eyes',
-    manhwa: 'manhwa art style, webtoon aesthetic, korean comic style, clean lineart, soft cel shading, detailed, high quality, professional manhwa illustration, uncensored, beautiful coloring',
-    manga: 'dark manga style, high contrast ink, seinen aesthetic, detailed shadows, dramatic lighting, professional manga art, uncensored, masterpiece, intricate linework',
-    ecchi: 'ecchi anime style, soft pastel colors, detailed eyes, moe aesthetic, suggestive, high quality illustration, detailed, vibrant, uncensored, beautiful shading',
+    hentai: 'hentai art style, detailed anime illustration, uncensored, vibrant colors, clean lineart, masterpiece',
+    manhwa: 'manhwa art style, webtoon aesthetic, korean comic style, clean lineart, soft cel shading, high quality, uncensored',
+    manga: 'dark manga style, high contrast ink, seinen aesthetic, detailed shadows, dramatic lighting, uncensored, masterpiece',
+    ecchi: 'ecchi anime style, soft pastel colors, detailed eyes, moe aesthetic, high quality illustration, uncensored',
   };
 
   parts.push(STYLE_ENHANCERS[style] || STYLE_ENHANCERS['hentai']);
-
-  // Agregar detalles anatómicos si no se especifican
-  if (!hasAspect(userPrompt, ['eyes', 'ojos', 'hair', 'cabello', 'pelo'])) {
-    parts.push('detailed eyes with reflections, flowing detailed hair');
-  }
 
   return parts.join(', ');
 }
@@ -144,7 +332,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const plan = profile.plan || 'free';
   const isPremium = PREMIUM_PLANS.has(plan);
 
-  // FIX [1]: Free users get 2 images, premium get their plan limit
   const dailyLimit = DAILY_LIMITS[plan] || 2;
 
   if (isPremium && profile.plan_expires_at && new Date(profile.plan_expires_at) < new Date()) {
@@ -157,7 +344,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const usedToday  = lastDate === today ? (profile.images_today || 0) : 0;
 
   if (usedToday >= dailyLimit) {
-    // FIX [1]: Different message for free vs premium
     if (!isPremium) {
       return res.status(403).json({
         error: 'Has usado tus 2 imágenes gratuitas de hoy. Hazte Premium para generar más.',
@@ -179,12 +365,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const safeWidth  = ALLOWED_DIMENSIONS.has(Number(width))  ? Number(width)  : DEFAULT_SIZE;
   const safeHeight = ALLOWED_DIMENSIONS.has(Number(height)) ? Number(height) : DEFAULT_SIZE;
 
-  // FIX [3]: Free users can only do realistic
   if (category === 'anime' && !ANIME_PLANS.has(plan)) {
     return res.status(403).json({ error: 'Anime/Hentai es exclusivo del plan Trimestral o Anual.', code: 'ANIME_PLAN_REQUIRED' });
   }
 
-  // FIX [2]: Smart prompt enhancement
+  // FIX v4 [1]+[2]: Traducción + enhancement mínimo
   const safePrompt = category === 'anime'
     ? enhanceAnimePrompt(prompt.trim().slice(0, 1000), style)
     : enhanceRealisticPrompt(prompt.trim().slice(0, 1000));
@@ -192,6 +377,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const safeNegative = `${NEGATIVE_BASE}${negative_prompt ? ', ' + String(negative_prompt).slice(0, 500) : ''}`;
 
   const model = category === 'anime' ? 'lustify-sdxl' : 'venice-sd35';
+
+  // Log para debug (puedes quitar en producción)
+  console.log(`[Image API] Original: "${prompt.trim().slice(0, 100)}"`);
+  console.log(`[Image API] Enhanced: "${safePrompt.slice(0, 200)}"`);
 
   const newCount = usedToday + 1;
   const { error: updateError } = await supabase
@@ -211,7 +400,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       body: JSON.stringify({
         model, prompt: safePrompt, negative_prompt: safeNegative,
         width: safeWidth, height: safeHeight,
-        safe_mode: false, hide_watermark: true, steps: 30, cfg_scale: 9, return_binary: false,
+        // FIX v4 [3]+[4]: cfg_scale 9→7, steps 30→35
+        safe_mode: false, hide_watermark: true, steps: 35, cfg_scale: 7, return_binary: false,
       }),
     });
 
@@ -232,7 +422,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .map((img: any) => typeof img === 'string' ? img : (img.b64_json || img.url || ''))
       .filter(Boolean);
 
-    // Detectar formato real del base64
     const detectMime = (b64: string): string => {
       if (b64.startsWith('/9j/')) return 'image/jpeg';
       if (b64.startsWith('iVBOR')) return 'image/png';
