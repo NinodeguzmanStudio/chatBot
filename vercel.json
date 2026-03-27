@@ -10,7 +10,7 @@
     },
     {
       "path": "/api/reset-messages",
-      "schedule": "0 0 1 * *"
+      "schedule": "0 0 * * *"
     }
   ],
   "headers": [
