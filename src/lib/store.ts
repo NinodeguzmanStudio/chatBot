@@ -1,9 +1,12 @@
 // ═══════════════════════════════════════
-// AIdark — Global Store v2
+// AIdark — Global Store v3
 // src/lib/store.ts
-// FIXES v2:
-//   [1] isPremiumPlan helper para check robusto
-//   [2] canSendMessage usa helper en vez de plan !== 'free'
+// FIXES v3:
+//   [1] canSendMessage BLOQUEA si perfil es temporal (_temporary)
+//   [2] getRemainingMessages retorna 0 si perfil temporal
+//   [3] incrementMessages NO incrementa si perfil temporal
+//   [4] Nuevo método: refreshProfile() para recargar perfil real desde BD
+//   [5] isPremiumPlan helper robusto
 // ═══════════════════════════════════════
 
 import { create } from 'zustand';
@@ -18,6 +21,7 @@ import {
   loadUserSessions, createDbSession, saveMessage,
   updateDbSessionTitle, deleteDbSession, deleteAllDbSessions, cleanOldChats,
 } from '@/services/chatService';
+import { supabase } from '@/lib/supabase';
 
 const FREE_LIMIT = 12;
 
@@ -76,7 +80,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   loadFromSupabase: async (userId: string) => {
     try {
-      // FIX VELOCIDAD: cleanOldChats en background, no bloquea la carga
       cleanOldChats(userId).catch(() => {});
       const sessions = await loadUserSessions(userId);
       set({ sessions, sessionsLoaded: true });
@@ -188,6 +191,7 @@ interface AuthState {
   isInBonusMode: () => boolean;
   shouldShowBonus: () => boolean;
   activateBonus: () => void;
+  refreshProfile: () => Promise<void>;
 }
 
 export const useAuthStore = create<AuthState>((set, get) => ({
@@ -211,11 +215,37 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     set({ isAgeVerified: verified });
   },
 
+  // ═══════════════════════════════════════
+  // FIX v3 [4]: refreshProfile — recarga perfil real desde BD
+  // Se llama cuando el perfil es temporal para intentar obtener el real
+  // ═══════════════════════════════════════
+  refreshProfile: async () => {
+    const { user } = get();
+    if (!user?.id) return;
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', user.id)
+        .single();
+      if (!error && data) {
+        console.log('[Auth] Perfil real recargado desde BD, messages_used:', data.messages_used);
+        set({ user: data as any });
+      }
+    } catch (err) {
+      console.warn('[Auth] No se pudo recargar perfil:', err);
+    }
+  },
+
+  // ═══════════════════════════════════════
+  // FIX v3 [3]: NO incrementar si perfil temporal
+  // ═══════════════════════════════════════
   incrementMessages: () => {
     const { user } = get();
-    // FIX SYNC: Para usuarios logueados, incrementar en el perfil (sincronizado entre dispositivos)
-    // El API ya incrementa en la BD — aquí solo actualizamos el estado local
     if (user) {
+      // FIX: Si el perfil es temporal, NO incrementar localmente
+      // El backend ya maneja el incremento real en la BD
+      if ((user as any)._temporary) return;
       const updated = { ...user, messages_used: (user.messages_used || 0) + 1 };
       set({ user: updated });
       return;
@@ -228,11 +258,24 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
   },
 
+  // ═══════════════════════════════════════
+  // FIX v3 [1]: BLOQUEAR si perfil es temporal
+  // Si no se pudo cargar el perfil real, NO dejar enviar
+  // El usuario debe refrescar o esperar a que cargue
+  // ═══════════════════════════════════════
   canSendMessage: () => {
     const { user } = get();
     if (isPremiumPlan(user?.plan)) return true;
-    // FIX SYNC: Usar messages_used del perfil (sincronizado entre dispositivos)
+
     if (user) {
+      // FIX CRÍTICO: Si el perfil es temporal, BLOQUEAR envío
+      // No sabemos cuántos mensajes realmente ha usado
+      if ((user as any)._temporary) {
+        console.warn('[Auth] Perfil temporal — bloqueando envío hasta cargar perfil real');
+        // Intentar recargar el perfil en background
+        get().refreshProfile();
+        return false;
+      }
       return (user.messages_used || 0) < FREE_LIMIT;
     }
     // Fallback localStorage
@@ -241,11 +284,16 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     return getDeviceMessagesUsed() < FREE_LIMIT;
   },
 
+  // ═══════════════════════════════════════
+  // FIX v3 [2]: Retornar 0 si perfil temporal
+  // ═══════════════════════════════════════
   getRemainingMessages: () => {
     const { user } = get();
     if (isPremiumPlan(user?.plan)) return 999;
-    // FIX SYNC: Usar messages_used del perfil
+
     if (user) {
+      // FIX: Si el perfil es temporal, mostrar 0 restantes
+      if ((user as any)._temporary) return 0;
       return Math.max(0, FREE_LIMIT - (user.messages_used || 0));
     }
     // Fallback localStorage
@@ -261,8 +309,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   shouldShowBonus: () => {
     const { user } = get();
     if (isPremiumPlan(user?.plan)) return false;
-    // FIX SYNC: Usar messages_used del perfil
     if (user) {
+      if ((user as any)._temporary) return false;
       return (user.messages_used || 0) >= FREE_LIMIT && !wasBonusGiven();
     }
     return getDeviceMessagesUsed() >= FREE_LIMIT && !wasBonusGiven();
