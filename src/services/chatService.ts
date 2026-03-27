@@ -1,34 +1,37 @@
 // ═══════════════════════════════════════
-// AIdark — Chat Persistence Service (FIXED)
+// AIdark — Chat Persistence Service v2 (FIXED)
 // src/services/chatService.ts
 // ═══════════════════════════════════════
-// FIXES aplicados:
-//   [1] cleanOldChats borraba chats de TODOS los usuarios a los 7 días
-//       incluyendo premium — ahora solo aplica a usuarios free
-//       Premium conserva 90 días de historial
-//   [2] saveMessage no guardaba el campo 'character' — se perdía en historial
-//   [3] loadUserSessions cargaba sin límite de sesiones — con muchas sesiones
-//       la query de mensajes podía traer miles de rows. Ahora límite de 30 sesiones.
+// FIXES v2:
+//   [1] cleanOldChats solo aplica a usuarios free. Premium conserva 90+ días
+//   [2] saveMessage guarda el campo 'character'
+//   [3] loadUserSessions limitado a 15 sesiones
+//   [4] RETENTION_DAYS incluye TODOS los plan aliases (basic_monthly, pro_quarterly, ultra_annual)
+//       Antes faltaban y caían al fallback de 7 días como si fueran free
 // ═══════════════════════════════════════
 
 import { supabase } from '@/lib/supabase';
 import type { ChatSession, Message, ModelId } from '@/types';
 
 const MAX_MESSAGES_PER_SESSION = 50;
-const MAX_SESSIONS_TO_LOAD     = 15;  // FIX VELOCIDAD: 30→15 sesiones en carga inicial
-const MAX_SESSIONS_WITH_MSGS   = 10;  // Solo cargar mensajes de las 10 más recientes
+const MAX_SESSIONS_TO_LOAD     = 15;
+const MAX_SESSIONS_WITH_MSGS   = 10;
 
-// FIX [1]: días de retención por plan
+// FIX v2 [4]: TODOS los plan aliases incluidos
 const RETENTION_DAYS: Record<string, number> = {
   free:               7,
+  // Aliases originales
   premium_monthly:    90,
   premium_quarterly:  90,
   premium_annual:     365,
+  // Aliases del pricing (FALTABAN — caían a 7 días)
+  basic_monthly:      90,
+  pro_quarterly:      90,
+  ultra_annual:       365,
 };
 
 // ── Load all sessions for a user ──
 export async function loadUserSessions(userId: string): Promise<ChatSession[]> {
-  // Obtener el plan del usuario para aplicar la retención correcta
   const { data: profile } = await supabase
     .from('profiles')
     .select('plan')
@@ -39,7 +42,6 @@ export async function loadUserSessions(userId: string): Promise<ChatSession[]> {
   const retentionDays  = RETENTION_DAYS[plan] ?? 7;
   const cutoffDate     = new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000).toISOString();
 
-  // FIX [3]: limitar a MAX_SESSIONS_TO_LOAD sesiones
   const { data: sessions, error } = await supabase
     .from('chat_sessions')
     .select('*')
@@ -50,8 +52,6 @@ export async function loadUserSessions(userId: string): Promise<ChatSession[]> {
 
   if (error || !sessions || sessions.length === 0) return [];
 
-  // FIX VELOCIDAD: Solo cargar mensajes de las N sesiones más recientes
-  // Las demás sesiones aparecen en el sidebar pero sin mensajes precargados
   const sessionsForMessages = sessions.slice(0, MAX_SESSIONS_WITH_MSGS);
   const sessionIds = sessionsForMessages.map((s) => s.id);
   
@@ -90,7 +90,7 @@ export async function loadUserSessions(userId: string): Promise<ChatSession[]> {
         content:   m.content,
         timestamp: new Date(m.created_at).getTime(),
         model:     m.model,
-        character: m.character, // FIX [2]: ya estaba en el select, ahora también en el map
+        character: m.character,
       })),
     };
   });
@@ -125,7 +125,7 @@ export async function saveMessage(
       role:       message.role,
       content:    message.content,
       model:      message.model     || null,
-      character:  (message as any).character || null, // FIX [2]: guardar el personaje usado
+      character:  (message as any).character || null,
     });
 
   return !error;
@@ -165,9 +165,7 @@ export async function deleteAllDbSessions(userId: string): Promise<boolean> {
 }
 
 // ── Clean old chats — llamado en login ──
-// FIX [1]: antes borraba a los 7 días para TODOS.
-//          Ahora respeta la retención por plan:
-//          free=7 días, premium_monthly/quarterly=90 días, annual=365 días
+// FIX [4]: Usa RETENTION_DAYS con TODOS los plan aliases
 export async function cleanOldChats(userId: string): Promise<void> {
   const { data: profile } = await supabase
     .from('profiles')
