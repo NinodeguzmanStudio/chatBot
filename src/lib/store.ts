@@ -6,7 +6,7 @@
 //   [2] getRemainingMessages retorna 0 si perfil temporal
 //   [3] incrementMessages NO incrementa si perfil temporal
 //   [4] Nuevo método: refreshProfile() para recargar perfil real desde BD
-//   [5] isPremiumPlan helper robusto
+//   [5] FREE_LIMIT lee de APP_CONFIG (antes hardcodeado 12)
 // ═══════════════════════════════════════
 
 import { create } from 'zustand';
@@ -22,8 +22,10 @@ import {
   updateDbSessionTitle, deleteDbSession, deleteAllDbSessions, cleanOldChats,
 } from '@/services/chatService';
 import { supabase } from '@/lib/supabase';
+import { APP_CONFIG } from '@/lib/constants';
 
-const FREE_LIMIT = 12;
+// FIX v3 [5]: Lee de APP_CONFIG en vez de hardcodear 12
+const FREE_LIMIT = APP_CONFIG.freeMessageLimit;
 
 interface ChatState {
   sessions: ChatSession[];
@@ -215,10 +217,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     set({ isAgeVerified: verified });
   },
 
-  // ═══════════════════════════════════════
   // FIX v3 [4]: refreshProfile — recarga perfil real desde BD
-  // Se llama cuando el perfil es temporal para intentar obtener el real
-  // ═══════════════════════════════════════
   refreshProfile: async () => {
     const { user } = get();
     if (!user?.id) return;
@@ -237,20 +236,15 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
   },
 
-  // ═══════════════════════════════════════
   // FIX v3 [3]: NO incrementar si perfil temporal
-  // ═══════════════════════════════════════
   incrementMessages: () => {
     const { user } = get();
     if (user) {
-      // FIX: Si el perfil es temporal, NO incrementar localmente
-      // El backend ya maneja el incremento real en la BD
       if ((user as any)._temporary) return;
       const updated = { ...user, messages_used: (user.messages_used || 0) + 1 };
       set({ user: updated });
       return;
     }
-    // Fallback localStorage para no-logueados
     if (get().isInBonusMode()) {
       incrementBonusMessages();
     } else {
@@ -258,45 +252,33 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
   },
 
-  // ═══════════════════════════════════════
   // FIX v3 [1]: BLOQUEAR si perfil es temporal
-  // Si no se pudo cargar el perfil real, NO dejar enviar
-  // El usuario debe refrescar o esperar a que cargue
-  // ═══════════════════════════════════════
   canSendMessage: () => {
     const { user } = get();
     if (isPremiumPlan(user?.plan)) return true;
 
     if (user) {
-      // FIX CRÍTICO: Si el perfil es temporal, BLOQUEAR envío
-      // No sabemos cuántos mensajes realmente ha usado
       if ((user as any)._temporary) {
         console.warn('[Auth] Perfil temporal — bloqueando envío hasta cargar perfil real');
-        // Intentar recargar el perfil en background
         get().refreshProfile();
         return false;
       }
       return (user.messages_used || 0) < FREE_LIMIT;
     }
-    // Fallback localStorage
     const bonusActive = wasBonusGiven();
     if (bonusActive) return getBonusMessagesUsed() < FREE_LIMIT;
     return getDeviceMessagesUsed() < FREE_LIMIT;
   },
 
-  // ═══════════════════════════════════════
   // FIX v3 [2]: Retornar 0 si perfil temporal
-  // ═══════════════════════════════════════
   getRemainingMessages: () => {
     const { user } = get();
     if (isPremiumPlan(user?.plan)) return 999;
 
     if (user) {
-      // FIX: Si el perfil es temporal, mostrar 0 restantes
       if ((user as any)._temporary) return 0;
       return Math.max(0, FREE_LIMIT - (user.messages_used || 0));
     }
-    // Fallback localStorage
     const bonusActive = wasBonusGiven();
     if (bonusActive) return Math.max(0, FREE_LIMIT - getBonusMessagesUsed());
     return Math.max(0, FREE_LIMIT - getDeviceMessagesUsed());
