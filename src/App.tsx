@@ -1,16 +1,16 @@
 // ═══════════════════════════════════════
-// AIdark — Main App v4 (FIXED)
+// AIdark — Main App v5 (FIXED)
 // src/App.tsx
 // ═══════════════════════════════════════
-// CAMBIOS v4:
-//   [1] getSessionSafe timeout: 2.5s → 10s (evita logout en redes lentas)
-//   [2] resolveUserProfile: NO hace upsert si falla (evita sobreescribir premium con free)
-//   [3] resolveUserProfile timeout: 3s → 6s
-//   [4] Race condition fix: lock en processSession para evitar ejecución doble
-//   [5] BrowserRouter envuelve TODO — /payment/* funciona sin sesión activa
-//   [6] Fallback timeout: 5s → 12s
-//   [7] getSessionSafe timeout NO borra auth — deja que onAuthStateChange lo resuelva
-//   [8] PKCE: detecta ?code= en URL (en vez de #access_token para implicit)
+// CAMBIOS v5:
+//   [1] AUTH SIMPLIFICADO: onAuthStateChange es la fuente principal
+//       getSessionSafe ya NO borra auth en timeout
+//   [2] processSession sin lock global — usa sessionId para evitar duplicados
+//   [3] Fallback timeout NO DESTRUCTIVO: si no hay sesión real,
+//       deja al usuario en estado no-auth en vez de borrar datos
+//   [4] Si perfil es temporal, intenta recargarlo cada 5s hasta lograrlo
+//   [5] BrowserRouter envuelve TODO — /payment/* funciona sin sesión
+//   [6] PKCE: detecta ?code= en URL
 // ═══════════════════════════════════════
 
 import React, { useState, useEffect, useRef } from 'react';
@@ -124,9 +124,8 @@ const ChatLayout: React.FC = () => {
 };
 
 // ═══════════════════════════════════════
-// FIX [1]: Timeout subido a 10 segundos
-// En redes móviles 3G/4G lentas, 2.5s era insuficiente
-// y causaba que se borre la sesión innecesariamente.
+// FIX v5 [1]: getSessionSafe simplificado
+// Si hay timeout, retorna null pero NO borra nada
 // ═══════════════════════════════════════
 async function getSessionSafe() {
   try {
@@ -141,26 +140,29 @@ async function getSessionSafe() {
 }
 
 // ═══════════════════════════════════════
-// FIX [2] + [3]: resolveUserProfile
-// - Timeout subido a 6 segundos
-// - Si falla: retorna perfil temporal en MEMORIA
-//   SIN hacer upsert a la BD (antes sobreescribía
-//   un perfil premium con plan:'free')
-// - El perfil real se cargará en el próximo refresh
+// FIX v5: resolveUserProfile con retry robusto
+// - 3 intentos con backoff creciente
+// - Si falla: retorna perfil temporal con flag _temporary
+// - NO escribe en BD (evita sobreescribir premium)
 // ═══════════════════════════════════════
 async function resolveUserProfile(userId: string, email: string) {
-  for (let attempt = 0; attempt < 2; attempt++) {
+  const delays = [0, 800, 2000]; // 3 intentos con backoff
+
+  for (let attempt = 0; attempt < delays.length; attempt++) {
+    if (attempt > 0) await new Promise(r => setTimeout(r, delays[attempt]));
     try {
       const result = await Promise.race([
         supabase.from('profiles').select('*').eq('id', userId).single(),
-        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 6000)),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 8000)),
       ]) as any;
-      if (result?.data) return result.data;
-    } catch { /* timeout o error */ }
-    if (attempt < 1) await new Promise(r => setTimeout(r, 500));
+      if (result?.data) {
+        console.log('[Auth] Perfil cargado OK, messages_used:', result.data.messages_used);
+        return result.data;
+      }
+    } catch { /* timeout o error, reintentar */ }
   }
-  // FIX [2]: Retornar perfil temporal SIN escribir en BD
-  // Esto evita sobreescribir un perfil premium existente con plan:'free'
+
+  // Retornar perfil temporal SIN escribir en BD
   console.warn('[Auth] No se pudo cargar perfil — usando temporal en memoria (NO se escribe en BD)');
   return {
     id: userId,
@@ -170,7 +172,7 @@ async function resolveUserProfile(userId: string, email: string) {
     messages_used: 0,
     messages_limit: 12,
     plan_expires_at: null,
-    _temporary: true, // Flag para saber que es temporal
+    _temporary: true,
   };
 }
 
@@ -181,25 +183,51 @@ function clearAllAuthState(setUser: any, setAuthenticated: any) {
 }
 
 // ═══════════════════════════════════════
-// FIX [4]: Lock para evitar race condition
-// Antes, initAuth() y onAuthStateChange podían
-// ejecutar processSession() en paralelo y duplicar
-// operaciones de carga.
+// FIX v5 [2]: processSession sin lock global
+// Usa el userId para evitar procesamiento doble del MISMO usuario
+// pero permite que diferentes eventos se procesen
 // ═══════════════════════════════════════
-let processingSession = false;
+let lastProcessedUserId: string | null = null;
 
 async function processSession(session: any, setUser: any, setAuthenticated: any, loadFromSupabase: any) {
-  if (processingSession) return; // FIX [4]: evitar ejecución doble
-  processingSession = true;
+  const userId = session.user.id;
+
+  // Evitar procesar el mismo usuario dos veces seguidas
+  if (lastProcessedUserId === userId) return;
+  lastProcessedUserId = userId;
+
   try {
-    const profile = await resolveUserProfile(session.user.id, session.user.email || '');
+    const profile = await resolveUserProfile(userId, session.user.email || '');
     setUser(profile as any);
     setAuthenticated(true);
     localStorage.setItem('aidark_was_authenticated', 'true');
-    loadFromSupabase(session.user.id).catch(console.error);
+    loadFromSupabase(userId).catch(console.error);
     if (session.access_token) registerPush(session.access_token);
-  } finally {
-    processingSession = false;
+
+    // FIX v5 [4]: Si el perfil es temporal, intentar recargarlo periódicamente
+    if ((profile as any)._temporary) {
+      console.log('[Auth] Perfil temporal detectado — iniciando retry en background...');
+      const retryInterval = setInterval(async () => {
+        try {
+          const { data, error } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', userId)
+            .single();
+          if (!error && data) {
+            console.log('[Auth] Perfil real recuperado en background, messages_used:', data.messages_used);
+            setUser(data as any);
+            clearInterval(retryInterval);
+          }
+        } catch { /* silencioso, reintentará */ }
+      }, 5000); // Cada 5 segundos
+
+      // Detener después de 60 segundos para no gastar recursos
+      setTimeout(() => clearInterval(retryInterval), 60000);
+    }
+  } catch (err) {
+    console.error('[Auth] Error en processSession:', err);
+    lastProcessedUserId = null; // Permitir reintento
   }
 }
 
@@ -229,57 +257,16 @@ const App: React.FC = () => {
     if (initialized.current) return;
     initialized.current = true;
 
-    const initAuth = async () => {
-      try {
-        // FIX [8]: PKCE usa ?code= en query params (no #access_token)
-        const urlParams = new URLSearchParams(window.location.search);
-        const hasCode = urlParams.has('code');
-        const hasHash = window.location.hash.includes('access_token');
-
-        if (hasCode || hasHash) {
-          // Dar tiempo a Supabase para procesar el code exchange
-          await new Promise(r => setTimeout(r, 500));
-        }
-
-        const sessionResult = await getSessionSafe();
-
-        // FIX [7]: Si hay timeout, NO borrar auth
-        // Solo loguear warning y dejar que onAuthStateChange lo resuelva
-        if (sessionResult === null) {
-          console.warn('[Auth] getSession timeout — esperando onAuthStateChange...');
-          // NO llamar done(true) aquí — el fallback timeout lo resolverá
-          return;
-        }
-
-        const { data: { session }, error } = sessionResult as any;
-        if (error) { done(true); return; }
-
-        if (session?.user) {
-          const expiresAt = session.expires_at ? session.expires_at * 1000 : 0;
-          if (expiresAt > 0 && expiresAt < Date.now()) {
-            const { data: refreshed, error: refreshErr } = await supabase.auth.refreshSession();
-            if (refreshErr || !refreshed.session) { done(true); return; }
-            await processSession(refreshed.session, setUser, setAuthenticated, loadFromSupabase);
-            done(); return;
-          }
-          await processSession(session, setUser, setAuthenticated, loadFromSupabase);
-          done(); return;
-        }
-        done(true);
-      } catch (err: any) {
-        console.error('[Auth] Error:', err);
-        done(true);
-      }
-    };
-
-    initAuth();
-
+    // ═══════════════════════════════════════
+    // FIX v5 [1]: onAuthStateChange es la fuente PRINCIPAL
+    // getSessionSafe es solo un helper rápido
+    // ═══════════════════════════════════════
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       console.log('[Auth] onAuthStateChange →', event);
 
-      if ((event === 'INITIAL_SESSION' || event === 'SIGNED_IN') && session?.user && !doneRef.current) {
+      if ((event === 'INITIAL_SESSION' || event === 'SIGNED_IN') && session?.user) {
         try {
-          // FIX [8]: Limpiar ?code= de la URL después de PKCE exchange
+          // Limpiar ?code= de la URL después de PKCE exchange
           if (window.location.search.includes('code=') || window.location.hash.includes('access_token')) {
             window.history.replaceState({}, '', window.location.pathname);
           }
@@ -287,10 +274,15 @@ const App: React.FC = () => {
         } catch (err: any) {
           setAuthError('Error al cargar tu perfil. Intenta de nuevo.');
         }
-        done(); return;
+        done();
+        return;
       }
 
-      if (event === 'INITIAL_SESSION' && !session && !doneRef.current) { done(true); return; }
+      if (event === 'INITIAL_SESSION' && !session) {
+        // No hay sesión — usuario no logueado
+        done(true);
+        return;
+      }
 
       if (event === 'TOKEN_REFRESHED' && session?.user) {
         try {
@@ -301,17 +293,37 @@ const App: React.FC = () => {
 
       if (event === 'SIGNED_OUT') {
         localStorage.removeItem('aidark_was_authenticated');
+        lastProcessedUserId = null;
         done(true);
       }
     });
 
-    // FIX [6]: Fallback timeout subido a 12 segundos
-    const fallback = setTimeout(() => {
+    // ═══════════════════════════════════════
+    // FIX v5 [3]: Fallback timeout NO DESTRUCTIVO
+    // Si después de 15s no se resolvió, verificar si hay sesión
+    // Si hay sesión → intentar processSession
+    // Si no hay → done(true)
+    // ═══════════════════════════════════════
+    const fallback = setTimeout(async () => {
       if (!doneRef.current) {
-        console.warn('[Auth] Fallback timeout alcanzado (12s)');
+        console.warn('[Auth] Fallback timeout alcanzado (15s)');
+        try {
+          // Último intento: ¿hay sesión?
+          const sessionResult = await getSessionSafe();
+          if (sessionResult) {
+            const { data: { session } } = sessionResult as any;
+            if (session?.user) {
+              console.log('[Auth] Fallback: sesión encontrada, procesando...');
+              await processSession(session, setUser, setAuthenticated, loadFromSupabase);
+              done();
+              return;
+            }
+          }
+        } catch { /* ignorar */ }
+        // No hay sesión después de todo
         done(true);
       }
-    }, 12000);
+    }, 15000);
 
     return () => { clearTimeout(fallback); subscription.unsubscribe(); };
   }, []);
@@ -328,23 +340,14 @@ const App: React.FC = () => {
     );
   }
 
-  // ═══════════════════════════════════════
-  // FIX [5]: BrowserRouter envuelve TODO.
-  // Antes, las rutas de /payment/* estaban dentro
-  // del check de auth, así que si el usuario volvía
-  // de MercadoPago con sesión expirada, no veía la
-  // página de éxito/fallo — ahora sí.
-  // ═══════════════════════════════════════
   return (
     <BrowserRouter>
       <Routes>
-        {/* Rutas de pago: accesibles SIN autenticación */}
         <Route path="/payment/success" element={<PaymentSuccess />} />
         <Route path="/payment/failure" element={<PaymentFailure />} />
         <Route path="/payment/pending" element={<PaymentPending />} />
         <Route path="/legal" element={<LegalPages />} />
 
-        {/* Ruta principal: requiere auth */}
         <Route path="*" element={
           !isAuthenticated && !showAuth
             ? <Landing onStart={() => setShowAuth(true)} />
