@@ -4,12 +4,10 @@
 // ═══════════════════════════════════════
 // CAMBIOS v5:
 //   [1] AUTH SIMPLIFICADO: onAuthStateChange es la fuente principal
-//       getSessionSafe ya NO borra auth en timeout
-//   [2] processSession sin lock global — usa sessionId para evitar duplicados
-//   [3] Fallback timeout NO DESTRUCTIVO: si no hay sesión real,
-//       deja al usuario en estado no-auth en vez de borrar datos
-//   [4] Si perfil es temporal, intenta recargarlo cada 5s hasta lograrlo
-//   [5] BrowserRouter envuelve TODO — /payment/* funciona sin sesión
+//   [2] processSession sin lock global — usa userId para evitar duplicados
+//   [3] Fallback timeout NO DESTRUCTIVO
+//   [4] Si perfil es temporal, retry en background cada 5s
+//   [5] Perfil temporal usa APP_CONFIG.freeMessageLimit (no hardcoded 12)
 //   [6] PKCE: detecta ?code= en URL
 // ═══════════════════════════════════════
 
@@ -22,6 +20,7 @@ import { useIsMobile } from '@/hooks/useIsMobile';
 import { LegalPages } from '@/components/LegalPages';
 import Landing from '@/components/Landing';
 import { InstallBanner } from '@/components/modals/InstallBanner';
+import { APP_CONFIG } from '@/lib/constants';
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
@@ -123,10 +122,6 @@ const ChatLayout: React.FC = () => {
   );
 };
 
-// ═══════════════════════════════════════
-// FIX v5 [1]: getSessionSafe simplificado
-// Si hay timeout, retorna null pero NO borra nada
-// ═══════════════════════════════════════
 async function getSessionSafe() {
   try {
     const result = await Promise.race([
@@ -139,14 +134,8 @@ async function getSessionSafe() {
   }
 }
 
-// ═══════════════════════════════════════
-// FIX v5: resolveUserProfile con retry robusto
-// - 3 intentos con backoff creciente
-// - Si falla: retorna perfil temporal con flag _temporary
-// - NO escribe en BD (evita sobreescribir premium)
-// ═══════════════════════════════════════
 async function resolveUserProfile(userId: string, email: string) {
-  const delays = [0, 800, 2000]; // 3 intentos con backoff
+  const delays = [0, 800, 2000];
 
   for (let attempt = 0; attempt < delays.length; attempt++) {
     if (attempt > 0) await new Promise(r => setTimeout(r, delays[attempt]));
@@ -162,7 +151,6 @@ async function resolveUserProfile(userId: string, email: string) {
     } catch { /* timeout o error, reintentar */ }
   }
 
-  // Retornar perfil temporal SIN escribir en BD
   console.warn('[Auth] No se pudo cargar perfil — usando temporal en memoria (NO se escribe en BD)');
   return {
     id: userId,
@@ -170,7 +158,8 @@ async function resolveUserProfile(userId: string, email: string) {
     plan: 'free',
     created_at: new Date().toISOString(),
     messages_used: 0,
-    messages_limit: 12,
+    // FIX v5 [5]: Usar constante, no hardcodear 12
+    messages_limit: APP_CONFIG.freeMessageLimit,
     plan_expires_at: null,
     _temporary: true,
   };
@@ -182,17 +171,11 @@ function clearAllAuthState(setUser: any, setAuthenticated: any) {
   localStorage.removeItem('aidark_authenticated');
 }
 
-// ═══════════════════════════════════════
-// FIX v5 [2]: processSession sin lock global
-// Usa el userId para evitar procesamiento doble del MISMO usuario
-// pero permite que diferentes eventos se procesen
-// ═══════════════════════════════════════
 let lastProcessedUserId: string | null = null;
 
 async function processSession(session: any, setUser: any, setAuthenticated: any, loadFromSupabase: any) {
   const userId = session.user.id;
 
-  // Evitar procesar el mismo usuario dos veces seguidas
   if (lastProcessedUserId === userId) return;
   lastProcessedUserId = userId;
 
@@ -204,7 +187,7 @@ async function processSession(session: any, setUser: any, setAuthenticated: any,
     loadFromSupabase(userId).catch(console.error);
     if (session.access_token) registerPush(session.access_token);
 
-    // FIX v5 [4]: Si el perfil es temporal, intentar recargarlo periódicamente
+    // FIX v5 [4]: Si el perfil es temporal, retry en background
     if ((profile as any)._temporary) {
       console.log('[Auth] Perfil temporal detectado — iniciando retry en background...');
       const retryInterval = setInterval(async () => {
@@ -219,15 +202,14 @@ async function processSession(session: any, setUser: any, setAuthenticated: any,
             setUser(data as any);
             clearInterval(retryInterval);
           }
-        } catch { /* silencioso, reintentará */ }
-      }, 5000); // Cada 5 segundos
+        } catch { /* silencioso */ }
+      }, 5000);
 
-      // Detener después de 60 segundos para no gastar recursos
       setTimeout(() => clearInterval(retryInterval), 60000);
     }
   } catch (err) {
     console.error('[Auth] Error en processSession:', err);
-    lastProcessedUserId = null; // Permitir reintento
+    lastProcessedUserId = null;
   }
 }
 
@@ -257,16 +239,12 @@ const App: React.FC = () => {
     if (initialized.current) return;
     initialized.current = true;
 
-    // ═══════════════════════════════════════
     // FIX v5 [1]: onAuthStateChange es la fuente PRINCIPAL
-    // getSessionSafe es solo un helper rápido
-    // ═══════════════════════════════════════
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       console.log('[Auth] onAuthStateChange →', event);
 
       if ((event === 'INITIAL_SESSION' || event === 'SIGNED_IN') && session?.user) {
         try {
-          // Limpiar ?code= de la URL después de PKCE exchange
           if (window.location.search.includes('code=') || window.location.hash.includes('access_token')) {
             window.history.replaceState({}, '', window.location.pathname);
           }
@@ -279,7 +257,6 @@ const App: React.FC = () => {
       }
 
       if (event === 'INITIAL_SESSION' && !session) {
-        // No hay sesión — usuario no logueado
         done(true);
         return;
       }
@@ -298,17 +275,11 @@ const App: React.FC = () => {
       }
     });
 
-    // ═══════════════════════════════════════
     // FIX v5 [3]: Fallback timeout NO DESTRUCTIVO
-    // Si después de 15s no se resolvió, verificar si hay sesión
-    // Si hay sesión → intentar processSession
-    // Si no hay → done(true)
-    // ═══════════════════════════════════════
     const fallback = setTimeout(async () => {
       if (!doneRef.current) {
         console.warn('[Auth] Fallback timeout alcanzado (15s)');
         try {
-          // Último intento: ¿hay sesión?
           const sessionResult = await getSessionSafe();
           if (sessionResult) {
             const { data: { session } } = sessionResult as any;
@@ -320,7 +291,6 @@ const App: React.FC = () => {
             }
           }
         } catch { /* ignorar */ }
-        // No hay sesión después de todo
         done(true);
       }
     }, 15000);
