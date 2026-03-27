@@ -1,11 +1,13 @@
 // ═══════════════════════════════════════
-// AIdark — Character Selector (FIXED)
+// AIdark — Character Selector v2 (FIXED)
+// FIX: usa isPremiumPlan() en vez de plan !== 'free'
 // ═══════════════════════════════════════
 
 import React, { useState, useRef, useEffect } from 'react';
 import { ChevronDown, Lock } from 'lucide-react';
 import { useChatStore, useAuthStore } from '@/lib/store';
 import { AI_CHARACTERS } from '@/lib/constants';
+import { isPremiumPlan } from '@/types';
 
 export const CharacterSelector: React.FC = () => {
   const { selectedCharacter, setSelectedCharacter } = useChatStore();
@@ -13,7 +15,8 @@ export const CharacterSelector: React.FC = () => {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const char = AI_CHARACTERS.find((c) => c.id === selectedCharacter) || AI_CHARACTERS[0];
-  const isPremium = user?.plan && user.plan !== 'free';
+  // FIX: usar isPremiumPlan() en vez de plan !== 'free'
+  const isPremium = isPremiumPlan(user?.plan);
 
   useEffect(() => {
     const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
