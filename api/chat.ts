@@ -30,6 +30,39 @@ const RATE_LIMIT_MAX    = 15;
 const MAX_MESSAGES_IN_ARRAY = 20;
 const MAX_CHARS_PER_MESSAGE = 4000;
 
+// ═══════════════════════════════════════
+// FIX v5: Límites de PDF por plan
+// ═══════════════════════════════════════
+const MAX_CHARS_PDF: Record<string, number> = {
+  free:               8000,
+  basic_monthly:      20000,
+  premium_monthly:    20000,
+  pro_quarterly:      40000,
+  premium_quarterly:  40000,
+  ultra_annual:       60000,
+  premium_annual:     60000,
+};
+
+const PDF_DAILY_LIMITS: Record<string, number> = {
+  free:               1,
+  basic_monthly:      5,
+  premium_monthly:    5,
+  pro_quarterly:      10,
+  premium_quarterly:  10,
+  ultra_annual:       20,
+  premium_annual:     20,
+};
+
+const PDF_MAX_PAGES: Record<string, number> = {
+  free:               10,
+  basic_monthly:      30,
+  premium_monthly:    30,
+  pro_quarterly:      60,
+  premium_quarterly:  60,
+  ultra_annual:       100,
+  premium_annual:     100,
+};
+
 const PREMIUM_PLANS = new Set([
   'basic_monthly', 'pro_quarterly', 'ultra_annual',
   'premium_monthly', 'premium_quarterly', 'premium_annual',
@@ -246,19 +279,58 @@ function getSystemPrompt(character: string, lang: SupportedLang): string {
   return prompt.replace('{IDENTITY}', identity);
 }
 
-function sanitizeMessages(messages: any[]): { role: string; content: any }[] {
+// FIX v5: Instrucción para análisis de PDFs
+function getPdfInstruction(lang: SupportedLang): string {
+  const instructions: Record<SupportedLang, string> = {
+    es: `INSTRUCCIÓN PARA DOCUMENTOS PDF:
+El usuario ha adjuntado un documento PDF. Debes:
+1. Leer y analizar el contenido completo del documento.
+2. Si el usuario pide corrección: corrige gramática, ortografía, estilo y coherencia. Muestra las correcciones claramente.
+3. Si el usuario pide análisis: resume los puntos clave, identifica fortalezas y debilidades, y sugiere mejoras.
+4. Si el usuario pide reescritura: reescribe el texto mejorando calidad, fluidez y estilo literario.
+5. Siempre indica qué cambios hiciste y por qué.
+Eres un editor profesional experto en textos literarios, académicos y técnicos.`,
+
+    pt: `INSTRUÇÃO PARA DOCUMENTOS PDF:
+O usuário anexou um documento PDF. Você deve:
+1. Ler e analisar o conteúdo completo do documento.
+2. Se o usuário pedir correção: corrija gramática, ortografia, estilo e coerência. Mostre as correções claramente.
+3. Se o usuário pedir análise: resuma os pontos-chave, identifique forças e fraquezas, e sugira melhorias.
+4. Se o usuário pedir reescrita: reescreva o texto melhorando qualidade, fluidez e estilo literário.
+5. Sempre indique quais mudanças fez e por quê.
+Você é um editor profissional especialista em textos literários, acadêmicos e técnicos.`,
+
+    en: `PDF DOCUMENT INSTRUCTIONS:
+The user has attached a PDF document. You must:
+1. Read and analyze the complete content of the document.
+2. If the user asks for correction: fix grammar, spelling, style and coherence. Show corrections clearly.
+3. If the user asks for analysis: summarize key points, identify strengths and weaknesses, and suggest improvements.
+4. If the user asks for rewriting: rewrite the text improving quality, fluency and literary style.
+5. Always indicate what changes you made and why.
+You are a professional editor specialized in literary, academic and technical texts.`,
+  };
+  return instructions[lang] || instructions['es'];
+}
+
+// FIX v5: sanitizeMessages ahora acepta maxChars dinámico para PDFs
+function sanitizeMessages(messages: any[], pdfMaxChars: number = MAX_CHARS_PER_MESSAGE): { role: string; content: any }[] {
   if (!Array.isArray(messages)) return [];
   return messages
     .filter((m: any) => m && m.role && m.content && m.role !== 'system')
     .slice(-MAX_MESSAGES_IN_ARRAY)
     .map((m: any) => {
       if (typeof m.content === 'string') {
-        return { role: m.role, content: m.content.slice(0, MAX_CHARS_PER_MESSAGE) };
+        // Detectar si el mensaje contiene un PDF adjunto (empieza con [Contenido del archivo)
+        const isPdf = m.content.includes('[Contenido del archivo') || m.content.includes('[PDF:');
+        const limit = isPdf ? pdfMaxChars : MAX_CHARS_PER_MESSAGE;
+        return { role: m.role, content: m.content.slice(0, limit) };
       }
       if (Array.isArray(m.content)) {
         const sanitized = m.content.map((part: any) => {
           if (part?.type === 'text' && typeof part.text === 'string') {
-            return { ...part, text: part.text.slice(0, MAX_CHARS_PER_MESSAGE) };
+            const isPdf = part.text.includes('[Contenido del archivo') || part.text.includes('[PDF:');
+            const limit = isPdf ? pdfMaxChars : MAX_CHARS_PER_MESSAGE;
+            return { ...part, text: part.text.slice(0, limit) };
           }
           return part;
         });
@@ -376,14 +448,59 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // FIX [1]: Detectar idioma del usuario
   const userLang = detectLang(lang);
 
+  // ═══════════════════════════════════════
+  // FIX v5: Detectar si hay PDF en los mensajes y aplicar límites
+  // ═══════════════════════════════════════
+  const hasPdf = Array.isArray(messages) && messages.some((m: any) => {
+    const content = typeof m.content === 'string' ? m.content : '';
+    return content.includes('[Contenido del archivo') || content.includes('[PDF:');
+  });
+
+  if (hasPdf) {
+    const pdfDailyLimit = PDF_DAILY_LIMITS[plan] || 1;
+    const today = new Date().toISOString().slice(0, 10);
+
+    const { data: pdfProfile } = await supabase
+      .from('profiles')
+      .select('pdfs_today, pdfs_date')
+      .eq('id', user.id)
+      .single();
+
+    const lastPdfDate = pdfProfile?.pdfs_date?.slice(0, 10);
+    const pdfsUsed = lastPdfDate === today ? (pdfProfile?.pdfs_today || 0) : 0;
+
+    if (pdfsUsed >= pdfDailyLimit) {
+      return res.status(429).json({
+        error: `Has alcanzado tu límite de ${pdfDailyLimit} PDF${pdfDailyLimit > 1 ? 's' : ''} por día.`,
+        code: 'PDF_LIMIT_REACHED',
+        limit: pdfDailyLimit,
+        used: pdfsUsed,
+      });
+    }
+
+    // Incrementar contador de PDFs
+    await supabase.from('profiles').update({
+      pdfs_today: pdfsUsed + 1,
+      pdfs_date: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }).eq('id', user.id);
+  }
+
+  const pdfCharLimit = MAX_CHARS_PDF[plan] || 8000;
+
   const safeModel = typeof model === 'string' && ALLOWED_MODELS.has(model) ? model : DEFAULT_MODEL;
-  const userMessages = sanitizeMessages(messages);
+  const userMessages = sanitizeMessages(messages, pdfCharLimit);
   if (userMessages.length === 0) {
     return res.status(400).json({ error: 'No se recibieron mensajes válidos.' });
   }
 
+  // FIX v5: Si hay PDF, agregar instrucción de análisis al system prompt
+  const systemContent = hasPdf
+    ? getSystemPrompt(charId, userLang) + '\n\n' + getPdfInstruction(userLang)
+    : getSystemPrompt(charId, userLang);
+
   const fullMessages = [
-    { role: 'system', content: getSystemPrompt(charId, userLang) },
+    { role: 'system', content: systemContent },
     ...userMessages,
   ];
 
