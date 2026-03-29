@@ -400,8 +400,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       body: JSON.stringify({
         model, prompt: safePrompt, negative_prompt: safeNegative,
         width: safeWidth, height: safeHeight,
-        // FIX v4 [3]+[4]: cfg_scale 9→7, steps 30→35
-        safe_mode: false, hide_watermark: true, steps: 35, cfg_scale: 7, return_binary: false,
+        // FIX v5: cfg_scale 7, steps 30 (Venice max = 30)
+        safe_mode: false, hide_watermark: true, steps: 30, cfg_scale: 7, return_binary: false,
       }),
     });
 
