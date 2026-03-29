@@ -1,35 +1,44 @@
 // ═══════════════════════════════════════
-// AIdark — PDF Utilities
+// AIdark — PDF Utilities v3 (FIXED)
 // src/lib/pdfUtils.ts
-// [1] extractPdfText: usa pdf.js (CDN) para extraer texto real de cualquier PDF
-// [2] exportChatToPdf: exporta una conversación a PDF descargable
+// CAMBIOS v3:
+//   [1] Carga pdf.js robusta con fallback (import dinámico + script tag)
+//   [2] extractPdfText acepta maxPages para limitar por plan
+//   [3] maxChars subido a 60000 (el backend controla el límite real por plan)
+//   [4] Mejor manejo de errores y PDFs escaneados
 // ═══════════════════════════════════════
 
-let pdfjsLoaded = false;
 let pdfjsLib: any = null;
 
-// Cargar pdf.js desde CDN (solo la primera vez)
+// Cargar pdf.js — intenta import() primero, luego script tag
 async function loadPdfJs(): Promise<any> {
-  if (pdfjsLoaded && pdfjsLib) return pdfjsLib;
+  if (pdfjsLib) return pdfjsLib;
 
+  // Intento 1: import dinámico (funciona en navegadores modernos)
+  try {
+    const lib = await import(
+      /* @vite-ignore */
+      'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.min.mjs'
+    );
+    lib.GlobalWorkerOptions.workerSrc =
+      'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.worker.min.mjs';
+    pdfjsLib = lib;
+    return pdfjsLib;
+  } catch {
+    // Intento 1 falló, probar con script tag
+  }
+
+  // Intento 2: inyectar module script
   return new Promise((resolve, reject) => {
-    // Check if already loaded
-    if ((window as any).pdfjsLib) {
-      pdfjsLib = (window as any).pdfjsLib;
-      pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.worker.min.mjs';
-      pdfjsLoaded = true;
+    if ((window as any).__pdfjsLib) {
+      pdfjsLib = (window as any).__pdfjsLib;
       resolve(pdfjsLib);
       return;
     }
 
     const script = document.createElement('script');
-    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.min.mjs';
     script.type = 'module';
-
-    // For module scripts, we use a different approach
-    const moduleScript = document.createElement('script');
-    moduleScript.type = 'module';
-    moduleScript.textContent = `
+    script.textContent = `
       import * as pdfjsLib from 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.min.mjs';
       pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.worker.min.mjs';
       window.__pdfjsLib = pdfjsLib;
@@ -39,33 +48,38 @@ async function loadPdfJs(): Promise<any> {
     const onReady = () => {
       window.removeEventListener('pdfjsReady', onReady);
       pdfjsLib = (window as any).__pdfjsLib;
-      pdfjsLoaded = true;
       resolve(pdfjsLib);
     };
 
     window.addEventListener('pdfjsReady', onReady);
-    document.head.appendChild(moduleScript);
+    document.head.appendChild(script);
 
-    // Timeout
     setTimeout(() => {
       window.removeEventListener('pdfjsReady', onReady);
-      reject(new Error('pdf.js no se pudo cargar'));
-    }, 10000);
+      reject(new Error('pdf.js timeout'));
+    }, 15000);
   });
 }
 
-// ── Extraer texto de un PDF (reemplaza el regex parser roto) ──
-export async function extractPdfText(file: File, maxChars: number = 12000): Promise<string> {
+// ── Extraer texto de un PDF ──
+// maxPages: límite de páginas (controlado por plan desde el frontend)
+// maxChars: límite de caracteres total
+export async function extractPdfText(
+  file: File,
+  maxPages: number = 100,
+  maxChars: number = 60000
+): Promise<string> {
   try {
     const lib = await loadPdfJs();
     const arrayBuffer = await file.arrayBuffer();
     const pdf = await lib.getDocument({ data: arrayBuffer }).promise;
 
     const totalPages = pdf.numPages;
+    const pagesToRead = Math.min(totalPages, maxPages);
     const texts: string[] = [];
     let totalChars = 0;
 
-    for (let i = 1; i <= totalPages; i++) {
+    for (let i = 1; i <= pagesToRead; i++) {
       if (totalChars >= maxChars) break;
 
       const page = await pdf.getPage(i);
@@ -88,11 +102,14 @@ export async function extractPdfText(file: File, maxChars: number = 12000): Prom
       return `[PDF escaneado: ${file.name} — ${totalPages} páginas. No se pudo extraer texto. El PDF puede contener solo imágenes.]`;
     }
 
-    return `[PDF: ${file.name} — ${totalPages} páginas]\n\n${result}`;
+    const truncatedNote = pagesToRead < totalPages
+      ? `\n\n[NOTA: Se leyeron ${pagesToRead} de ${totalPages} páginas según tu plan.]`
+      : '';
+
+    return `[PDF: ${file.name} — ${totalPages} páginas, ${pagesToRead} leídas]\n\n${result}${truncatedNote}`;
 
   } catch (err) {
     console.error('[PDF] Error extrayendo texto:', err);
-    // Fallback: intentar el método básico por si pdf.js no carga
     return fallbackExtract(file);
   }
 }
@@ -114,7 +131,7 @@ async function fallbackExtract(file: File): Promise<string> {
       }
     }
     if (matches.length > 0) return `[PDF: ${file.name}]\n${matches.join(' ').slice(0, 8000)}`;
-    return `[PDF: ${file.name} — No se pudo extraer texto]`;
+    return `[PDF: ${file.name} — No se pudo extraer texto. Intenta con otro PDF.]`;
   } catch {
     return `[PDF: ${file.name} — Error al leer]`;
   }
