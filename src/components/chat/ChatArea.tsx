@@ -23,11 +23,20 @@ import { extractPdfText, exportChatToPdf } from '@/lib/pdfUtils';
 import type { Message, Attachment } from '@/types';
 
 const MAX_FILE_SIZE       = 3 * 1024 * 1024;
+const MAX_PDF_SIZE        = 10 * 1024 * 1024; // 10MB para PDFs
 const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
 const ALLOWED_PDF_TYPES   = ['application/pdf'];
 const ALLOWED_TYPES       = [...ALLOWED_IMAGE_TYPES, ...ALLOWED_PDF_TYPES];
 const FREE_LIMIT          = APP_CONFIG.freeMessageLimit;
 const MEMORY_KEY          = 'aidark_memory';
+
+// FIX v5: Límite de páginas PDF por plan
+const PDF_PAGE_LIMITS: Record<string, number> = {
+  free: 10,
+  basic_monthly: 30, premium_monthly: 30,
+  pro_quarterly: 60, premium_quarterly: 60,
+  ultra_annual: 100, premium_annual: 100,
+};
 
 const LIMIT_CODES    = new Set(['FREE_LIMIT_REACHED', 'PLAN_EXPIRED', 'PREMIUM_REQUIRED']);
 const LIMIT_KEYWORDS = ['límite', 'limite', 'limit', 'plan', 'upgrade', 'actualiza', 'gratuito'];
@@ -162,7 +171,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
   const character     = AI_CHARACTERS.find((c) => c.id === selectedCharacter) || AI_CHARACTERS[0];
   const userPlan      = user?.plan || 'free';
   const isFree        = !user?.plan || user.plan === 'free';
-  const canAttach     = userPlan !== 'free';
+  const canAttach     = true; // FIX v5: todos pueden adjuntar (backend controla límites)
 
   // Smart scroll:
   // - Durante streaming → bajar al final (el usuario ve el texto apareciendo)
@@ -255,9 +264,13 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
     if (fileInputRef.current) { fileInputRef.current.accept = accept; fileInputRef.current.click(); }
   };
 
-  // FIX v2: processFile usa pdfUtils.ts con pdf.js real
+  // FIX v5: processFile con límites de páginas por plan
   const processFile = async (file: File) => {
-    if (file.size > MAX_FILE_SIZE) { alert('Archivo muy grande. Máximo 3MB.'); return; }
+    const isPdf = file.type === 'application/pdf';
+    const maxSize = isPdf ? MAX_PDF_SIZE : MAX_FILE_SIZE;
+    const maxLabel = isPdf ? '10MB' : '3MB';
+
+    if (file.size > maxSize) { alert(`Archivo muy grande. Máximo ${maxLabel}.`); return; }
     if (!ALLOWED_TYPES.includes(file.type)) { alert('Formato no soportado. Usa JPG, PNG, WEBP o PDF.'); return; }
 
     if (ALLOWED_IMAGE_TYPES.includes(file.type)) {
@@ -279,9 +292,10 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
       };
       img.src = objectUrl;
     } else if (file.type === 'application/pdf') {
-      // FIX v2: usa pdf.js real en vez del regex roto
+      // FIX v5: pasar límite de páginas según plan del usuario
+      const maxPages = PDF_PAGE_LIMITS[userPlan] || 10;
       try {
-        const text = await extractPdfText(file);
+        const text = await extractPdfText(file, maxPages);
         setAttachment({ type: 'pdf', data: text, name: file.name, mimeType: file.type });
       } catch {
         setAttachment({ type: 'pdf', data: `[PDF: ${file.name} — Error al leer]`, name: file.name, mimeType: file.type });
