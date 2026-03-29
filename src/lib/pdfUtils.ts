@@ -10,41 +10,25 @@
 
 let pdfjsLib: any = null;
 
-// Cargar pdf.js — intenta import() primero, luego script tag
+// Cargar pdf.js — usa script injection (compatible con todos los navegadores)
 async function loadPdfJs(): Promise<any> {
   if (pdfjsLib) return pdfjsLib;
 
-  // Intento 1: import dinámico (funciona en navegadores modernos)
-  try {
-    // @ts-ignore — URL dinámica válida en runtime del navegador
-    const lib = await import(
-      /* @vite-ignore */
-      'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.min.mjs'
-    );
-    lib.GlobalWorkerOptions.workerSrc =
-      'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.worker.min.mjs';
-    pdfjsLib = lib;
+  // Si ya fue cargado por otra llamada
+  if ((window as any).__pdfjsLib) {
+    pdfjsLib = (window as any).__pdfjsLib;
     return pdfjsLib;
-  } catch {
-    // Intento 1 falló, probar con script tag
   }
 
-  // Intento 2: inyectar module script
   return new Promise((resolve, reject) => {
-    if ((window as any).__pdfjsLib) {
-      pdfjsLib = (window as any).__pdfjsLib;
-      resolve(pdfjsLib);
-      return;
-    }
-
     const script = document.createElement('script');
     script.type = 'module';
-    script.textContent = `
-      import * as pdfjsLib from 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.min.mjs';
-      pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.worker.min.mjs';
-      window.__pdfjsLib = pdfjsLib;
-      window.dispatchEvent(new Event('pdfjsReady'));
-    `;
+    script.textContent = [
+      "import * as pdfjsLib from 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.min.mjs';",
+      "pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.worker.min.mjs';",
+      "window.__pdfjsLib = pdfjsLib;",
+      "window.dispatchEvent(new Event('pdfjsReady'));"
+    ].join('\n');
 
     const onReady = () => {
       window.removeEventListener('pdfjsReady', onReady);
