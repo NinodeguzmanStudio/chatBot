@@ -406,7 +406,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(403).json({ error: 'Perfil no encontrado.' });
   }
 
-  const isPremium = typeof profile.plan === 'string' && PREMIUM_PLANS.has(profile.plan);
+  const plan = typeof profile.plan === 'string' ? profile.plan : 'free';
+  const isPremium = PREMIUM_PLANS.has(plan);
 
   // ── Verificar expiración ──
   if (isPremium && profile.plan_expires_at) {
