@@ -135,7 +135,7 @@ async function getSessionSafe() {
 }
 
 async function resolveUserProfile(userId: string, email: string) {
-  const delays = [0, 800, 2000];
+  const delays = [0, 500, 1200];
 
   for (let attempt = 0; attempt < delays.length; attempt++) {
     if (attempt > 0) await new Promise(r => setTimeout(r, delays[attempt]));
@@ -218,7 +218,10 @@ const App: React.FC = () => {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const { loadFromSupabase } = useChatStore();
 
-  const [authComplete, setAuthComplete] = useState(false);
+  // Fix: si el usuario ya se autenticó antes, mostrar app inmediatamente
+  // mientras el perfil carga en background (evita spinner en usuarios recurrentes)
+  const wasAuth = localStorage.getItem('aidark_was_authenticated') === 'true';
+  const [authComplete, setAuthComplete] = useState(wasAuth);
   const [authError, setAuthError]       = useState('');
   const [showAuth, setShowAuth]         = useState(false);
   const initialized = useRef(false);
@@ -293,7 +296,7 @@ const App: React.FC = () => {
         } catch { /* ignorar */ }
         done(true);
       }
-    }, 15000);
+    }, 8000);
 
     return () => { clearTimeout(fallback); subscription.unsubscribe(); };
   }, []);
@@ -301,7 +304,7 @@ const App: React.FC = () => {
   if (!authComplete) {
     return (
       <div style={{ minHeight: '100dvh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#000', flexDirection: 'column', gap: 20 }}>
-        <img src="/icon-512.png" alt="AIdark" style={{ width: 120, height: 120, borderRadius: 24, animation: 'fadeIn 0.6s ease, pulse 2s ease-in-out infinite' }} />
+        <img src="/favicon.svg" alt="AIdark" style={{ width: 80, height: 80, borderRadius: 16, animation: 'fadeIn 0.6s ease, pulse 2s ease-in-out infinite' }} />
         <span style={{ fontSize: 13, color: '#8b7355', fontWeight: 600, letterSpacing: 1 }}>AIdark</span>
         <div style={{ width: 32, height: 2, borderRadius: 2, background: '#8b735544', overflow: 'hidden', marginTop: 4 }}>
           <div style={{ width: '50%', height: '100%', background: '#8b7355', animation: 'slideLoad 1.2s ease-in-out infinite' }} />
