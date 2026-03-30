@@ -4,10 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     
-    <!-- Cache control -->
-    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
-    <meta http-equiv="Pragma" content="no-cache" />
-    <meta http-equiv="Expires" content="0" />
+    <!-- Cache control eliminado: permitir que el SW y el navegador cacheen normalmente -->
 
     <!-- SEO -->
     <title>AIdark — IA Sin Censura | Chat IA Libre y Privado</title>
@@ -54,22 +51,16 @@
     </script>
   </head>
   <script>
-  // Limpiar caches y SWs viejos de VitePWA/Workbox, luego registrar SW mínimo para push
+  // Solo desregistrar SWs que no sean nuestro /sw.js (limpiar SWs viejos de VitePWA)
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.getRegistrations().then(function(registrations) {
       for (let registration of registrations) {
-        // Des-registrar cualquier SW que NO sea nuestro /sw.js
         if (registration.active && !registration.active.scriptURL.endsWith('/sw.js')) {
           registration.unregister();
         }
       }
     });
-    // Borrar TODOS los caches (Workbox genera muchos: workbox-precache, etc)
-    caches.keys().then(function(names) {
-      for (let name of names) {
-        caches.delete(name);
-      }
-    });
+    // NOTA: no borramos los caches para que el SW funcione correctamente
   }
 </script>
   <body>
