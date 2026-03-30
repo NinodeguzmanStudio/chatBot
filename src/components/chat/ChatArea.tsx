@@ -146,7 +146,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
     trimMessages, customInstructions,
   } = useChatStore();
   const { canSendMessage, incrementMessages, getRemainingMessages, user } = useAuthStore();
-
+  const isProfileLoading = !!(user as any)?._temporary;
   const [input, setInput]               = useState('');
   const [streamingContent, setStreaming] = useState('');
   const [keystrokeCount, setKeystrokes]  = useState(0);
@@ -555,7 +555,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
                   value={input}
                   onChange={handleInputChange}
                   onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
-                  placeholder={`${t('chat.write_to')} ${character.name}...`}
+                  placeholder={isProfileLoading ? 'Cargando perfil...' : `${t('chat.write_to')} ${character.name}...`}
                   rows={1}
                   style={{ width: '100%', background: 'transparent', border: 'none', resize: 'none', fontFamily: 'inherit', fontSize: 14, color: 'var(--txt-pri)', lineHeight: 1.6, minHeight: 24, maxHeight: 160, overflowY: 'auto', overflowX: 'hidden', wordWrap: 'break-word', whiteSpace: 'pre-wrap', caretColor: 'var(--accent)' }}
                 />
@@ -609,7 +609,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
                         <Square size={12} fill="#fff" color="#fff" />
                       </button>
                     ) : (
-                      <button onClick={handleSend} disabled={(!input.trim() && !attachment) || isTyping} style={{ width: 34, height: 34, display: 'flex', alignItems: 'center', justifyContent: 'center', background: (input.trim() || attachment) ? 'var(--border-str)' : 'var(--bg-el)', border: 'none', borderRadius: 8, color: (input.trim() || attachment) ? 'var(--txt-pri)' : 'var(--txt-mut)', cursor: (input.trim() || attachment) ? 'pointer' : 'default', transition: 'all 0.2s', animation: (input.trim() || attachment) ? 'glow 2s ease-in-out infinite' : 'none' }}>
+                      <button onClick={handleSend} disabled={(!input.trim() && !attachment) || isTyping || isProfileLoading} style={{ width: 34, height: 34, display: 'flex', alignItems: 'center', justifyContent: 'center', background: (input.trim() || attachment) ? 'var(--border-str)' : 'var(--bg-el)', border: 'none', borderRadius: 8, color: (input.trim() || attachment) ? 'var(--txt-pri)' : 'var(--txt-mut)', cursor: (input.trim() || attachment) ? 'pointer' : 'default', transition: 'all 0.2s', animation: (input.trim() || attachment) ? 'glow 2s ease-in-out infinite' : 'none' }}>
                         <Send size={15} />
                       </button>
                     )}
