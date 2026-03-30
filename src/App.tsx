@@ -1,14 +1,21 @@
 // ═══════════════════════════════════════
-// AIdark — Main App v5 (FIXED)
+// AIdark — Main App v6 (MOBILE AUTH FIX)
 // src/App.tsx
 // ═══════════════════════════════════════
-// CAMBIOS v5:
-//   [1] AUTH SIMPLIFICADO: onAuthStateChange es la fuente principal
-//   [2] processSession sin lock global — usa userId para evitar duplicados
-//   [3] Fallback timeout NO DESTRUCTIVO
-//   [4] Si perfil es temporal, retry en background cada 5s
-//   [5] Perfil temporal usa APP_CONFIG.freeMessageLimit (no hardcoded 12)
-//   [6] PKCE: detecta ?code= en URL
+// FIXES v6 (bugs móvil):
+//   [1] BUG CRÍTICO: SIGNED_OUT llamaba done(true) que era NO-OP después
+//       del primer auth → clearAllAuthState NUNCA se ejecutaba →
+//       aidark_was_authenticated borrado pero isAuthenticated = true en RAM →
+//       próxima carga muestra Landing en vez del chat
+//       FIX: clearAllAuthState se llama DIRECTAMENTE en SIGNED_OUT
+//   [2] BUG CRÍTICO MÓVIL: INITIAL_SESSION null + ?code= en URL →
+//       done(true) se ejecutaba antes de completar el intercambio PKCE →
+//       pantalla de login aparecía momentáneamente en móviles
+//       FIX: si hay ?code= en URL, esperar a SIGNED_IN antes de llamar done()
+//   [3] BUG MÓVIL: showAuth se resetea a false en cada carga de página
+//       Después del redirect OAuth, el usuario veía Landing en vez de Auth
+//       FIX: detectar ?code= en URL al montar para ir directo a AuthModal
+//   [4] doneRef ya no bloquea SIGNED_OUT — auth se limpia siempre
 // ═══════════════════════════════════════
 
 import React, { useState, useEffect, useRef } from 'react';
@@ -223,6 +230,12 @@ const App: React.FC = () => {
   const wasAuth = localStorage.getItem('aidark_was_authenticated') === 'true';
   const [authComplete, setAuthComplete] = useState(wasAuth);
   const [authError, setAuthError]       = useState('');
+
+  // FIX v6 [3]: Detectar callback OAuth en URL al montar.
+  // Si hay ?code= en la URL significa que venimos de un redirect de Google/OAuth.
+  // En ese caso mostramos directamente el estado de carga (no Landing) y esperamos
+  // a que Supabase complete el intercambio PKCE.
+  const hasPKCECode = window.location.search.includes('code=');
   const [showAuth, setShowAuth]         = useState(false);
   const initialized = useRef(false);
   const doneRef     = useRef(false);
@@ -238,11 +251,29 @@ const App: React.FC = () => {
     setLoading(false);
   };
 
+  // FIX v6 [1]: Limpiar auth directamente sin pasar por done()
+  // para que funcione incluso después de que doneRef sea true
+  const signOutCleanup = () => {
+    localStorage.removeItem('aidark_was_authenticated');
+    lastProcessedUserId = null;
+    clearAllAuthState(setUser, setAuthenticated);
+    // Resetear doneRef para que futuros SIGNED_IN funcionen correctamente
+    doneRef.current = false;
+    setAuthComplete(true);
+    setLoading(false);
+  };
+
   useEffect(() => {
     if (initialized.current) return;
     initialized.current = true;
 
-    // FIX v5 [1]: onAuthStateChange es la fuente PRINCIPAL
+    // Si venimos de OAuth redirect con ?code= y NO tenemos sesión previa,
+    // forzar authComplete = false para mostrar spinner mientras se procesa PKCE
+    if (hasPKCECode && !wasAuth) {
+      setAuthComplete(false);
+    }
+
+    // FIX v6: onAuthStateChange es la fuente PRINCIPAL
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       console.log('[Auth] onAuthStateChange →', event);
 
@@ -259,7 +290,15 @@ const App: React.FC = () => {
         return;
       }
 
+      // FIX v6 [2]: Si hay ?code= en la URL, NO llamar done(true) en INITIAL_SESSION null.
+      // Significa que el intercambio PKCE aún no terminó (especialmente en móviles lentos).
+      // Esperar a que llegue SIGNED_IN. El fallback timeout se encarga si nunca llega.
       if (event === 'INITIAL_SESSION' && !session) {
+        if (hasPKCECode) {
+          console.log('[Auth] INITIAL_SESSION null con ?code= → esperando PKCE exchange (SIGNED_IN)...');
+          // No llamar done() — esperar a SIGNED_IN o al fallback timeout
+          return;
+        }
         done(true);
         return;
       }
@@ -271,17 +310,18 @@ const App: React.FC = () => {
         } catch { /* no crítico */ }
       }
 
+      // FIX v6 [1]: SIGNED_OUT limpia auth DIRECTAMENTE (no via done())
+      // para que funcione aunque doneRef ya sea true
       if (event === 'SIGNED_OUT') {
-        localStorage.removeItem('aidark_was_authenticated');
-        lastProcessedUserId = null;
-        done(true);
+        console.log('[Auth] SIGNED_OUT → limpiando sesión');
+        signOutCleanup();
       }
     });
 
-    // FIX v5 [3]: Fallback timeout NO DESTRUCTIVO
+    // FIX v6: Fallback timeout — también maneja fallo de intercambio PKCE en móvil
     const fallback = setTimeout(async () => {
       if (!doneRef.current) {
-        console.warn('[Auth] Fallback timeout alcanzado (15s)');
+        console.warn('[Auth] Fallback timeout alcanzado (8s)');
         try {
           const sessionResult = await getSessionSafe();
           if (sessionResult) {
@@ -294,6 +334,11 @@ const App: React.FC = () => {
             }
           }
         } catch { /* ignorar */ }
+        // Si había ?code= pero el intercambio falló, limpiar URL
+        if (hasPKCECode) {
+          console.warn('[Auth] Fallback: intercambio PKCE falló — limpiando URL');
+          window.history.replaceState({}, '', window.location.pathname);
+        }
         done(true);
       }
     }, 8000);
