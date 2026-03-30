@@ -228,21 +228,34 @@ const App: React.FC = () => {
   // Fix: si el usuario ya se autenticó antes, mostrar app inmediatamente
   // mientras el perfil carga en background (evita spinner en usuarios recurrentes)
   const wasAuth = localStorage.getItem('aidark_was_authenticated') === 'true';
-  const [authComplete, setAuthComplete] = useState(wasAuth);
-  const [authError, setAuthError]       = useState('');
+  const [authComplete, setAuthComplete]   = useState(wasAuth);
+  const [authError, setAuthError]         = useState('');
+  const [showAuth, setShowAuth]           = useState(false);
 
-  // FIX v6 [3]: Detectar callback OAuth en URL al montar.
-  // Si hay ?code= en la URL significa que venimos de un redirect de Google/OAuth.
-  // En ese caso mostramos directamente el estado de carga (no Landing) y esperamos
-  // a que Supabase complete el intercambio PKCE.
+  // ══════════════════════════════════════════════════════
+  // FIX CRÍTICO — sessionChecked
+  //
+  // PROBLEMA REAL:
+  //   wasAuth=true  → authComplete=true (salta spinner)
+  //   isAuthenticated=false (Zustand arranca en false siempre)
+  //   → Renderiza Landing durante ~1-2s hasta que Supabase confirma
+  //   → Usuario ve Landing y cree que fue deslogueado
+  //
+  // SOLUCIÓN:
+  //   sessionChecked=false hasta que done() se ejecute.
+  //   Si wasAuth=true pero sessionChecked=false → mostrar spinner.
+  //   El usuario NUNCA ve Landing si ya estaba autenticado.
+  // ══════════════════════════════════════════════════════
+  const [sessionChecked, setSessionChecked] = useState(false);
+
   const hasPKCECode = window.location.search.includes('code=');
-  const [showAuth, setShowAuth]         = useState(false);
   const initialized = useRef(false);
   const doneRef     = useRef(false);
 
   const done = (clearAuth = false) => {
     if (doneRef.current) return;
     doneRef.current = true;
+    setSessionChecked(true);
     if (clearAuth) {
       clearAllAuthState(setUser, setAuthenticated);
       localStorage.removeItem('aidark_was_authenticated');
@@ -251,14 +264,13 @@ const App: React.FC = () => {
     setLoading(false);
   };
 
-  // FIX v6 [1]: Limpiar auth directamente sin pasar por done()
-  // para que funcione incluso después de que doneRef sea true
+  // Limpiar auth directamente sin pasar por done()
   const signOutCleanup = () => {
     localStorage.removeItem('aidark_was_authenticated');
     lastProcessedUserId = null;
     clearAllAuthState(setUser, setAuthenticated);
-    // Resetear doneRef para que futuros SIGNED_IN funcionen correctamente
     doneRef.current = false;
+    setSessionChecked(true);
     setAuthComplete(true);
     setLoading(false);
   };
@@ -346,7 +358,10 @@ const App: React.FC = () => {
     return () => { clearTimeout(fallback); subscription.unsubscribe(); };
   }, []);
 
-  if (!authComplete) {
+  // Mostrar spinner si:
+  // 1. Auth no está completo (usuario nuevo cargando)
+  // 2. wasAuth=true pero sesión aún no verificada (evita flash de Landing)
+  if (!authComplete || (wasAuth && !sessionChecked)) {
     return (
       <div style={{ minHeight: '100dvh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#000', flexDirection: 'column', gap: 20 }}>
         <img src="/favicon.svg" alt="AIdark" style={{ width: 80, height: 80, borderRadius: 16, animation: 'fadeIn 0.6s ease, pulse 2s ease-in-out infinite' }} />
