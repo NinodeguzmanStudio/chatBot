@@ -237,12 +237,21 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   // FIX v3 [3]: NO incrementar si perfil temporal
+  // FIX v4: Persistir en Supabase además de en memoria
   incrementMessages: () => {
     const { user } = get();
     if (user) {
       if ((user as any)._temporary) return;
       const updated = { ...user, messages_used: (user.messages_used || 0) + 1 };
       set({ user: updated });
+      // Persistir en BD (sin await — no bloquear el chat)
+      supabase
+        .from('profiles')
+        .update({ messages_used: updated.messages_used })
+        .eq('id', user.id)
+        .then(({ error }) => {
+          if (error) console.warn('[Store] No se pudo guardar messages_used en BD:', error.message);
+        });
       return;
     }
     if (get().isInBonusMode()) {
