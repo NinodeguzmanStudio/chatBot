@@ -364,7 +364,7 @@ const App: React.FC = () => {
   if (!authComplete || (wasAuth && !sessionChecked)) {
     return (
       <div style={{ minHeight: '100dvh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#000', flexDirection: 'column', gap: 20 }}>
-        <img src="/favicon.svg" alt="AIdark" style={{ width: 80, height: 80, borderRadius: 16, animation: 'fadeIn 0.6s ease, pulse 2s ease-in-out infinite' }} />
+        <img src="/icon-192.png" alt="AIdark" style={{ width: 80, height: 80, borderRadius: 20, animation: 'fadeIn 0.6s ease, pulse 2s ease-in-out infinite' }} />
         <span style={{ fontSize: 13, color: '#8b7355', fontWeight: 600, letterSpacing: 1 }}>AIdark</span>
         <div style={{ width: 32, height: 2, borderRadius: 2, background: '#8b735544', overflow: 'hidden', marginTop: 4 }}>
           <div style={{ width: '50%', height: '100%', background: '#8b7355', animation: 'slideLoad 1.2s ease-in-out infinite' }} />
@@ -385,7 +385,7 @@ const App: React.FC = () => {
           !isAuthenticated && !showAuth
             ? <Landing onStart={() => setShowAuth(true)} />
             : !isAuthenticated
-              ? <AuthModal onSuccess={() => { doneRef.current = true; setAuthComplete(true); }} initialError={authError} />
+              ? <AuthModal onSuccess={() => { doneRef.current = true; setSessionChecked(true); setAuthComplete(true); }} initialError={authError} />
               : !isAgeVerified
                 ? <AgeGate />
                 : <ChatLayout />
