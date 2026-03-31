@@ -160,21 +160,20 @@ const TRANSLATION_MAP: Record<string, string> = {
   // --- Colores ---
   'rojo': 'red', 'roja': 'red', 'azul': 'blue', 'verde': 'green',
   'amarillo': 'yellow', 'amarilla': 'yellow', 'rosa': 'pink', 'rosado': 'pink',
-  'morado': 'purple', 'naranja': 'orange', 'dorado': 'golden', 'plateado': 'silver',
+  'morado': 'purple', 'naranja': 'orange', 'plateado': 'silver',
 
   // --- Português comuns ---
   'mulher': 'woman', 'homem': 'man', 'garota': 'girl', 'menina': 'girl',
   'cabelo': 'hair', 'olhos': 'eyes', 'rosto': 'face', 'corpo': 'body',
-  'pele': 'skin', 'loira': 'blonde', 'loiro': 'blonde', 'morena': 'brunette',
+  'pele': 'skin', 'loira': 'blonde', 'loiro': 'blonde',
   'ruiva': 'redhead', 'bonita': 'beautiful', 'bonito': 'handsome',
-  'vestido': 'dress', 'saia': 'skirt', 'calça': 'pants', 'calca': 'pants',
-  'sentada': 'sitting', 'deitada': 'lying down', 'em pé': 'standing',
+  'saia': 'skirt', 'calça': 'pants', 'calca': 'pants',
+  'deitada': 'lying down', 'em pé': 'standing',
   'praia': 'beach', 'quarto': 'bedroom', 'cozinha': 'kitchen',
   'noite': 'night', 'pôr do sol': 'sunset', 'iluminação': 'lighting',
-  'iluminacao': 'lighting', 'sombra': 'shadow',
+  'iluminacao': 'lighting',
   'nua': 'nude', 'nu': 'nude', 'seminua': 'semi-nude',
-  'anos': 'years old', 'alta': 'tall', 'magra': 'slim', 'gorda': 'chubby',
-  'sexy': 'sexy', 'sensual': 'sensual',
+  'anos': 'years old', 'magra': 'slim', 'gorda': 'chubby',
 
   // --- Conectores (se eliminan o traducen) ---
   'con': 'with', 'en': 'in', 'de': 'of', 'una': 'a', 'un': 'a',
