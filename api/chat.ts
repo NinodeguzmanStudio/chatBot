@@ -23,6 +23,69 @@ const SUPABASE_URL         = process.env.VITE_SUPABASE_URL || process.env.SUPABA
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
+// ═══════════════════════════════════════
+// v5: Admin watchlist — notificar si un usuario vigilado está activo
+// ═══════════════════════════════════════
+const ADMIN_EMAILS = new Set(['ninodeguzmanstudio@gmail.com']);
+
+async function notifyAdminIfWatched(userId: string, userEmail: string, firstMsgPreview: string): Promise<void> {
+  try {
+    // 1. Actualizar last_seen
+    await supabase.from('profiles').update({ last_seen: new Date().toISOString() }).eq('id', userId);
+
+    // 2. Verificar si está en watchlist
+    const { data: watched } = await supabase
+      .from('admin_watchlist')
+      .select('id')
+      .eq('user_id', userId)
+      .limit(1);
+
+    if (!watched || watched.length === 0) return;
+
+    // 3. Obtener push subscriptions del admin
+    const { data: adminProfiles } = await supabase
+      .from('profiles')
+      .select('id')
+      .in('email', Array.from(ADMIN_EMAILS));
+
+    if (!adminProfiles || adminProfiles.length === 0) return;
+
+    const adminIds = adminProfiles.map(p => p.id);
+    const { data: adminSubs } = await supabase
+      .from('push_subscriptions')
+      .select('endpoint, p256dh, auth')
+      .in('user_id', adminIds);
+
+    if (!adminSubs || adminSubs.length === 0) return;
+
+    // 4. Enviar push notification al admin
+    const webpush = require('web-push');
+    webpush.setVapidDetails(
+      'mailto:soporte@aidark.app',
+      process.env.VAPID_PUBLIC_KEY!,
+      process.env.VAPID_PRIVATE_KEY!
+    );
+
+    const preview = firstMsgPreview.slice(0, 80) + (firstMsgPreview.length > 80 ? '...' : '');
+    const payload = JSON.stringify({
+      title: `👁️ ${userEmail}`,
+      body: preview,
+      url: '/',
+    });
+
+    for (const sub of adminSubs) {
+      try {
+        await webpush.sendNotification(
+          { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
+          payload
+        );
+      } catch { /* silenciar errores de push */ }
+    }
+
+    console.log(`[Chat] 👁️ Admin notificado: ${userEmail} está activo`);
+  } catch { /* no crítico — nunca debe bloquear el chat */ }
+}
+
 const FREE_LIMIT        = Number(process.env.VITE_FREE_MESSAGE_LIMIT) || 12;
 const RATE_LIMIT_WINDOW = 60;
 const RATE_LIMIT_MAX    = 15;
@@ -536,6 +599,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // Solo se cuenta si el proveedor respondió OK
       // ═══════════════════════════════════════
       try { await supabase.rpc('increment_message_count', { p_user_id: user.id }); } catch { /* no crítico */ }
+
+      // v5: Notificar admin si este usuario está en watchlist
+      const lastUserMsg = userMessages.filter(m => m.role === 'user').pop();
+      const msgPreview = typeof lastUserMsg?.content === 'string' ? lastUserMsg.content : 'Nuevo mensaje';
+      notifyAdminIfWatched(user.id, user.email || '', msgPreview).catch(() => {});
+
       if (stream && providerRes.body) {
         res.setHeader('Content-Type', 'text/event-stream');
         res.setHeader('Cache-Control', 'no-cache');
