@@ -1,11 +1,11 @@
 // ═══════════════════════════════════════
-// AIdark — Admin Dashboard v2
+// AIdark — Admin Dashboard v4
 // src/components/modals/AdminDashboard.tsx
-// NUEVO v2: Tab "Usuarios" con emails, plan, estado online
+// NUEVO v4: Watchlist + Live monitoring + Reply as AIdark
 // ═══════════════════════════════════════
 
-import React, { useState, useEffect } from 'react';
-import { X, RefreshCw, Users, DollarSign, MessageSquare, Image, Wifi, TrendingUp, Clock } from 'lucide-react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { X, RefreshCw, Users, DollarSign, MessageSquare, Image, Wifi, TrendingUp, Clock, Search, Eye, EyeOff, Send } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useIsMobile } from '@/hooks/useIsMobile';
 
@@ -18,8 +18,26 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [tab, setTab]   = useState<'overview' | 'users' | 'messages' | 'topics' | 'payments'>('overview');
+  const [tab, setTab]   = useState<'overview' | 'users' | 'live' | 'chat_logs' | 'messages' | 'topics' | 'payments'>('overview');
   const isMobile = useIsMobile();
+
+  // Chat Logs state
+  const [searchEmail, setSearchEmail] = useState('');
+  const [chatLogs, setChatLogs] = useState<any>(null);
+  const [chatLogsLoading, setChatLogsLoading] = useState(false);
+  const [chatLogsError, setChatLogsError] = useState('');
+  const [expandedSession, setExpandedSession] = useState<string | null>(null);
+  // Reply as AIdark
+  const [replyText, setReplyText] = useState('');
+  const [sendingReply, setSendingReply] = useState(false);
+
+  // Live monitoring state
+  const [watchlist, setWatchlist] = useState<any[]>([]);
+  const [liveFeed, setLiveFeed] = useState<any[]>([]);
+  const [watchEmail, setWatchEmail] = useState('');
+  const [watchLoading, setWatchLoading] = useState(false);
+  const liveFeedRef = useRef<any[]>([]);
+  const realtimeChannelRef = useRef<any>(null);
 
   const fetchData = async () => {
     setLoading(true); setError('');
@@ -46,6 +64,193 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
 
   useEffect(() => { if (isOpen) fetchData(); }, [isOpen]);
 
+  // NEW v3: Buscar chat logs por email
+  const fetchChatLogs = async () => {
+    if (!searchEmail.trim()) return;
+    setChatLogsLoading(true); setChatLogsError(''); setChatLogs(null); setExpandedSession(null);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) { setChatLogsError('Sesión expirada.'); setChatLogsLoading(false); return; }
+
+      const res = await fetch(`/api/admin?action=chat_logs&email=${encodeURIComponent(searchEmail.trim())}`, {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        setChatLogsError(err.error || `Error ${res.status}`);
+        setChatLogsLoading(false); return;
+      }
+
+      setChatLogs(await res.json());
+    } catch {
+      setChatLogsError('Error de conexión.');
+    }
+    setChatLogsLoading(false);
+  };
+
+  // NEW v4: Inyectar mensaje como AIdark
+  const injectMessage = async (sessionId: string, userId: string) => {
+    if (!replyText.trim()) return;
+    setSendingReply(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) { setChatLogsError('Sesión expirada.'); setSendingReply(false); return; }
+
+      const res = await fetch('/api/admin', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          action: 'inject_message',
+          session_id: sessionId,
+          user_id: userId,
+          content: replyText.trim(),
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        setChatLogsError(err.error || 'Error enviando mensaje.');
+        setSendingReply(false); return;
+      }
+
+      setReplyText('');
+      // Recargar los logs para ver el mensaje inyectado
+      fetchChatLogs();
+    } catch {
+      setChatLogsError('Error de conexión.');
+    }
+    setSendingReply(false);
+  };
+
+  // ═══════════════════════════════════════
+  // Watchlist management
+  // ═══════════════════════════════════════
+  const fetchWatchlist = useCallback(async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) return;
+
+      const res = await fetch('/api/admin', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'get_watchlist' }),
+      });
+      if (res.ok) {
+        const d = await res.json();
+        setWatchlist(d.watchlist || []);
+      }
+    } catch { /* silenciar */ }
+  }, []);
+
+  const addToWatchlist = async (email: string) => {
+    setWatchLoading(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) return;
+
+      await fetch('/api/admin', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'add_watchlist', email }),
+      });
+      setWatchEmail('');
+      fetchWatchlist();
+    } catch { /* silenciar */ }
+    setWatchLoading(false);
+  };
+
+  const removeFromWatchlist = async (email: string) => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) return;
+
+      await fetch('/api/admin', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'remove_watchlist', email }),
+      });
+      fetchWatchlist();
+    } catch { /* silenciar */ }
+  };
+
+  // ═══════════════════════════════════════
+  // Supabase Realtime — escuchar nuevos mensajes en vivo
+  // ═══════════════════════════════════════
+  useEffect(() => {
+    if (!isOpen) return;
+
+    fetchWatchlist();
+
+    // Suscribirse a INSERTs en message_logs
+    const channel = supabase
+      .channel('admin-live-feed')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'message_logs' },
+        async (payload: any) => {
+          const msg = payload.new;
+          if (!msg) return;
+
+          // Buscar email del usuario
+          let email = '?';
+          if (msg.user_id) {
+            const { data: p } = await supabase
+              .from('profiles')
+              .select('email')
+              .eq('id', msg.user_id)
+              .single();
+            email = p?.email || '?';
+          }
+
+          const newEntry = {
+            id: msg.id,
+            email,
+            user_id: msg.user_id,
+            role: msg.role,
+            content: msg.content?.slice(0, 150) + (msg.content?.length > 150 ? '...' : ''),
+            character: msg.character,
+            created_at: msg.created_at || new Date().toISOString(),
+            is_admin_inject: msg.is_admin_inject,
+          };
+
+          // Agregar al feed (máx 50 entries)
+          liveFeedRef.current = [newEntry, ...liveFeedRef.current].slice(0, 50);
+          setLiveFeed([...liveFeedRef.current]);
+
+          // Browser notification si es un user de la watchlist
+          if (msg.role === 'user' && 'Notification' in window && Notification.permission === 'granted') {
+            const isWatched = watchlist.some(w => w.user_id === msg.user_id);
+            if (isWatched) {
+              new Notification(`👁️ ${email}`, {
+                body: msg.content?.slice(0, 100),
+                icon: '/icon-192.png',
+                tag: 'admin-watch-' + msg.user_id,
+              });
+            }
+          }
+        }
+      )
+      .subscribe();
+
+    realtimeChannelRef.current = channel;
+
+    // Pedir permiso de notificaciones
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
+
+    return () => {
+      if (realtimeChannelRef.current) {
+        supabase.removeChannel(realtimeChannelRef.current);
+        realtimeChannelRef.current = null;
+      }
+    };
+  }, [isOpen, fetchWatchlist]);
+
   if (!isOpen) return null;
 
   const o = data?.overview || {};
@@ -68,6 +273,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
   const tabs = [
     { id: 'overview',  label: 'General' },
     { id: 'users',     label: 'Usuarios' },
+    { id: 'live',      label: '🔴 Live' },
+    { id: 'chat_logs', label: 'Chat Logs' },
     { id: 'messages',  label: 'Mensajes' },
     { id: 'topics',    label: 'Tendencias' },
     { id: 'payments',  label: 'Pagos' },
@@ -239,7 +446,30 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
                       </div>
                     </div>
                   </div>
-                  <div style={{ flexShrink: 0, marginLeft: 8 }}>
+                  <div style={{ flexShrink: 0, marginLeft: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); addToWatchlist(u.email); }}
+                      title="Vigilar usuario"
+                      style={{
+                        width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        background: watchlist.some(w => w.email === u.email) ? 'rgba(168,85,247,0.2)' : 'rgba(255,255,255,0.05)',
+                        border: `1px solid ${watchlist.some(w => w.email === u.email) ? 'rgba(168,85,247,0.3)' : 'rgba(255,255,255,0.1)'}`,
+                        borderRadius: 6, cursor: 'pointer', color: watchlist.some(w => w.email === u.email) ? '#a855f7' : '#ffffff44',
+                      }}
+                    >
+                      <Eye size={10} />
+                    </button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setSearchEmail(u.email); setTab('chat_logs'); fetchChatLogs(); }}
+                      title="Ver chat logs"
+                      style={{
+                        width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
+                        borderRadius: 6, cursor: 'pointer', color: '#ffffff44',
+                      }}
+                    >
+                      <MessageSquare size={10} />
+                    </button>
                     <span style={{
                       fontSize: 9, padding: '3px 8px', borderRadius: 6, fontWeight: 600,
                       background: u.plan === 'free' ? 'rgba(100,100,100,0.2)' : 'rgba(245,158,11,0.15)',
@@ -249,6 +479,327 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
                       {u.plan === 'free' ? 'FREE' : u.plan.replace('premium_', '').replace('basic_', '').replace('pro_', '').replace('ultra_', '').toUpperCase()}
                     </span>
                   </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ── TAB: Live Monitoring ── */}
+        {tab === 'live' && (
+          <div style={{
+            background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)',
+            borderRadius: 10, padding: 14,
+          }}>
+            {/* Watchlist management */}
+            <div style={{ fontSize: 10, color: '#ffffff55', textTransform: 'uppercase', marginBottom: 10 }}>
+              👁️ Watchlist — Usuarios vigilados
+            </div>
+
+            <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+              <input
+                type="email"
+                value={watchEmail}
+                onChange={e => setWatchEmail(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && addToWatchlist(watchEmail)}
+                placeholder="Agregar email a watchlist..."
+                style={{
+                  flex: 1, padding: '8px 12px', borderRadius: 8, border: '1px solid rgba(168,85,247,0.2)',
+                  background: 'rgba(168,85,247,0.05)', color: '#fff', fontSize: 12, fontFamily: 'inherit',
+                  outline: 'none',
+                }}
+              />
+              <button onClick={() => addToWatchlist(watchEmail)} disabled={watchLoading || !watchEmail.trim()} style={{
+                padding: '8px 14px', borderRadius: 8, border: 'none',
+                background: 'rgba(168,85,247,0.3)', color: '#c4b5fd', fontSize: 11, fontWeight: 600,
+                cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 6,
+                opacity: watchLoading || !watchEmail.trim() ? 0.4 : 1,
+              }}>
+                <Eye size={12} /> Vigilar
+              </button>
+            </div>
+
+            {/* Watchlist entries */}
+            {watchlist.length > 0 && (
+              <div style={{ marginBottom: 16 }}>
+                {watchlist.map((w: any, i: number) => (
+                  <div key={i} style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    padding: '8px 10px', marginBottom: 4, borderRadius: 6,
+                    background: 'rgba(168,85,247,0.05)', border: '1px solid rgba(168,85,247,0.1)',
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
+                      <div style={{
+                        width: 8, height: 8, borderRadius: '50%', flexShrink: 0,
+                        background: w.is_online ? '#4ade80' : '#555',
+                        boxShadow: w.is_online ? '0 0 8px #4ade80' : 'none',
+                      }} />
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <div style={{ fontSize: 11, color: '#ffffffcc', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {w.email}
+                        </div>
+                        <div style={{ fontSize: 9, color: '#ffffff44' }}>
+                          {w.is_online ? '🟢 Online ahora' : w.last_seen ? `Último: ${new Date(w.last_seen).toLocaleString('es')}` : 'Nunca visto'}
+                          {' · '}{w.plan} · {w.messages_used} msgs
+                        </div>
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                      <button
+                        onClick={() => { setSearchEmail(w.email); setTab('chat_logs'); }}
+                        style={{
+                          padding: '4px 8px', borderRadius: 4, border: 'none',
+                          background: 'rgba(139,115,85,0.2)', color: '#d4c5b0', fontSize: 9, cursor: 'pointer', fontFamily: 'inherit',
+                        }}
+                      >
+                        Chat Logs
+                      </button>
+                      <button
+                        onClick={() => removeFromWatchlist(w.email)}
+                        style={{
+                          padding: '4px 8px', borderRadius: 4, border: 'none',
+                          background: 'rgba(239,68,68,0.1)', color: '#ef4444', fontSize: 9, cursor: 'pointer', fontFamily: 'inherit',
+                        }}
+                      >
+                        <EyeOff size={10} />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            {watchlist.length === 0 && (
+              <div style={{ fontSize: 11, color: '#ffffff33', padding: 12, textAlign: 'center', marginBottom: 12 }}>
+                Sin usuarios vigilados. Agrega un email arriba o usa el botón 👁️ en la pestaña Usuarios.
+              </div>
+            )}
+
+            {/* Live feed */}
+            <div style={{ fontSize: 10, color: '#ffffff55', textTransform: 'uppercase', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#ef4444', animation: 'pulse 2s infinite' }} />
+              Feed en tiempo real
+              <span style={{ fontSize: 9, color: '#ffffff33', fontWeight: 400, textTransform: 'none' }}>({liveFeed.length} mensajes)</span>
+            </div>
+
+            <div style={{ maxHeight: 350, overflowY: 'auto' }}>
+              {liveFeed.length === 0 && (
+                <div style={{ fontSize: 11, color: '#ffffff33', padding: 20, textAlign: 'center' }}>
+                  Esperando actividad... Los mensajes aparecerán aquí en tiempo real.
+                </div>
+              )}
+              {liveFeed.map((entry: any) => (
+                <div key={entry.id} style={{
+                  padding: '8px 10px', marginBottom: 4, borderRadius: 6,
+                  background: entry.role === 'user' ? 'rgba(59,130,246,0.08)' : 'rgba(139,115,85,0.08)',
+                  borderLeft: `3px solid ${entry.role === 'user' ? '#3b82f6' : entry.is_admin_inject ? '#a855f7' : '#8b7355'}`,
+                  animation: 'fadeUp 0.3s ease',
+                }}>
+                  <div style={{ fontSize: 9, marginBottom: 3, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{
+                      fontWeight: 600, textTransform: 'uppercase',
+                      color: entry.role === 'user' ? '#60a5fa' : entry.is_admin_inject ? '#a855f7' : '#d4c5b0',
+                    }}>
+                      {entry.role === 'user' ? '👤' : entry.is_admin_inject ? '👑' : '🤖'}
+                    </span>
+                    <span style={{ color: '#ffffffaa', fontWeight: 500 }}>{entry.email}</span>
+                    <span style={{ color: '#ffffff33' }}>
+                      {new Date(entry.created_at).toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                    </span>
+                    {watchlist.some(w => w.user_id === entry.user_id) && (
+                      <span style={{ fontSize: 8, padding: '1px 5px', borderRadius: 3, background: 'rgba(168,85,247,0.2)', color: '#a855f7' }}>
+                        VIGILADO
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ fontSize: 11, color: '#ffffffbb', lineHeight: 1.4, wordBreak: 'break-word' }}>
+                    {entry.content}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ── TAB: Chat Logs (v4) ── */}
+        {tab === 'chat_logs' && (
+          <div style={{
+            background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)',
+            borderRadius: 10, padding: 14,
+          }}>
+            <div style={{ fontSize: 10, color: '#ffffff55', textTransform: 'uppercase', marginBottom: 10 }}>
+              Buscar conversaciones por email (incluye borradas)
+            </div>
+
+            {/* Search bar */}
+            <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+              <input
+                type="email"
+                value={searchEmail}
+                onChange={e => setSearchEmail(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && fetchChatLogs()}
+                placeholder="correo@ejemplo.com"
+                style={{
+                  flex: 1, padding: '8px 12px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.1)',
+                  background: 'rgba(255,255,255,0.05)', color: '#fff', fontSize: 12, fontFamily: 'inherit',
+                  outline: 'none',
+                }}
+              />
+              <button onClick={fetchChatLogs} disabled={chatLogsLoading || !searchEmail.trim()} style={{
+                padding: '8px 16px', borderRadius: 8, border: 'none',
+                background: 'rgba(139,115,85,0.3)', color: '#d4c5b0', fontSize: 11, fontWeight: 600,
+                cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 6,
+                opacity: chatLogsLoading || !searchEmail.trim() ? 0.4 : 1,
+              }}>
+                <Search size={12} /> Buscar
+              </button>
+            </div>
+
+            {chatLogsError && (
+              <div style={{ padding: '8px 12px', marginBottom: 12, borderRadius: 8, background: 'rgba(200,60,60,0.15)', color: '#ff6b6b', fontSize: 11 }}>
+                {chatLogsError}
+              </div>
+            )}
+
+            {chatLogsLoading && (
+              <div style={{ textAlign: 'center', padding: 20, color: '#ffffff44', fontSize: 11 }}>Buscando...</div>
+            )}
+
+            {/* User info */}
+            {chatLogs?.user && (
+              <div style={{
+                padding: '10px 12px', marginBottom: 12, borderRadius: 8,
+                background: 'rgba(139,115,85,0.1)', border: '1px solid rgba(139,115,85,0.2)',
+              }}>
+                <div style={{ fontSize: 12, color: '#d4c5b0', fontWeight: 600 }}>{chatLogs.user.email}</div>
+                <div style={{ fontSize: 10, color: '#ffffff55', marginTop: 4 }}>
+                  Plan: {chatLogs.user.plan} · Mensajes: {chatLogs.user.messages_used} · Registro: {new Date(chatLogs.user.registered).toLocaleDateString('es')}
+                </div>
+              </div>
+            )}
+
+            {/* Sessions list */}
+            {chatLogs?.sessions?.length === 0 && (
+              <div style={{ fontSize: 11, color: '#ffffff33', padding: 16, textAlign: 'center' }}>Este usuario no tiene conversaciones guardadas</div>
+            )}
+
+            <div style={{ maxHeight: 500, overflowY: 'auto' }}>
+              {(chatLogs?.sessions || []).map((session: any) => (
+                <div key={session.id} style={{
+                  marginBottom: 8, borderRadius: 8,
+                  border: `1px solid ${session.deleted ? 'rgba(239,68,68,0.2)' : 'rgba(255,255,255,0.06)'}`,
+                  overflow: 'hidden',
+                }}>
+                  {/* Session header - clickable */}
+                  <div
+                    onClick={() => setExpandedSession(expandedSession === session.id ? null : session.id)}
+                    style={{
+                      padding: '10px 12px', cursor: 'pointer',
+                      background: expandedSession === session.id ? 'rgba(139,115,85,0.15)' : 'rgba(255,255,255,0.03)',
+                      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                    }}
+                  >
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 12, color: '#ffffffcc', fontWeight: 500, display: 'flex', alignItems: 'center', gap: 6 }}>
+                        {session.title}
+                        {session.deleted && (
+                          <span style={{ fontSize: 8, padding: '2px 6px', borderRadius: 4, background: 'rgba(239,68,68,0.2)', color: '#ef4444' }}>
+                            BORRADA
+                          </span>
+                        )}
+                      </div>
+                      <div style={{ fontSize: 9, color: '#ffffff44', marginTop: 2 }}>
+                        {new Date(session.created_at).toLocaleString('es')} · {session.messages.length} msgs · {session.model || 'default'}
+                      </div>
+                    </div>
+                    <span style={{ fontSize: 10, color: '#ffffff44' }}>
+                      {expandedSession === session.id ? '▼' : '▶'}
+                    </span>
+                  </div>
+
+                  {/* Messages - expanded */}
+                  {expandedSession === session.id && (
+                    <div style={{ background: 'rgba(0,0,0,0.2)' }}>
+                      <div style={{ padding: '8px 12px', maxHeight: 400, overflowY: 'auto' }}>
+                        {session.messages.map((msg: any, i: number) => (
+                          <div key={i} style={{
+                            padding: '8px 10px', marginBottom: 6, borderRadius: 6,
+                            background: msg.role === 'user'
+                              ? 'rgba(59,130,246,0.1)'
+                              : msg.admin_inject
+                                ? 'rgba(168,85,247,0.1)'
+                                : 'rgba(139,115,85,0.1)',
+                            borderLeft: `3px solid ${
+                              msg.role === 'user' ? '#3b82f6'
+                              : msg.admin_inject ? '#a855f7'
+                              : '#8b7355'
+                            }`,
+                            opacity: msg.deleted ? 0.5 : 1,
+                          }}>
+                            <div style={{ fontSize: 9, fontWeight: 600, marginBottom: 4, textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: 6,
+                              color: msg.role === 'user' ? '#60a5fa' : msg.admin_inject ? '#a855f7' : '#d4c5b0',
+                            }}>
+                              {msg.role === 'user' ? '👤 Usuario' : msg.admin_inject ? '👑 Admin' : '🤖 AIdark'}
+                              {msg.character && msg.character !== 'default' ? ` (${msg.character})` : ''}
+                              <span style={{ fontWeight: 400, textTransform: 'none' }}>
+                                {new Date(msg.created_at).toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' })}
+                              </span>
+                              {msg.deleted && (
+                                <span style={{ fontSize: 8, padding: '1px 5px', borderRadius: 3, background: 'rgba(239,68,68,0.2)', color: '#ef4444', fontWeight: 500, textTransform: 'none' }}>
+                                  borrado
+                                </span>
+                              )}
+                              {msg.admin_inject && (
+                                <span style={{ fontSize: 8, padding: '1px 5px', borderRadius: 3, background: 'rgba(168,85,247,0.2)', color: '#a855f7', fontWeight: 500, textTransform: 'none' }}>
+                                  inyectado
+                                </span>
+                              )}
+                            </div>
+                            <div style={{
+                              fontSize: 11, color: '#ffffffbb', lineHeight: 1.5, wordBreak: 'break-word',
+                              whiteSpace: 'pre-wrap', maxHeight: 200, overflowY: 'auto',
+                            }}>
+                              {msg.content}
+                            </div>
+                          </div>
+                        ))}
+                        {session.messages.length === 0 && (
+                          <div style={{ fontSize: 10, color: '#ffffff33', textAlign: 'center', padding: 12 }}>Sin mensajes en esta sesión</div>
+                        )}
+                      </div>
+
+                      {/* Reply input — solo si la sesión NO está borrada */}
+                      {!session.deleted && chatLogs?.user?.id && (
+                        <div style={{
+                          padding: '8px 12px', borderTop: '1px solid rgba(255,255,255,0.06)',
+                          display: 'flex', gap: 8, alignItems: 'center',
+                        }}>
+                          <input
+                            value={replyText}
+                            onChange={e => setReplyText(e.target.value)}
+                            onKeyDown={e => e.key === 'Enter' && !sendingReply && injectMessage(session.id, chatLogs.user.id)}
+                            placeholder="Responder como AIdark..."
+                            style={{
+                              flex: 1, padding: '7px 10px', borderRadius: 6, border: '1px solid rgba(168,85,247,0.3)',
+                              background: 'rgba(168,85,247,0.05)', color: '#fff', fontSize: 11, fontFamily: 'inherit',
+                              outline: 'none',
+                            }}
+                          />
+                          <button
+                            onClick={() => injectMessage(session.id, chatLogs.user.id)}
+                            disabled={sendingReply || !replyText.trim()}
+                            style={{
+                              padding: '7px 14px', borderRadius: 6, border: 'none',
+                              background: 'rgba(168,85,247,0.3)', color: '#c4b5fd', fontSize: 10, fontWeight: 600,
+                              cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap',
+                              opacity: sendingReply || !replyText.trim() ? 0.4 : 1,
+                            }}
+                          >
+                            {sendingReply ? 'Enviando...' : '👑 Enviar como AIdark'}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
