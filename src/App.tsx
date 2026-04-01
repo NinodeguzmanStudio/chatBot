@@ -83,6 +83,33 @@ const PaymentPending: React.FC = () => (
   </div>
 );
 
+// ═══════════════════════════════════════
+// Splash Message — mensajes progresivos durante carga
+// ═══════════════════════════════════════
+const SplashMessage: React.FC<{ wasAuth: boolean }> = ({ wasAuth }) => {
+  const [msgIndex, setMsgIndex] = useState(0);
+  const messages = wasAuth
+    ? ['Verificando tu sesión...', 'Cargando tu perfil...', 'Ya casi...']
+    : ['Preparando AIdark...', 'Conectando...', 'Ya casi...'];
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setMsgIndex(i => Math.min(i + 1, messages.length - 1));
+    }, 2500);
+    return () => clearInterval(timer);
+  }, []);
+
+  return (
+    <p style={{
+      fontSize: 11, color: '#ffffff44', marginTop: 4,
+      animation: 'fadeIn 0.5s ease',
+      textAlign: 'center',
+    }}>
+      {messages[msgIndex]}
+    </p>
+  );
+};
+
 const ChatLayout: React.FC = () => {
   const { sidebarOpen } = useChatStore();
   const [pricingOpen, setPricingOpen]   = useState(false);
@@ -228,6 +255,7 @@ const App: React.FC = () => {
   // Fix: si el usuario ya se autenticó antes, mostrar app inmediatamente
   // mientras el perfil carga en background (evita spinner en usuarios recurrentes)
   const wasAuth = localStorage.getItem('aidark_was_authenticated') === 'true';
+  const wasAuthRef = useRef(wasAuth); // preservar valor original aunque se borre de localStorage
   const [authComplete, setAuthComplete]   = useState(wasAuth);
   const [authError, setAuthError]         = useState('');
   const [showAuth, setShowAuth]           = useState(false);
@@ -267,6 +295,7 @@ const App: React.FC = () => {
   // Limpiar auth directamente sin pasar por done()
   const signOutCleanup = () => {
     localStorage.removeItem('aidark_was_authenticated');
+    wasAuthRef.current = false; // reset para que al volver vea Landing
     lastProcessedUserId = null;
     clearAllAuthState(setUser, setAuthenticated);
     doneRef.current = false;
@@ -369,6 +398,7 @@ const App: React.FC = () => {
         <div style={{ width: 32, height: 2, borderRadius: 2, background: '#8b735544', overflow: 'hidden', marginTop: 4 }}>
           <div style={{ width: '50%', height: '100%', background: '#8b7355', animation: 'slideLoad 1.2s ease-in-out infinite' }} />
         </div>
+        <SplashMessage wasAuth={wasAuthRef.current} />
       </div>
     );
   }
@@ -382,7 +412,7 @@ const App: React.FC = () => {
         <Route path="/legal" element={<LegalPages />} />
 
         <Route path="*" element={
-          !isAuthenticated && !showAuth
+          !isAuthenticated && !showAuth && !wasAuthRef.current
             ? <Landing onStart={() => setShowAuth(true)} />
             : !isAuthenticated
               ? <AuthModal onSuccess={() => { doneRef.current = true; setSessionChecked(true); setAuthComplete(true); }} initialError={authError} />
