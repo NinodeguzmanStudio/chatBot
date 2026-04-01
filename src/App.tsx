@@ -89,7 +89,12 @@ const PaymentPending: React.FC = () => (
 const SplashMessage: React.FC<{ wasAuth: boolean }> = ({ wasAuth }) => {
   const [msgIndex, setMsgIndex] = useState(0);
   const messages = wasAuth
-    ? ['Verificando tu sesión...', 'Cargando tu perfil...', 'Ya casi...']
+    ? [
+        'Verificando tu sesión...',
+        'Cargando tu perfil...',
+        'Ya casi...',
+        'Si ves "Comienza gratis", no hagas click — espera unos segundos.',
+      ]
     : ['Preparando AIdark...', 'Conectando...', 'Ya casi...'];
 
   useEffect(() => {
@@ -104,6 +109,8 @@ const SplashMessage: React.FC<{ wasAuth: boolean }> = ({ wasAuth }) => {
       fontSize: 11, color: '#ffffff44', marginTop: 4,
       animation: 'fadeIn 0.5s ease',
       textAlign: 'center',
+      maxWidth: 280,
+      lineHeight: 1.5,
     }}>
       {messages[msgIndex]}
     </p>
@@ -412,7 +419,7 @@ const App: React.FC = () => {
         <Route path="/legal" element={<LegalPages />} />
 
         <Route path="*" element={
-          !isAuthenticated && !showAuth && !wasAuthRef.current
+          !isAuthenticated && !showAuth
             ? <Landing onStart={() => setShowAuth(true)} />
             : !isAuthenticated
               ? <AuthModal onSuccess={() => { doneRef.current = true; setSessionChecked(true); setAuthComplete(true); }} initialError={authError} />
