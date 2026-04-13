@@ -414,7 +414,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         .filter(Boolean)
     )];
 
-    const recentMessageProfiles = new Map<string, { email: string | null; plan: string | null }>();
+    const recentMessageProfiles = new Map<string, {
+      email: string | null;
+      plan: string | null;
+      plan_expires_at: string | null;
+    }>();
     if (recentMessageUserIds.length > 0) {
       const { data: profilesForMessages } = await supabase
         .from('profiles')
