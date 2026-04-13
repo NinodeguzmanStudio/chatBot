@@ -96,7 +96,7 @@ const SplashMessage: React.FC<{ wasAuth: boolean }> = ({ wasAuth }) => {
         'Verificando tu sesión...',
         'Cargando tu perfil...',
         'Ya casi...',
-        'Si ves "Comienza gratis", no hagas click — espera unos segundos.',
+        'Sincronizando tus chats...',
       ]
     : ['Preparando AIdark...', 'Conectando...', 'Ya casi...'];
 
@@ -178,35 +178,54 @@ async function getSessionSafe() {
   }
 }
 
-async function resolveUserProfile(userId: string, email: string) {
-  const delays = [0, 500, 1200];
-
-  for (let attempt = 0; attempt < delays.length; attempt++) {
-    if (attempt > 0) await new Promise(r => setTimeout(r, delays[attempt]));
-    try {
-      const result = await Promise.race([
-        supabase.from('profiles').select('*').eq('id', userId).single(),
-        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 8000)),
-      ]) as any;
-      if (result?.data) {
-        console.log('[Auth] Perfil cargado OK, messages_used:', result.data.messages_used);
-        return result.data;
-      }
-    } catch { /* timeout o error, reintentar */ }
-  }
-
-  console.warn('[Auth] No se pudo cargar perfil — usando temporal en memoria (NO se escribe en BD)');
+function buildTemporaryProfile(userId: string, email: string) {
   return {
     id: userId,
     email,
     plan: 'free',
     created_at: new Date().toISOString(),
     messages_used: 0,
-    // FIX v5 [5]: Usar constante, no hardcodear 12
     messages_limit: APP_CONFIG.freeMessageLimit,
     plan_expires_at: null,
     _temporary: true,
   };
+}
+
+async function resolveUserProfile(userId: string, email: string) {
+  try {
+    const result = await Promise.race([
+      supabase.from('profiles').select('*').eq('id', userId).single(),
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 2500)),
+    ]) as any;
+    if (result?.data) {
+      console.log('[Auth] Perfil cargado OK, messages_used:', result.data.messages_used);
+      return result.data;
+    }
+  } catch { /* degradar a perfil temporal */ }
+
+  console.warn('[Auth] Perfil aún no disponible — usando temporal en memoria');
+  return buildTemporaryProfile(userId, email);
+}
+
+function retryProfileInBackground(userId: string, setUser: any) {
+  console.log('[Auth] Perfil temporal detectado — iniciando retry en background...');
+
+  const retryInterval = setInterval(async () => {
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .single();
+      if (!error && data) {
+        console.log('[Auth] Perfil real recuperado en background, messages_used:', data.messages_used);
+        setUser(data as any);
+        clearInterval(retryInterval);
+      }
+    } catch { /* silencioso */ }
+  }, 3000);
+
+  setTimeout(() => clearInterval(retryInterval), 45000);
 }
 
 function clearAllAuthState(setUser: any, setAuthenticated: any) {
@@ -217,65 +236,62 @@ function clearAllAuthState(setUser: any, setAuthenticated: any) {
 
 let lastProcessedUserId: string | null = null;
 
-async function processSession(session: any, setUser: any, setAuthenticated: any, loadFromSupabase: any) {
+async function processSession(
+  session: any,
+  setUser: any,
+  setAuthenticated: any,
+  setShowAuth: (open: boolean) => void,
+  loadFromSupabase: any
+) {
   const userId = session.user.id;
   const hadAuthIntent = localStorage.getItem(AUTH_INTENT_KEY) === 'true';
 
   if (lastProcessedUserId === userId) return;
   lastProcessedUserId = userId;
 
+  const temporaryProfile = buildTemporaryProfile(userId, session.user.email || '');
+
+  // Entramos al chat apenas Supabase confirma la sesión.
+  setShowAuth(false);
+  setUser(temporaryProfile as any);
+  setAuthenticated(true);
+  localStorage.removeItem(AUTH_INTENT_KEY);
+  localStorage.setItem('aidark_was_authenticated', 'true');
+  loadFromSupabase(userId).catch(console.error);
+  if (session.access_token) void registerPush(session.access_token);
+
   try {
     const profile = await resolveUserProfile(userId, session.user.email || '');
     setUser(profile as any);
-    setAuthenticated(true);
-    localStorage.removeItem(AUTH_INTENT_KEY);
-    localStorage.setItem('aidark_was_authenticated', 'true');
     if (hadAuthIntent) {
       void trackEvent('auth_success', {
         provider: session.user?.app_metadata?.provider || 'email',
         temporary_profile: Boolean((profile as any)._temporary),
       });
     }
-    loadFromSupabase(userId).catch(console.error);
-    if (session.access_token) registerPush(session.access_token);
 
-    // FIX v5 [4]: Si el perfil es temporal, retry en background
     if ((profile as any)._temporary) {
-      console.log('[Auth] Perfil temporal detectado — iniciando retry en background...');
-      const retryInterval = setInterval(async () => {
-        try {
-          const { data, error } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('id', userId)
-            .single();
-          if (!error && data) {
-            console.log('[Auth] Perfil real recuperado en background, messages_used:', data.messages_used);
-            setUser(data as any);
-            clearInterval(retryInterval);
-          }
-        } catch { /* silencioso */ }
-      }, 5000);
-
-      setTimeout(() => clearInterval(retryInterval), 60000);
+      retryProfileInBackground(userId, setUser);
     }
   } catch (err) {
     console.error('[Auth] Error en processSession:', err);
-    lastProcessedUserId = null;
+    retryProfileInBackground(userId, setUser);
   }
 }
 
 const App: React.FC = () => {
   const { isAgeVerified, setUser, setAuthenticated, setLoading } = useAuthStore();
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const cachedUserId = useAuthStore((s) => s.user?.id || null);
   const { loadFromSupabase } = useChatStore();
 
   // Fix: si el usuario ya se autenticó antes, mostrar app inmediatamente
   // mientras el perfil carga en background (evita spinner en usuarios recurrentes)
   const wasAuth = localStorage.getItem('aidark_was_authenticated') === 'true';
   const hasStoredAuthIntent = localStorage.getItem(AUTH_INTENT_KEY) === 'true';
+  const hasCachedUser = Boolean(cachedUserId);
   const wasAuthRef = useRef(wasAuth); // preservar valor original aunque se borre de localStorage
-  const [authComplete, setAuthComplete]   = useState(wasAuth);
+  const [authComplete, setAuthComplete]   = useState(wasAuth || hasCachedUser);
   const [authError, setAuthError]         = useState('');
   const [showAuth, setShowAuth]           = useState(wasAuth || hasStoredAuthIntent || window.location.search.includes('code='));
 
@@ -293,7 +309,7 @@ const App: React.FC = () => {
   //   Si wasAuth=true pero sessionChecked=false → mostrar spinner.
   //   El usuario NUNCA ve Landing si ya estaba autenticado.
   // ══════════════════════════════════════════════════════
-  const [sessionChecked, setSessionChecked] = useState(false);
+  const [sessionChecked, setSessionChecked] = useState(hasCachedUser);
 
   const hasPKCECode = window.location.search.includes('code=');
   const initialized = useRef(false);
@@ -347,14 +363,12 @@ const App: React.FC = () => {
       console.log('[Auth] onAuthStateChange →', event);
 
       if ((event === 'INITIAL_SESSION' || event === 'SIGNED_IN') && session?.user) {
-        try {
-          if (window.location.search.includes('code=') || window.location.hash.includes('access_token')) {
-            window.history.replaceState({}, '', window.location.pathname);
-          }
-          await processSession(session, setUser, setAuthenticated, loadFromSupabase);
-        } catch (err: any) {
-          setAuthError('Error al cargar tu perfil. Intenta de nuevo.');
+        if (window.location.search.includes('code=') || window.location.hash.includes('access_token')) {
+          window.history.replaceState({}, '', window.location.pathname);
         }
+        setShowAuth(false);
+        processSession(session, setUser, setAuthenticated, setShowAuth, loadFromSupabase)
+          .catch(() => setAuthError('Error al cargar tu perfil. Intenta de nuevo.'));
         done();
         return;
       }
@@ -397,7 +411,9 @@ const App: React.FC = () => {
             const { data: { session } } = sessionResult as any;
             if (session?.user) {
               console.log('[Auth] Fallback: sesión encontrada, procesando...');
-              await processSession(session, setUser, setAuthenticated, loadFromSupabase);
+              setShowAuth(false);
+              processSession(session, setUser, setAuthenticated, setShowAuth, loadFromSupabase)
+                .catch(() => setAuthError('Error al cargar tu perfil. Intenta de nuevo.'));
               done();
               return;
             }
@@ -446,6 +462,7 @@ const App: React.FC = () => {
             : !isAuthenticated
               ? <AuthModal onSuccess={() => {
                   localStorage.removeItem(AUTH_INTENT_KEY);
+                  setShowAuth(false);
                   doneRef.current = true;
                   setSessionChecked(true);
                   setAuthComplete(true);

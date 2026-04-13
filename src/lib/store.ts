@@ -26,6 +26,32 @@ import { APP_CONFIG } from '@/lib/constants';
 
 // FIX v3 [5]: Lee de APP_CONFIG en vez de hardcodear 12
 const FREE_LIMIT = APP_CONFIG.freeMessageLimit;
+const USER_CACHE_KEY = 'aidark_user_cache';
+
+function readCachedUser(): UserProfile | null {
+  try {
+    const raw = localStorage.getItem(USER_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed?.id || !parsed?.email) return null;
+    return parsed as UserProfile;
+  } catch {
+    return null;
+  }
+}
+
+function persistCachedUser(user: UserProfile | null | undefined) {
+  try {
+    if (user) localStorage.setItem(USER_CACHE_KEY, JSON.stringify(user));
+    else localStorage.removeItem(USER_CACHE_KEY);
+  } catch {
+    // Silenciar errores de storage para no bloquear auth.
+  }
+}
+
+const cachedUser = readCachedUser();
+const cachedAuth = localStorage.getItem('aidark_authenticated') === 'true'
+  || localStorage.getItem('aidark_was_authenticated') === 'true';
 
 function getUserFreeLimit(user: UserProfile | null | undefined): number {
   if (typeof user?.messages_limit === 'number' && user.messages_limit > 0) {
@@ -204,19 +230,21 @@ interface AuthState {
 }
 
 export const useAuthStore = create<AuthState>((set, get) => ({
-  user: null,
+  user: cachedUser,
   isLoading: true,
-  isAuthenticated: false,
+  isAuthenticated: cachedAuth && !!cachedUser,
   isAgeVerified: localStorage.getItem('aidark_age_verified') === 'true',
 
   setUser: (user) => {
     const auth = !!user;
     localStorage.setItem('aidark_authenticated', String(auth));
+    persistCachedUser(user);
     set({ user, isAuthenticated: auth });
   },
   setLoading:       (loading)  => set({ isLoading: loading }),
   setAuthenticated: (auth)     => {
     localStorage.setItem('aidark_authenticated', String(auth));
+    if (!auth) persistCachedUser(null);
     set({ isAuthenticated: auth });
   },
   setAgeVerified: (verified) => {
@@ -236,6 +264,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         .single();
       if (!error && data) {
         console.log('[Auth] Perfil real recargado desde BD, messages_used:', data.messages_used);
+        persistCachedUser(data as any);
         set({ user: data as any });
       }
     } catch (err) {
@@ -255,6 +284,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         ...user,
         messages_used: Math.min((user.messages_used || 0) + 1, limit),
       };
+      persistCachedUser(updated as any);
       set({ user: updated });
       return;
     }

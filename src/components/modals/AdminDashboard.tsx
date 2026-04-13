@@ -211,7 +211,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
             email,
             user_id: msg.user_id,
             role: msg.role,
-            content: msg.content?.slice(0, 150) + (msg.content?.length > 150 ? '...' : ''),
+            content: msg.content || '',
             character: msg.character,
             created_at: msg.created_at || new Date().toISOString(),
             is_admin_inject: msg.is_admin_inject,
@@ -648,7 +648,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
                       </span>
                     )}
                   </div>
-                  <div style={{ fontSize: 11, color: '#ffffffbb', lineHeight: 1.4, wordBreak: 'break-word' }}>
+                  <div style={{
+                    fontSize: 11,
+                    color: '#ffffffbb',
+                    lineHeight: 1.5,
+                    wordBreak: 'break-word',
+                    whiteSpace: 'pre-wrap',
+                    maxHeight: 160,
+                    overflowY: 'auto',
+                  }}>
                     {entry.content}
                   </div>
                 </div>
@@ -857,13 +865,44 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
             )}
             {(data.recentMessages || []).map((msg: any, i: number) => (
               <div key={i} style={{
-                padding: '8px 0', borderBottom: i < data.recentMessages.length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none',
+                padding: '10px 0', borderBottom: i < data.recentMessages.length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none',
               }}>
-                <div style={{ fontSize: 12, color: '#ffffffcc', lineHeight: 1.5, wordBreak: 'break-word' }}>
+                <div style={{ fontSize: 10, color: '#ffffff55', marginBottom: 5, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                  <span style={{ color: '#60a5fa', fontWeight: 600 }}>{msg.email || 'Sin email'}</span>
+                  {msg.user_id && (
+                    <span style={{ color: '#ffffff33' }}>ID: {msg.user_id}</span>
+                  )}
+                  <span style={{ color: '#d4c5b0' }}>Plan: {msg.plan || 'free'}</span>
+                  {msg.character && msg.character !== 'default' && (
+                    <span style={{ color: '#a78bfa' }}>Char: {msg.character}</span>
+                  )}
+                  {msg.deleted && (
+                    <span style={{ fontSize: 8, padding: '1px 5px', borderRadius: 3, background: 'rgba(239,68,68,0.2)', color: '#ef4444' }}>
+                      borrado del chat
+                    </span>
+                  )}
+                </div>
+                <div style={{ fontSize: 12, color: '#ffffffcc', lineHeight: 1.6, wordBreak: 'break-word', whiteSpace: 'pre-wrap' }}>
                   {msg.content}
                 </div>
-                <div style={{ fontSize: 9, color: '#ffffff33', marginTop: 4 }}>
-                  {new Date(msg.created_at).toLocaleString('es')}
+                <div style={{ fontSize: 9, color: '#ffffff33', marginTop: 6, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <span>{new Date(msg.created_at).toLocaleString('es')}</span>
+                  {msg.session_id && <span>Sesión: {msg.session_id}</span>}
+                  {msg.email && msg.email !== 'Sin email' && (
+                    <button
+                      onClick={() => {
+                        setSearchEmail(msg.email);
+                        setTab('chat_logs');
+                      }}
+                      style={{
+                        padding: '2px 8px', borderRadius: 4, border: 'none',
+                        background: 'rgba(139,115,85,0.2)', color: '#d4c5b0', fontSize: 9,
+                        cursor: 'pointer', fontFamily: 'inherit',
+                      }}
+                    >
+                      Ver historial
+                    </button>
+                  )}
                 </div>
               </div>
             ))}

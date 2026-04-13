@@ -113,6 +113,10 @@ CREATE TABLE IF NOT EXISTS public.referrals (
 CREATE INDEX IF NOT EXISTS idx_referrals_referrer_status
   ON public.referrals (referrer_id, status);
 
+-- En instalaciones viejas estas RPC pueden existir con otro tipo de retorno.
+-- Postgres no permite cambiar RETURNS con CREATE OR REPLACE, así que las
+-- recreamos explícitamente para que la migración sea compatible.
+DROP FUNCTION IF EXISTS public.increment_message_count(UUID);
 CREATE OR REPLACE FUNCTION public.increment_message_count(p_user_id UUID)
 RETURNS INTEGER
 LANGUAGE plpgsql
@@ -132,6 +136,7 @@ BEGIN
 END;
 $$;
 
+DROP FUNCTION IF EXISTS public.reset_free_message_counts();
 CREATE OR REPLACE FUNCTION public.reset_free_message_counts()
 RETURNS INTEGER
 LANGUAGE plpgsql
@@ -151,6 +156,7 @@ BEGIN
 END;
 $$;
 
+DROP FUNCTION IF EXISTS public.check_rate_limit(UUID, INTEGER, INTEGER);
 CREATE OR REPLACE FUNCTION public.check_rate_limit(
   p_user_id UUID,
   p_window_seconds INTEGER,

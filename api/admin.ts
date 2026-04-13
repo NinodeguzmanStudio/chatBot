@@ -359,12 +359,34 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const onlineCount = activeUsersList.filter(u => u.is_online).length;
 
     // ── 4. Mensajes recientes ──
+    // Leemos desde message_logs para conservar mensajes aunque el chat se borre.
     const { data: recentMessages } = await supabase
-      .from('messages')
-      .select('content, role, created_at, session_id')
+      .from('message_logs')
+      .select('content, role, created_at, session_id, user_id, character, deleted_from_chat')
       .eq('role', 'user')
       .order('created_at', { ascending: false })
       .limit(50);
+
+    const recentMessageUserIds = [...new Set(
+      (recentMessages || [])
+        .map((m: any) => m.user_id)
+        .filter(Boolean)
+    )];
+
+    const recentMessageProfiles = new Map<string, { email: string | null; plan: string | null }>();
+    if (recentMessageUserIds.length > 0) {
+      const { data: profilesForMessages } = await supabase
+        .from('profiles')
+        .select('id, email, plan')
+        .in('id', recentMessageUserIds);
+
+      for (const profile of (profilesForMessages || [])) {
+        recentMessageProfiles.set(profile.id, {
+          email: profile.email || null,
+          plan: profile.plan || null,
+        });
+      }
+    }
 
     const wordCounts: Record<string, number> = {};
     const stopWords = new Set(['de', 'la', 'el', 'en', 'un', 'una', 'que', 'es', 'y', 'a', 'los', 'las', 'del', 'por', 'con', 'para', 'se', 'no', 'me', 'mi', 'lo', 'al', 'le', 'su', 'como', 'más', 'pero', 'si', 'ya', 'o', 'este', 'ser', 'también', 'fue', 'ha', 'yo', 'eso', 'todo', 'esta', 'son', 'dos', 'hay', 'bien', 'muy', 'sin', 'sobre', 'uno', 'vez', 'the', 'is', 'a', 'to', 'and', 'of', 'in', 'it', 'i', 'you', 'he', 'she', 'we', 'they', 'my', 'your', 'can', 'do', 'would', 'should', 'could', 'will', 'has', 'have', 'had', 'was', 'were', 'be', 'been', 'are', 'am', 'an', 'at', 'or', 'if', 'not', 'this', 'that', 'with', 'from', 'but', 'what', 'how', 'who', 'which', 'when', 'where', 'all', 'some', 'any', 'each']);
@@ -479,10 +501,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       funnel,
       plans: planCounts,
       topics: topTopics,
-      recentMessages: (recentMessages || []).slice(0, 20).map(m => ({
-        content: m.content?.slice(0, 120) + (m.content?.length > 120 ? '...' : ''),
-        created_at: m.created_at,
-      })),
+      recentMessages: (recentMessages || []).slice(0, 30).map((m: any) => {
+        const profile = m.user_id ? recentMessageProfiles.get(m.user_id) : null;
+        return {
+          content: m.content || '',
+          created_at: m.created_at,
+          session_id: m.session_id,
+          user_id: m.user_id,
+          email: profile?.email || 'Sin email',
+          plan: profile?.plan || 'free',
+          character: m.character || 'default',
+          deleted: Boolean(m.deleted_from_chat),
+        };
+      }),
       generatedAt: now.toISOString(),
     });
 

@@ -6,6 +6,7 @@ import { LanguageSelector } from '@/components/chat/LanguageSelector';
 import { isTempEmail } from '@/lib/fingerprint';
 import { t } from '@/lib/i18n';
 import { trackEvent } from '@/lib/analytics';
+import { APP_CONFIG } from '@/lib/constants';
 
 interface AuthModalProps {
   onSuccess: () => void;
@@ -69,16 +70,34 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onSuccess, initialError })
           setLoading(false);
           return;
         }
-        const { data: profile } = await supabase.from('profiles').select('*').eq('id', data.user.id).single();
-        if (profile) {
-          setUser(profile);
-          setAuthenticated(true);
-          await loadFromSupabase(data.user.id);
-          void trackEvent('login_success', { source: 'password' });
-          onSuccess();
-        } else {
-          setError('Error al cargar tu perfil. Intenta de nuevo.');
-        }
+        let profile: any = null;
+        try {
+          const result = await Promise.race([
+            supabase.from('profiles').select('*').eq('id', data.user.id).single(),
+            new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 1500)),
+          ]) as any;
+          profile = result?.data || null;
+        } catch { /* degradar a perfil temporal */ }
+
+        const resolvedProfile = profile || {
+          id: data.user.id,
+          email: data.user.email || email,
+          plan: 'free',
+          created_at: new Date().toISOString(),
+          messages_used: 0,
+          messages_limit: APP_CONFIG.freeMessageLimit,
+          plan_expires_at: null,
+          _temporary: true,
+        };
+
+        setUser(resolvedProfile);
+        setAuthenticated(true);
+        loadFromSupabase(data.user.id).catch(console.error);
+        void trackEvent('login_success', {
+          source: 'password',
+          temporary_profile: Boolean((resolvedProfile as any)._temporary),
+        });
+        onSuccess();
       }
     } catch (err: any) {
       setError(translateError(err?.message || 'Error desconocido.'));
