@@ -5,6 +5,7 @@ import { useAuthStore, useChatStore } from '@/lib/store';
 import { LanguageSelector } from '@/components/chat/LanguageSelector';
 import { isTempEmail } from '@/lib/fingerprint';
 import { t } from '@/lib/i18n';
+import { trackEvent } from '@/lib/analytics';
 
 interface AuthModalProps {
   onSuccess: () => void;
@@ -40,6 +41,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onSuccess, initialError })
   const handleGoogleLogin = async () => {
     setLoading(true);
     setError('');
+    void trackEvent('google_login_started', { source: 'auth_modal' });
     const { error: oauthError } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
@@ -56,6 +58,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onSuccess, initialError })
   const handleLogin = async () => {
     if (!email || !password) { setError(t('auth.fill_all')); return; }
     setLoading(true); setError('');
+    void trackEvent('login_submitted', { source: 'auth_modal' });
     try {
       const { data, error: authError } = await supabase.auth.signInWithPassword({ email, password });
       if (authError) { setError(translateError(authError.message)); setLoading(false); return; }
@@ -71,6 +74,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onSuccess, initialError })
           setUser(profile);
           setAuthenticated(true);
           await loadFromSupabase(data.user.id);
+          void trackEvent('login_success', { source: 'password' });
           onSuccess();
         } else {
           setError('Error al cargar tu perfil. Intenta de nuevo.');
@@ -91,7 +95,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onSuccess, initialError })
     try {
       const { data, error: authError } = await supabase.auth.signUp({ email, password });
       if (authError) { setError(translateError(authError.message)); setLoading(false); return; }
-      if (data.user) { setSuccess(t('auth.account_created')); setMode('login'); }
+      if (data.user) {
+        void trackEvent('register_success', { source: 'email_password' });
+        setSuccess(t('auth.account_created'));
+        setMode('login');
+      }
     } catch (err: any) {
       setError(translateError(err?.message || 'Error desconocido.'));
     }
@@ -104,7 +112,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onSuccess, initialError })
     try {
       const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: `${window.location.origin}/reset-password` });
       if (resetError) setError(translateError(resetError.message));
-      else setSuccess(t('auth.reset_sent'));
+      else {
+        void trackEvent('password_reset_requested', { source: 'auth_modal' });
+        setSuccess(t('auth.reset_sent'));
+      }
     } catch (err: any) {
       setError(translateError(err?.message || 'Error desconocido.'));
     }

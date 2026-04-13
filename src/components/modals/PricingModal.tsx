@@ -15,6 +15,7 @@ import { X, Loader2 } from 'lucide-react';
 import { useAuthStore } from '@/lib/store';
 import { useIsMobile } from '@/hooks/useIsMobile';
 import { supabase } from '@/lib/supabase';
+import { trackEvent } from '@/lib/analytics';
 
 type PlanConfig = {
   id:          string;
@@ -307,6 +308,7 @@ export const PricingModal: React.FC<{ isOpen: boolean; onClose: () => void }> = 
   useEffect(() => {
     if (!isOpen) return;
     let cancelled = false;
+    void trackEvent('pricing_opened', { source: 'pricing_modal', current_plan: currentPlan });
 
     const fetchCurrency = async () => {
       setLoadingCurrency(true);
@@ -382,6 +384,7 @@ export const PricingModal: React.FC<{ isOpen: boolean; onClose: () => void }> = 
   const handleSubscribe = async (planId: string) => {
     if (!user) { setError('Necesitas una cuenta para suscribirte.'); return; }
     setLoading(planId); setError('');
+    void trackEvent('pricing_checkout_started', { plan_id: planId, source: 'pricing_modal' });
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.access_token) {

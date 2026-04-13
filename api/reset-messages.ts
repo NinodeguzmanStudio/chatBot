@@ -1,8 +1,8 @@
 // ═══════════════════════════════════════
-// AIdark — Reset mensual de mensajes free
+// AIdark — Reset diario de mensajes free
 // api/reset-messages.ts
 // ═══════════════════════════════════════
-// Llamado por el cron de vercel.json: "0 0 1 * *" (1ro de cada mes, 00:00 UTC)
+// Llamado por el cron de vercel.json: "0 0 * * *" (todos los días, 00:00 UTC)
 // Resetea messages_used a 0 para todos los usuarios free.
 // Protegido con CRON_SECRET para que nadie lo llame manualmente.
 // ═══════════════════════════════════════

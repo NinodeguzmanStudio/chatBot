@@ -11,7 +11,9 @@ import React, { useState, useEffect } from 'react';
 import { X, Loader2, Zap, Image, MessageSquare, Clock } from 'lucide-react';
 import { useAuthStore } from '@/lib/store';
 import { supabase } from '@/lib/supabase';
+import { APP_CONFIG } from '@/lib/constants';
 import { useIsMobile } from '@/hooks/useIsMobile';
+import { trackEvent } from '@/lib/analytics';
 
 const PROMO_START_KEY = 'aidark_promo_start';
 const PROMO_DURATION  = 24 * 60 * 60 * 1000;
@@ -105,10 +107,12 @@ export const PromoModal: React.FC<PromoModalProps> = ({ isOpen, onClose, onOpenP
 
   // Currency state
   const [currency, setCurrency] = useState<CurrencyInfo>({ code: 'USD', symbol: '$', rate: 1 });
+  const freeLimit = APP_CONFIG.freeMessageLimit;
 
   useEffect(() => {
     if (!isOpen) return;
     let cancelled = false;
+    void trackEvent('promo_opened', { source: 'paywall_modal' });
     const fetchCurrency = async () => {
       try {
         const country = detectUserCountry();
@@ -139,6 +143,7 @@ export const PromoModal: React.FC<PromoModalProps> = ({ isOpen, onClose, onOpenP
     if (!user) { setError('Necesitas una cuenta.'); return; }
     setLoading(planId);
     setError('');
+    void trackEvent('promo_checkout_started', { plan_id: planId, source: 'paywall_modal' });
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.access_token) {
@@ -213,7 +218,7 @@ export const PromoModal: React.FC<PromoModalProps> = ({ isOpen, onClose, onOpenP
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 20 }}>
             {[
               { label: 'Gratis', items: [
-                { icon: <MessageSquare size={11} />, text: '12 mensajes/día', muted: true },
+                { icon: <MessageSquare size={11} />, text: `${freeLimit} mensajes/día`, muted: true },
                 { icon: <Image size={11} />, text: 'Sin imágenes', muted: true },
                 { icon: <Clock size={11} />, text: 'Historial 7 días', muted: true },
               ]},

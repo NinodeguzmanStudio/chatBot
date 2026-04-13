@@ -56,8 +56,10 @@ npm run dev
 | `VITE_SUPABASE_URL` | supabase.com → Settings → API |
 | `VITE_SUPABASE_ANON_KEY` | supabase.com → Settings → API |
 | `SUPABASE_SERVICE_ROLE_KEY` | supabase.com → Settings → API |
+| `MP_ACCESS_TOKEN` | mercadopago.com/developers |
 | `MERCADOPAGO_ACCESS_TOKEN` | mercadopago.com/developers |
-| `VITE_FREE_MESSAGE_LIMIT` | Número (default: 5) |
+| `VITE_ADMIN_EMAILS` | Lista de emails admin separados por coma |
+| `VITE_FREE_MESSAGE_LIMIT` | Número (default: 12) |
 
 ## Modelos Disponibles
 
@@ -71,7 +73,7 @@ npm run dev
 
 | Plan | Precio | Límite |
 |------|--------|--------|
-| Free | $0 | 5 mensajes |
+| Free | $0 | 12 mensajes |
 | Mensual | $15/mes | Ilimitado |
 | Trimestral | $40/3 meses | Ilimitado |
 | Anual | $108/año | Ilimitado (primeros 1000) |

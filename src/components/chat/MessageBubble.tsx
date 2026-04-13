@@ -7,8 +7,6 @@
 
 import React, { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
-import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { Copy, Check, FileText, Pencil, RotateCcw, ThumbsUp, ThumbsDown } from 'lucide-react';
 import { AI_CHARACTERS } from '@/lib/constants';
 import { formatTime } from '@/lib/utils';
@@ -164,15 +162,29 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                           {isCopied ? 'Copiado' : 'Copiar'}
                         </button>
                       </div>
-                      <SyntaxHighlighter
-                        style={oneDark}
-                        language={lang}
-                        PreTag="div"
-                        customStyle={{ margin: 0, borderRadius: '0 0 8px 8px', border: '1px solid rgba(255,255,255,0.08)', fontSize: 12, lineHeight: 1.6 }}
-                        {...props}
+                      <pre
+                        style={{
+                          margin: 0,
+                          padding: '14px 16px',
+                          borderRadius: '0 0 8px 8px',
+                          border: '1px solid rgba(255,255,255,0.08)',
+                          background: '#121218',
+                          color: '#f4f1ea',
+                          fontSize: 12,
+                          lineHeight: 1.7,
+                          overflowX: 'auto',
+                        }}
                       >
-                        {codeString}
-                      </SyntaxHighlighter>
+                        <code
+                          style={{
+                            fontFamily: 'IBM Plex Mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
+                            whiteSpace: 'pre',
+                          }}
+                          {...props}
+                        >
+                          {codeString}
+                        </code>
+                      </pre>
                     </div>
                   );
                 },

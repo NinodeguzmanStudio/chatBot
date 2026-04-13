@@ -36,7 +36,7 @@ export default defineConfig({
         manualChunks: {
           'vendor-react':    ['react', 'react-dom'],
           'vendor-supabase': ['@supabase/supabase-js'],
-          'vendor-markdown': ['react-markdown', 'react-syntax-highlighter'],
+          'vendor-markdown': ['react-markdown'],
         },
       },
     },

@@ -11,7 +11,9 @@
 // ═══════════════════════════════════════
 
 import { useState, useEffect } from "react";
-import { t } from "@/lib/i18n";
+import { APP_CONFIG } from "@/lib/constants";
+import { getLang, t } from "@/lib/i18n";
+import { trackEvent, trackOnce } from "@/lib/analytics";
 
 // ═══ Predator Eyes SVG ═══
 const PredatorEyes = ({ size = 60, style = {} }: { size?: number; style?: React.CSSProperties }) => (
@@ -140,7 +142,7 @@ const I = {
 };
 
 // ═══ Main Component ═══
-export default function Landing({ onStart }: { onStart?: () => void }) {
+export default function Landing({ onStart }: { onStart?: (source?: string) => void }) {
   const [currentPhrase, setCurrentPhrase] = useState(0);
   const [displayText, setDisplayText] = useState("");
   const [compIndex, setCompIndex] = useState(0);
@@ -156,6 +158,11 @@ export default function Landing({ onStart }: { onStart?: () => void }) {
     { prompt: t("landing.comp_prompt_2"), others: t("landing.comp_other_2"), aidark: t("landing.comp_ai_2") },
     { prompt: t("landing.comp_prompt_3"), others: t("landing.comp_other_3"), aidark: t("landing.comp_ai_3") },
   ];
+  const freeFooter = {
+    es: `+18 · No requiere tarjeta · ${APP_CONFIG.freeMessageLimit} mensajes gratis`,
+    pt: `+18 · Não precisa de cartão · ${APP_CONFIG.freeMessageLimit} mensagens grátis`,
+    en: `+18 · No credit card · ${APP_CONFIG.freeMessageLimit} free messages`,
+  }[getLang()] || `+18 · No credit card · ${APP_CONFIG.freeMessageLimit} free messages`;
 
   const features = [
     { icon: I.unlock, title: t("landing.feat_uncensored"), desc: t("landing.feat_uncensored_desc") },
@@ -199,6 +206,10 @@ export default function Landing({ onStart }: { onStart?: () => void }) {
   useEffect(() => {
     document.body.style.overflow = "auto";
     return () => { document.body.style.overflow = "hidden"; };
+  }, []);
+
+  useEffect(() => {
+    trackOnce("landing_view", "landing_view", { lang: getLang() });
   }, []);
 
   return (
@@ -280,7 +291,10 @@ export default function Landing({ onStart }: { onStart?: () => void }) {
         </div>
 
         <button
-          onClick={onStart}
+          onClick={() => {
+            void trackEvent("landing_cta_click", { placement: "hero" });
+            onStart?.("hero");
+          }}
           style={{
             padding: "14px 40px", borderRadius: 10, border: "none",
             background: "linear-gradient(135deg, #8b7355, #6b5a42)", color: "#fff",
@@ -292,7 +306,7 @@ export default function Landing({ onStart }: { onStart?: () => void }) {
         </button>
 
         <p style={{ fontSize: 11, color: "#ffffff33", marginTop: 16 }}>
-          {t("landing.cta_footer")}
+          {freeFooter}
         </p>
 
         <div style={{
@@ -428,7 +442,10 @@ export default function Landing({ onStart }: { onStart?: () => void }) {
           {t("landing.final_subtitle")}
         </p>
         <button
-          onClick={onStart}
+          onClick={() => {
+            void trackEvent("landing_cta_click", { placement: "final" });
+            onStart?.("final");
+          }}
           style={{
             padding: "16px 48px", borderRadius: 10, border: "none",
             background: "linear-gradient(135deg, #8b7355, #6b5a42)", color: "#fff",

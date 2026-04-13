@@ -13,3 +13,4 @@ export { SettingsModal } from './modals/SettingsModal';
 export { PrivacyModal } from './modals/PrivacyModal';
 export { IntroAnimation } from './modals/IntroAnimation';
 export { AdminDashboard } from './modals/AdminDashboard';
+export { ResetPasswordPage } from './ResetPasswordPage';

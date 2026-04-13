@@ -21,6 +21,7 @@ import { useIsMobile } from '@/hooks/useIsMobile';
 import { t } from '@/lib/i18n';
 import { extractPdfText, exportChatToPdf } from '@/lib/pdfUtils';
 import type { Message, Attachment } from '@/types';
+import { trackEvent } from '@/lib/analytics';
 
 const MAX_FILE_SIZE       = 3 * 1024 * 1024;
 const MAX_PDF_SIZE        = 10 * 1024 * 1024; // 10MB para PDFs
@@ -145,7 +146,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
     setIsTyping, addMessage, createSession, writerMode, setWriterMode,
     trimMessages, customInstructions,
   } = useChatStore();
-  const { canSendMessage, incrementMessages, getRemainingMessages, user } = useAuthStore();
+  const { canSendMessage, incrementMessages, getRemainingMessages, refreshProfile, user } = useAuthStore();
   const isProfileLoading = !!(user as any)?._temporary;
   const [input, setInput]               = useState('');
   const [streamingContent, setStreaming] = useState('');
@@ -168,6 +169,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
   const messages      = activeSession?.messages || [];
   const charLimit     = APP_CONFIG.freeCharLimit;
   const remaining     = getRemainingMessages();
+  const freeLimit     = user?.messages_limit && user.messages_limit > 0 ? user.messages_limit : FREE_LIMIT;
   const character     = AI_CHARACTERS.find((c) => c.id === selectedCharacter) || AI_CHARACTERS[0];
   const userPlan      = user?.plan || 'free';
   const isFree        = !user?.plan || user.plan === 'free';
@@ -305,10 +307,22 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
 
   // extractPdfText viejo ELIMINADO — ahora viene de @/lib/pdfUtils
 
+  const trackMessageMilestone = (nextUsed: number) => {
+    if (!isFree) return;
+    if (nextUsed === 1) void trackEvent('chat_milestone_1', { remaining: Math.max(0, freeLimit - nextUsed), limit: freeLimit });
+    if (nextUsed === 3) void trackEvent('chat_milestone_3', { remaining: Math.max(0, freeLimit - nextUsed), limit: freeLimit });
+    if (nextUsed === 5) void trackEvent('chat_milestone_5', { remaining: Math.max(0, freeLimit - nextUsed), limit: freeLimit });
+  };
+
   const doSend = async (overrideMessages?: Message[], overrideInput?: string) => {
     const textToSend = overrideInput !== undefined ? overrideInput : input;
     if ((!textToSend.trim() && !attachment) || isTyping) return;
-    if (!canSendMessage()) { onOpenPricing(); return; }
+    if (isProfileLoading) return;
+    if (!canSendMessage()) {
+      void trackEvent('free_limit_blocked', { reason: 'precheck', remaining, limit: freeLimit });
+      onOpenPricing();
+      return;
+    }
 
     let sessionId = activeSessionId;
     if (!sessionId) sessionId = createSession();
@@ -329,8 +343,6 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
     setIsTyping(true);
     setStreaming('');
     setStreamChunks(0);
-    incrementMessages();
-
     const controller = new AbortController();
     abortRef.current = controller;
 
@@ -358,10 +370,13 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
           if (chunkCounter % 3 === 0) setStreamChunks(c => c + 1);
         },
         () => {
+          const nextUsed = Math.min((user?.messages_used || 0) + 1, freeLimit);
           addMessage(sessionId!, {
             id: generateId(), role: 'assistant', content: fullResponse,
             timestamp: Date.now(), model: selectedModel, character: selectedCharacter,
           });
+          incrementMessages();
+          trackMessageMilestone(nextUsed);
           setStreaming('');
           setIsTyping(false);
         },
@@ -369,10 +384,13 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
       );
     } catch (error: unknown) {
       if (error instanceof Error && error.name === 'AbortError') {
+        refreshProfile().catch(() => {});
         setStreaming(''); setIsTyping(false); return;
       }
 
       if (isLimitError(error)) {
+        refreshProfile().catch(() => {});
+        void trackEvent('free_limit_blocked', { reason: 'stream_limit', remaining, limit: freeLimit });
         const limitMsg = 'Has alcanzado el límite de mensajes. Actualiza tu plan para continuar.';
         addMessage(sessionId!, { id: generateId(), role: 'assistant', content: limitMsg, timestamp: Date.now() });
         setStreaming(''); setIsTyping(false);
@@ -381,8 +399,15 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
 
       try {
         const response = await sendMessage(msgsToSend, selectedModel, selectedCharacter);
+        const nextUsed = Math.min((user?.messages_used || 0) + 1, freeLimit);
         addMessage(sessionId!, { id: generateId(), role: 'assistant', content: response, timestamp: Date.now(), model: selectedModel, character: selectedCharacter });
+        incrementMessages();
+        trackMessageMilestone(nextUsed);
       } catch (err: unknown) {
+        refreshProfile().catch(() => {});
+        if (isLimitError(err)) {
+          void trackEvent('free_limit_blocked', { reason: 'fallback_limit', remaining, limit: freeLimit });
+        }
         const errorMsg = isLimitError(err)
           ? 'Has alcanzado el límite de mensajes. Actualiza tu plan para continuar.'
           : t('chat.error');
@@ -602,7 +627,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
                       {input.length}/{charLimit}
                     </span>
                     {isFree && remaining < 999 && (
-                      <MessageProgressCircle remaining={remaining} total={FREE_LIMIT} onClick={onOpenPricing} />
+                      <MessageProgressCircle remaining={remaining} total={freeLimit} onClick={onOpenPricing} />
                     )}
                     {isTyping ? (
                       <button onClick={stopGeneration} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 34, height: 34, background: 'var(--danger)', border: 'none', borderRadius: '50%', cursor: 'pointer' }}>

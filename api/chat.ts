@@ -26,7 +26,12 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 // ═══════════════════════════════════════
 // v5: Admin watchlist — notificar si un usuario vigilado está activo
 // ═══════════════════════════════════════
-const ADMIN_EMAILS = new Set(['ninodeguzmanstudio@gmail.com']);
+const ADMIN_EMAILS = new Set(
+  (process.env.ADMIN_EMAILS || process.env.VITE_ADMIN_EMAILS || 'ninodeguzmanstudio@gmail.com')
+    .split(',')
+    .map(email => email.trim().toLowerCase())
+    .filter(Boolean)
+);
 
 async function notifyAdminIfWatched(userId: string, userEmail: string, firstMsgPreview: string): Promise<void> {
   try {
@@ -471,6 +476,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const plan = typeof profile.plan === 'string' ? profile.plan : 'free';
   const isPremium = PREMIUM_PLANS.has(plan);
+  const freeLimit = typeof profile.messages_limit === 'number' && profile.messages_limit > 0
+    ? profile.messages_limit
+    : FREE_LIMIT;
 
   // ── Verificar expiración ──
   if (isPremium && profile.plan_expires_at) {
@@ -484,7 +492,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   // ── Límite mensajes gratis ──
-  if (!isPremium && profile.messages_used >= FREE_LIMIT) {
+  if (!isPremium && profile.messages_used >= freeLimit) {
     return res.status(403).json({ error: 'Has alcanzado el límite de mensajes gratuitos.', code: 'FREE_LIMIT_REACHED' });
   }
 

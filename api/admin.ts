@@ -15,9 +15,12 @@ const SUPABASE_URL         = process.env.VITE_SUPABASE_URL || process.env.SUPABA
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
-const ADMIN_EMAILS = new Set([
-  'ninodeguzmanstudio@gmail.com',
-]);
+const ADMIN_EMAILS = new Set(
+  (process.env.ADMIN_EMAILS || process.env.VITE_ADMIN_EMAILS || 'ninodeguzmanstudio@gmail.com')
+    .split(',')
+    .map(email => email.trim().toLowerCase())
+    .filter(Boolean)
+);
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'GET' && req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
@@ -401,6 +404,60 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const totalImagestoday = (imgUsers || []).reduce((s, u) => s + (u.images_today || 0), 0);
 
+    let funnel = {
+      periodDays: 7,
+      landingUsers: 0,
+      authUsers: 0,
+      activatedUsers: 0,
+      engagedUsers: 0,
+      paywallUsers: 0,
+      limitUsers: 0,
+    };
+
+    try {
+      const funnelEvents = [
+        'landing_view',
+        'auth_opened',
+        'auth_success',
+        'chat_milestone_1',
+        'chat_milestone_5',
+        'pricing_opened',
+        'promo_opened',
+        'free_limit_blocked',
+      ];
+
+      const { data: productEvents } = await supabase
+        .from('product_events')
+        .select('event_name, user_id, device_id, email')
+        .gte('created_at', weekAgo)
+        .in('event_name', funnelEvents)
+        .order('created_at', { ascending: false })
+        .limit(5000);
+
+      const identityOf = (evt: any) => evt.user_id || evt.device_id || evt.email || null;
+      const countUnique = (names: string[]) => {
+        const ids = new Set(
+          (productEvents || [])
+            .filter(evt => names.includes(evt.event_name))
+            .map(identityOf)
+            .filter(Boolean)
+        );
+        return ids.size;
+      };
+
+      funnel = {
+        periodDays: 7,
+        landingUsers: countUnique(['landing_view']),
+        authUsers: countUnique(['auth_opened', 'auth_success']),
+        activatedUsers: countUnique(['chat_milestone_1']),
+        engagedUsers: countUnique(['chat_milestone_5']),
+        paywallUsers: countUnique(['pricing_opened', 'promo_opened']),
+        limitUsers: countUnique(['free_limit_blocked']),
+      };
+    } catch (funnelErr) {
+      console.warn('[Admin] product_events no disponible:', funnelErr);
+    }
+
     return res.status(200).json({
       overview: {
         totalUsers:     totalUsers || 0,
@@ -419,6 +476,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       },
       // FIX [1]: Lista de usuarios activos con email
       activeUsers: activeUsersList,
+      funnel,
       plans: planCounts,
       topics: topTopics,
       recentMessages: (recentMessages || []).slice(0, 20).map(m => ({

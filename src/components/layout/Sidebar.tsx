@@ -10,9 +10,12 @@ import { useChatStore, useAuthStore } from '@/lib/store';
 import { useIsMobile } from '@/hooks/useIsMobile';
 import { t } from '@/lib/i18n';
 
-const ADMIN_EMAILS = new Set([
-  'ninodeguzmanstudio@gmail.com',
-]);
+const ADMIN_EMAILS = new Set(
+  ((import.meta.env.VITE_ADMIN_EMAILS as string | undefined) || 'ninodeguzmanstudio@gmail.com')
+    .split(',')
+    .map(email => email.trim().toLowerCase())
+    .filter(Boolean)
+);
 
 interface SidebarProps {
   onOpenPricing?: () => void;

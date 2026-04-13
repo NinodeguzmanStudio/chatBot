@@ -255,6 +255,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
 
   const o = data?.overview || {};
   const r = data?.revenue || {};
+  const funnel = data?.funnel || {};
 
   const StatCard = ({ icon, label, value, color = 'var(--txt-pri)', sub }: any) => (
     <div style={{
@@ -371,6 +372,42 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
               <StatCard icon={<DollarSign size={13} color="#f59e0b" />} label="Revenue total" value={`$${r.total}`} color="#f59e0b" sub={`${r.paymentsCount} pagos`} />
               <StatCard icon={<DollarSign size={13} color="#4ade80" />} label="Este mes" value={`$${r.thisMonth}`} color="#4ade80" />
             </div>
+
+            {!!funnel.periodDays && (
+              <div style={{
+                background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)',
+                borderRadius: 10, padding: 14, marginBottom: 12,
+              }}>
+                <div style={{ fontSize: 10, color: '#ffffff55', textTransform: 'uppercase', marginBottom: 10 }}>
+                  Embudo producto · últimos {funnel.periodDays} días
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(3, 1fr)', gap: 8 }}>
+                  {[
+                    { label: 'Landing', value: funnel.landingUsers || 0, color: '#d4c5b0' },
+                    { label: 'Auth', value: funnel.authUsers || 0, color: '#60a5fa' },
+                    { label: '1er mensaje', value: funnel.activatedUsers || 0, color: '#4ade80' },
+                    { label: '5 mensajes', value: funnel.engagedUsers || 0, color: '#c084fc' },
+                    { label: 'Vio paywall', value: funnel.paywallUsers || 0, color: '#f59e0b' },
+                    { label: 'Tocó límite', value: funnel.limitUsers || 0, color: '#ef4444' },
+                  ].map((item) => (
+                    <div key={item.label} style={{
+                      background: 'rgba(255,255,255,0.03)',
+                      border: '1px solid rgba(255,255,255,0.05)',
+                      borderRadius: 8,
+                      padding: '10px 12px',
+                    }}>
+                      <div style={{ fontSize: 10, color: '#ffffff55', marginBottom: 6 }}>{item.label}</div>
+                      <div style={{ fontSize: 22, fontWeight: 700, color: item.color }}>{item.value}</div>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ fontSize: 10, color: '#ffffff33', marginTop: 10, lineHeight: 1.6 }}>
+                  Conversión landing→auth: {funnel.landingUsers ? Math.round((funnel.authUsers || 0) / funnel.landingUsers * 100) : 0}% ·
+                  auth→1er mensaje: {funnel.authUsers ? Math.round((funnel.activatedUsers || 0) / funnel.authUsers * 100) : 0}% ·
+                  1er→5 mensajes: {funnel.activatedUsers ? Math.round((funnel.engagedUsers || 0) / funnel.activatedUsers * 100) : 0}%
+                </div>
+              </div>
+            )}
 
             {/* Plan breakdown */}
             {data.plans && (

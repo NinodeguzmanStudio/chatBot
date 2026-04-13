@@ -8,7 +8,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient } from '@supabase/supabase-js';
 import crypto from 'crypto';
 
-const MP_ACCESS_TOKEN      = process.env.MP_ACCESS_TOKEN!;
+const MP_ACCESS_TOKEN      = (process.env.MP_ACCESS_TOKEN || process.env.MERCADOPAGO_ACCESS_TOKEN)!;
 const MP_WEBHOOK_SECRET    = process.env.MP_WEBHOOK_SECRET || '';
 const SUPABASE_URL         = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL!;
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;

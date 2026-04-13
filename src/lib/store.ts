@@ -27,6 +27,13 @@ import { APP_CONFIG } from '@/lib/constants';
 // FIX v3 [5]: Lee de APP_CONFIG en vez de hardcodear 12
 const FREE_LIMIT = APP_CONFIG.freeMessageLimit;
 
+function getUserFreeLimit(user: UserProfile | null | undefined): number {
+  if (typeof user?.messages_limit === 'number' && user.messages_limit > 0) {
+    return user.messages_limit;
+  }
+  return FREE_LIMIT;
+}
+
 interface ChatState {
   sessions: ChatSession[];
   activeSessionId: string | null;
@@ -237,21 +244,18 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   // FIX v3 [3]: NO incrementar si perfil temporal
-  // FIX v4: Persistir en Supabase además de en memoria
+  // El backend ya es la fuente de verdad para el conteo real.
+  // Aquí solo reflejamos el cambio en memoria para mantener la UI responsiva.
   incrementMessages: () => {
     const { user } = get();
     if (user) {
       if ((user as any)._temporary) return;
-      const updated = { ...user, messages_used: (user.messages_used || 0) + 1 };
+      const limit = getUserFreeLimit(user);
+      const updated = {
+        ...user,
+        messages_used: Math.min((user.messages_used || 0) + 1, limit),
+      };
       set({ user: updated });
-      // Persistir en BD (sin await — no bloquear el chat)
-      supabase
-        .from('profiles')
-        .update({ messages_used: updated.messages_used })
-        .eq('id', user.id)
-        .then(({ error }) => {
-          if (error) console.warn('[Store] No se pudo guardar messages_used en BD:', error.message);
-        });
       return;
     }
     if (get().isInBonusMode()) {
@@ -272,7 +276,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         get().refreshProfile();
         return false;
       }
-      return (user.messages_used || 0) < FREE_LIMIT;
+      return (user.messages_used || 0) < getUserFreeLimit(user);
     }
     const bonusActive = wasBonusGiven();
     if (bonusActive) return getBonusMessagesUsed() < FREE_LIMIT;
@@ -286,7 +290,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
     if (user) {
       if ((user as any)._temporary) return 0;
-      return Math.max(0, FREE_LIMIT - (user.messages_used || 0));
+      return Math.max(0, getUserFreeLimit(user) - (user.messages_used || 0));
     }
     const bonusActive = wasBonusGiven();
     if (bonusActive) return Math.max(0, FREE_LIMIT - getBonusMessagesUsed());
@@ -302,7 +306,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     if (isPremiumPlan(user?.plan)) return false;
     if (user) {
       if ((user as any)._temporary) return false;
-      return (user.messages_used || 0) >= FREE_LIMIT && !wasBonusGiven();
+      return (user.messages_used || 0) >= getUserFreeLimit(user) && !wasBonusGiven();
     }
     return getDeviceMessagesUsed() >= FREE_LIMIT && !wasBonusGiven();
   },

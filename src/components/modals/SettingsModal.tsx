@@ -71,6 +71,9 @@ export const SettingsModal: React.FC<{ isOpen: boolean; onClose: () => void; onO
 
   const plan        = user?.plan || 'free';
   const isPremium   = plan !== 'free';
+  const freeLimit   = user?.messages_limit && user.messages_limit > 0
+    ? user.messages_limit
+    : APP_CONFIG.freeMessageLimit;
   const expiresAt   = (user as any)?.plan_expires_at || null;
   const daysLeft    = getDaysRemaining(expiresAt);
   const isExpiringSoon = daysLeft !== null && daysLeft <= 7 && daysLeft > 0;
@@ -92,6 +95,7 @@ export const SettingsModal: React.FC<{ isOpen: boolean; onClose: () => void; onO
     setUser(null);
     setAuthenticated(false);
     localStorage.removeItem('aidark_authenticated');
+    localStorage.removeItem('aidark_auth_intent');
     localStorage.removeItem('aidark_age_verified');
     localStorage.removeItem('aidark_fp_msgs');
     localStorage.removeItem('aidark_fp_date');
@@ -301,7 +305,7 @@ export const SettingsModal: React.FC<{ isOpen: boolean; onClose: () => void; onO
 
                 {plan === 'free' && (
                   <div style={{ fontSize: 11, color: 'var(--txt-sec)', lineHeight: 1.6 }}>
-                    12 mensajes diarios · Sin imágenes · Historial 7 días
+                    {freeLimit} mensajes diarios · Sin imágenes · Historial 7 días
                   </div>
                 )}
               </div>
@@ -344,7 +348,7 @@ export const SettingsModal: React.FC<{ isOpen: boolean; onClose: () => void; onO
                   Incluido en tu plan
                 </div>
                 {(plan === 'free'
-                  ? ['12 mensajes/día', 'Historial 7 días', '3 personajes básicos']
+                  ? [`${freeLimit} mensajes/día`, 'Historial 7 días', '3 personajes básicos']
                   : ['Mensajes ilimitados', 'Historial 90 días', 'Todos los personajes', 'Generación de imágenes sin censura']
                 ).map((feature, i) => (
                   <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5 }}>

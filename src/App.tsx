@@ -20,7 +20,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { Sidebar, Header, ChatArea, AgeGate, PricingModal, PromoModal, SettingsModal, PrivacyModal, AuthModal, AdminDashboard } from '@/components';
+import { Sidebar, Header, ChatArea, AgeGate, PricingModal, PromoModal, SettingsModal, PrivacyModal, AuthModal, AdminDashboard, ResetPasswordPage } from '@/components';
 import { useAuthStore, useChatStore } from '@/lib/store';
 import { supabase } from '@/lib/supabase';
 import { useIsMobile } from '@/hooks/useIsMobile';
@@ -28,6 +28,9 @@ import { LegalPages } from '@/components/LegalPages';
 import Landing from '@/components/Landing';
 import { InstallBanner } from '@/components/modals/InstallBanner';
 import { APP_CONFIG } from '@/lib/constants';
+import { trackEvent, trackOnce } from '@/lib/analytics';
+
+const AUTH_INTENT_KEY = 'aidark_auth_intent';
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
@@ -216,6 +219,7 @@ let lastProcessedUserId: string | null = null;
 
 async function processSession(session: any, setUser: any, setAuthenticated: any, loadFromSupabase: any) {
   const userId = session.user.id;
+  const hadAuthIntent = localStorage.getItem(AUTH_INTENT_KEY) === 'true';
 
   if (lastProcessedUserId === userId) return;
   lastProcessedUserId = userId;
@@ -224,7 +228,14 @@ async function processSession(session: any, setUser: any, setAuthenticated: any,
     const profile = await resolveUserProfile(userId, session.user.email || '');
     setUser(profile as any);
     setAuthenticated(true);
+    localStorage.removeItem(AUTH_INTENT_KEY);
     localStorage.setItem('aidark_was_authenticated', 'true');
+    if (hadAuthIntent) {
+      void trackEvent('auth_success', {
+        provider: session.user?.app_metadata?.provider || 'email',
+        temporary_profile: Boolean((profile as any)._temporary),
+      });
+    }
     loadFromSupabase(userId).catch(console.error);
     if (session.access_token) registerPush(session.access_token);
 
@@ -262,10 +273,11 @@ const App: React.FC = () => {
   // Fix: si el usuario ya se autenticó antes, mostrar app inmediatamente
   // mientras el perfil carga en background (evita spinner en usuarios recurrentes)
   const wasAuth = localStorage.getItem('aidark_was_authenticated') === 'true';
+  const hasStoredAuthIntent = localStorage.getItem(AUTH_INTENT_KEY) === 'true';
   const wasAuthRef = useRef(wasAuth); // preservar valor original aunque se borre de localStorage
   const [authComplete, setAuthComplete]   = useState(wasAuth);
   const [authError, setAuthError]         = useState('');
-  const [showAuth, setShowAuth]           = useState(false);
+  const [showAuth, setShowAuth]           = useState(wasAuth || hasStoredAuthIntent || window.location.search.includes('code='));
 
   // ══════════════════════════════════════════════════════
   // FIX CRÍTICO — sessionChecked
@@ -301,19 +313,28 @@ const App: React.FC = () => {
 
   // Limpiar auth directamente sin pasar por done()
   const signOutCleanup = () => {
+    localStorage.removeItem(AUTH_INTENT_KEY);
     localStorage.removeItem('aidark_was_authenticated');
     wasAuthRef.current = false; // reset para que al volver vea Landing
     lastProcessedUserId = null;
     clearAllAuthState(setUser, setAuthenticated);
     doneRef.current = false;
+    setShowAuth(false);
     setSessionChecked(true);
     setAuthComplete(true);
     setLoading(false);
   };
 
+  const openAuth = (source: string = 'app') => {
+    localStorage.setItem(AUTH_INTENT_KEY, 'true');
+    setShowAuth(true);
+    void trackEvent('auth_opened', { source });
+  };
+
   useEffect(() => {
     if (initialized.current) return;
     initialized.current = true;
+    trackOnce('app_open', 'app_open', { was_authenticated: wasAuth });
 
     // Si venimos de OAuth redirect con ?code= y NO tenemos sesión previa,
     // forzar authComplete = false para mostrar spinner mientras se procesa PKCE
@@ -416,13 +437,19 @@ const App: React.FC = () => {
         <Route path="/payment/success" element={<PaymentSuccess />} />
         <Route path="/payment/failure" element={<PaymentFailure />} />
         <Route path="/payment/pending" element={<PaymentPending />} />
+        <Route path="/reset-password" element={<ResetPasswordPage />} />
         <Route path="/legal" element={<LegalPages />} />
 
         <Route path="*" element={
           !isAuthenticated && !showAuth
-            ? <Landing onStart={() => setShowAuth(true)} />
+            ? <Landing onStart={openAuth} />
             : !isAuthenticated
-              ? <AuthModal onSuccess={() => { doneRef.current = true; setSessionChecked(true); setAuthComplete(true); }} initialError={authError} />
+              ? <AuthModal onSuccess={() => {
+                  localStorage.removeItem(AUTH_INTENT_KEY);
+                  doneRef.current = true;
+                  setSessionChecked(true);
+                  setAuthComplete(true);
+                }} initialError={authError} />
               : !isAgeVerified
                 ? <AgeGate />
                 : <ChatLayout />

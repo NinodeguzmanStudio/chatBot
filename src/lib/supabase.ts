@@ -76,7 +76,7 @@ export async function getUserProfile(userId: string) {
 
 export async function incrementMessageCount(userId: string) {
   const { error } = await supabase.rpc('increment_message_count', {
-    user_id: userId,
+    p_user_id: userId,
   });
   if (error) throw error;
 }

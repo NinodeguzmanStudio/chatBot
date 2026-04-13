@@ -44,13 +44,15 @@ export function getPromptGallery(): PromptItem[] {
 }
 export const PROMPT_GALLERY = getPromptGallery();
 
+const DEFAULT_FREE_MESSAGE_LIMIT = Number(import.meta.env.VITE_FREE_MESSAGE_LIMIT) || 12;
+
 export const PRICING_PLANS: PricingPlan[] = [
   {
     id: 'free',
     name: 'Free',
     price: '$0',
     period: '',
-    features: ['12 consultas diarias', '3 personajes', 'Chat básico'],
+    features: [`${DEFAULT_FREE_MESSAGE_LIMIT} consultas diarias`, '3 personajes', 'Chat básico'],
   },
   {
     id: 'basic_monthly',
@@ -86,7 +88,7 @@ export const APP_CONFIG = {
   name:             'AIdark',
   tagline:          'IA Sin Censura',
   version:          '0.3.0-beta',
-  freeMessageLimit: Number(import.meta.env.VITE_FREE_MESSAGE_LIMIT) || 12,
+  freeMessageLimit: DEFAULT_FREE_MESSAGE_LIMIT,
   freeCharLimit:    2000,
   appUrl:           import.meta.env.VITE_APP_URL || 'http://localhost:3000',
 };

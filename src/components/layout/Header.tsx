@@ -7,15 +7,19 @@ import { PanelLeft, Plus, Star, Menu } from 'lucide-react';
 import { useChatStore, useAuthStore } from '@/lib/store';
 import { useIsMobile } from '@/hooks/useIsMobile';
 import { LanguageSelector } from '@/components/chat/LanguageSelector';
+import { APP_CONFIG } from '@/lib/constants';
 import { t } from '@/lib/i18n';
 
 interface HeaderProps { onOpenPricing: () => void; }
 
 export const Header: React.FC<HeaderProps> = ({ onOpenPricing }) => {
   const { sidebarOpen, setSidebarOpen, createSession } = useChatStore();
-  const { getRemainingMessages } = useAuthStore();
+  const { getRemainingMessages, user } = useAuthStore();
   const isMobile = useIsMobile();
   const remaining = getRemainingMessages();
+  const freeLimit = user?.messages_limit && user.messages_limit > 0
+    ? user.messages_limit
+    : APP_CONFIG.freeMessageLimit;
 
   return (
     <div style={{
@@ -61,7 +65,7 @@ export const Header: React.FC<HeaderProps> = ({ onOpenPricing }) => {
             background: remaining <= 2 ? 'rgba(160,81,59,0.1)' : 'var(--bg-el)',
             color: remaining <= 2 ? 'var(--danger)' : 'var(--txt-mut)',
           }}>
-            {remaining >= 999 ? t('app.unlimited') : `${remaining}/5`} {t('app.today')}
+            {remaining >= 999 ? t('app.unlimited') : `${remaining}/${freeLimit}`} {t('app.today')}
           </span>
         )}
         {/* Language selector — solo desktop (en mobile va en Ajustes) */}
