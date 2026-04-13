@@ -23,14 +23,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const { subscription } = req.body;
   if (!subscription?.endpoint) return res.status(400).json({ error: 'Suscripción inválida' });
 
-  // Guardar o actualizar suscripción
-  await supabase.from('push_subscriptions').upsert({
+  // Guardar o actualizar suscripción por endpoint.
+  // La tabla tiene UNIQUE(endpoint), no UNIQUE(user_id).
+  const { error: subError } = await supabase.from('push_subscriptions').upsert({
     user_id: user.id,
     endpoint: subscription.endpoint,
     p256dh: subscription.keys?.p256dh || '',
     auth: subscription.keys?.auth || '',
     updated_at: new Date().toISOString(),
-  }, { onConflict: 'user_id' });
+  }, { onConflict: 'endpoint' });
+
+  if (subError) {
+    console.error('[PushSubscribe] Error guardando suscripción:', subError);
+    return res.status(500).json({ error: 'No se pudo guardar la suscripción push.' });
+  }
 
   return res.status(200).json({ ok: true });
 }

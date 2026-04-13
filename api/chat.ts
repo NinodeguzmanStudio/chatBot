@@ -33,6 +33,30 @@ const ADMIN_EMAILS = new Set(
     .filter(Boolean)
 );
 
+function getHeader(req: VercelRequest, name: string): string {
+  const value = req.headers[name];
+  if (Array.isArray(value)) return value[0] || '';
+  return typeof value === 'string' ? value : '';
+}
+
+function getClientIp(req: VercelRequest): string {
+  const forwarded = getHeader(req, 'x-forwarded-for');
+  if (forwarded) return forwarded.split(',')[0]?.trim() || '';
+  return getHeader(req, 'x-real-ip');
+}
+
+function buildRequestMeta(req: VercelRequest, extra: Record<string, string | number | boolean | null> = {}) {
+  return {
+    geo_country: getHeader(req, 'x-vercel-ip-country').slice(0, 8),
+    geo_region: getHeader(req, 'x-vercel-ip-country-region').slice(0, 80),
+    geo_city: getHeader(req, 'x-vercel-ip-city').slice(0, 120),
+    ip: getClientIp(req).slice(0, 120),
+    user_agent: getHeader(req, 'user-agent').slice(0, 300),
+    referrer: getHeader(req, 'referer').slice(0, 300),
+    ...extra,
+  };
+}
+
 async function notifyAdminIfWatched(userId: string, userEmail: string, firstMsgPreview: string): Promise<void> {
   try {
     // 1. Actualizar last_seen
@@ -467,7 +491,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // ── Perfil ──
   const { data: profile, error: profileError } = await supabase
     .from('profiles')
-    .select('plan, messages_used, messages_limit, plan_expires_at')
+    .select('plan, messages_used, messages_limit, plan_expires_at, last_seen')
     .eq('id', user.id)
     .single();
   if (profileError || !profile) {
@@ -607,6 +631,28 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // Solo se cuenta si el proveedor respondió OK
       // ═══════════════════════════════════════
       try { await supabase.rpc('increment_message_count', { p_user_id: user.id }); } catch { /* no crítico */ }
+
+      const lastSeenAt = profile.last_seen ? new Date(profile.last_seen) : null;
+      const shouldTrackActivity = !lastSeenAt || (Date.now() - lastSeenAt.getTime()) > 10 * 60 * 1000;
+      if (shouldTrackActivity) {
+        try {
+          await supabase.from('product_events').insert({
+            event_name: 'chat_activity',
+            user_id: user.id,
+            email: user.email || null,
+            plan,
+            device_id: null,
+            path: '/chat',
+            meta: buildRequestMeta(req, {
+              source: 'chat_api',
+              lang: userLang,
+              character: charId,
+            }),
+          });
+        } catch {
+          /* no crítico */
+        }
+      }
 
       // v5: Notificar admin si este usuario está en watchlist
       const lastUserMsg = userMessages.filter(m => m.role === 'user').pop();

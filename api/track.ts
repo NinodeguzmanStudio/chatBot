@@ -27,6 +27,18 @@ const ALLOWED_EVENTS = new Set([
   'free_limit_blocked',
 ]);
 
+function getHeader(req: VercelRequest, name: string): string {
+  const value = req.headers[name];
+  if (Array.isArray(value)) return value[0] || '';
+  return typeof value === 'string' ? value : '';
+}
+
+function getClientIp(req: VercelRequest): string {
+  const forwarded = getHeader(req, 'x-forwarded-for');
+  if (forwarded) return forwarded.split(',')[0]?.trim() || '';
+  return getHeader(req, 'x-real-ip');
+}
+
 function sanitizeProps(input: unknown): Record<string, string | number | boolean> {
   const out: Record<string, string | number | boolean> = {};
   if (!input || typeof input !== 'object' || Array.isArray(input)) return out;
@@ -47,6 +59,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const { event, deviceId, path, props } = req.body || {};
   const safeEvent = typeof event === 'string' ? event.trim() : '';
+  const safeProps = sanitizeProps(props);
+  const requestMeta = {
+    ...safeProps,
+    geo_country: getHeader(req, 'x-vercel-ip-country').slice(0, 8),
+    geo_region: getHeader(req, 'x-vercel-ip-country-region').slice(0, 80),
+    geo_city: getHeader(req, 'x-vercel-ip-city').slice(0, 120),
+    ip: getClientIp(req).slice(0, 120),
+    user_agent: getHeader(req, 'user-agent').slice(0, 300),
+    referrer: getHeader(req, 'referer').slice(0, 300),
+  };
 
   if (!ALLOWED_EVENTS.has(safeEvent)) {
     return res.status(400).json({ error: 'Evento no permitido.' });
@@ -69,6 +91,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         .eq('id', user.id)
         .single();
       plan = profile?.plan || null;
+
+      await supabase
+        .from('profiles')
+        .update({
+          last_seen: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', user.id);
     }
   }
 
@@ -80,7 +110,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       plan,
       device_id: typeof deviceId === 'string' ? deviceId.slice(0, 120) : null,
       path: typeof path === 'string' ? path.slice(0, 200) : '/',
-      meta: sanitizeProps(props),
+      meta: requestMeta,
     });
   } catch (err) {
     console.error('[Track] Error guardando evento:', err);

@@ -25,7 +25,11 @@ function normalizeProps(props: AnalyticsProps = {}): Record<string, string | num
 export async function trackEvent(event: string, props: AnalyticsProps = {}): Promise<void> {
   if (typeof window === 'undefined') return;
 
-  const normalized = normalizeProps(props);
+  const normalized = {
+    locale: navigator.language || '',
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || '',
+    ...normalizeProps(props),
+  };
   const payload = {
     event,
     path: window.location.pathname,

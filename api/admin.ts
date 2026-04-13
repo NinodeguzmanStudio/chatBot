@@ -21,6 +21,83 @@ function hasActivePremiumAccess(plan: string | null | undefined, planExpiresAt: 
   return new Date(planExpiresAt) > now;
 }
 
+function getMetaString(meta: unknown, key: string): string | null {
+  if (!meta || typeof meta !== 'object' || Array.isArray(meta)) return null;
+  const value = (meta as Record<string, unknown>)[key];
+  if (value === null || value === undefined) return null;
+  const text = String(value).trim();
+  return text ? text : null;
+}
+
+function normalizeEventContext(event: any) {
+  return {
+    country: getMetaString(event?.meta, 'geo_country'),
+    region: getMetaString(event?.meta, 'geo_region'),
+    city: getMetaString(event?.meta, 'geo_city'),
+    ip: getMetaString(event?.meta, 'ip'),
+    locale: getMetaString(event?.meta, 'locale'),
+    timezone: getMetaString(event?.meta, 'timezone'),
+    user_agent: getMetaString(event?.meta, 'user_agent'),
+    referrer: getMetaString(event?.meta, 'referrer'),
+    last_path: event?.path || getMetaString(event?.meta, 'path'),
+    last_event_name: event?.event_name || null,
+    last_event_at: event?.created_at || null,
+  };
+}
+
+async function fetchLatestContextMap(userIds: string[]): Promise<Map<string, any>> {
+  const contextMap = new Map<string, any>();
+  if (!userIds.length) return contextMap;
+
+  const { data: events, error } = await supabase
+    .from('product_events')
+    .select('user_id, event_name, path, meta, created_at')
+    .in('user_id', userIds)
+    .order('created_at', { ascending: false })
+    .limit(5000);
+
+  if (error || !events?.length) return contextMap;
+
+  for (const event of events) {
+    if (!event.user_id || contextMap.has(event.user_id)) continue;
+    contextMap.set(event.user_id, normalizeEventContext(event));
+  }
+
+  return contextMap;
+}
+
+async function fetchAllMessageLogsForUser(userId: string, maxRows = 10000) {
+  const rows: any[] = [];
+  const batchSize = 1000;
+  let offset = 0;
+  let truncated = false;
+
+  while (rows.length < maxRows) {
+    const upperBound = Math.min(offset + batchSize - 1, maxRows - 1);
+    const { data, error } = await supabase
+      .from('message_logs')
+      .select('original_id, session_id, role, content, model, character, created_at, deleted_from_chat, is_admin_inject')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: true })
+      .range(offset, upperBound);
+
+    if (error) throw error;
+    if (!data?.length) break;
+
+    rows.push(...data);
+
+    if (data.length < batchSize) break;
+    offset += batchSize;
+
+    if (rows.length >= maxRows) {
+      truncated = true;
+      break;
+    }
+  }
+
+  return { rows, truncated };
+}
+
 const ADMIN_EMAILS = new Set(
   (process.env.ADMIN_EMAILS || process.env.VITE_ADMIN_EMAILS || 'ninodeguzmanstudio@gmail.com')
     .split(',')
@@ -182,7 +259,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // 1. Buscar usuario por email
       const { data: profile, error: profileErr } = await supabase
         .from('profiles')
-        .select('id, email, plan, messages_used, created_at, plan_expires_at, mp_subscription_id')
+        .select('id, email, plan, messages_used, created_at, last_seen, plan_expires_at, mp_subscription_id')
         .eq('email', email)
         .single();
 
@@ -190,16 +267,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(404).json({ error: 'Usuario no encontrado con ese email.' });
       }
 
-      // 2. Obtener sesiones únicas de message_logs (incluye sesiones borradas)
-      const { data: logSessions } = await supabase
-        .from('message_logs')
-        .select('session_id')
-        .eq('user_id', profile.id)
-        .order('created_at', { ascending: false })
-        .limit(500);
+      const contextMap = await fetchLatestContextMap([profile.id]);
+      const latestContext = contextMap.get(profile.id) || {};
+      const { rows: logMessages, truncated } = await fetchAllMessageLogsForUser(profile.id);
 
-      // Deduplicar session_ids
-      const uniqueSessionIds = [...new Set((logSessions || []).map(l => l.session_id).filter(Boolean))].slice(0, 20);
+      const uniqueSessionIds = [...new Set((logMessages || []).map((l: any) => l.session_id).filter(Boolean))];
 
       if (uniqueSessionIds.length === 0) {
         return res.status(200).json({
@@ -210,10 +282,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             plan: profile.plan,
             messages_used: profile.messages_used,
             registered: profile.created_at,
+            last_seen: profile.last_seen,
             plan_expires_at: profile.plan_expires_at,
             has_active_premium: hasActivePremiumAccess(profile.plan, profile.plan_expires_at, new Date()),
             mp_subscription_id: profile.mp_subscription_id,
+            ...latestContext,
           },
+          total_sessions: 0,
+          total_messages: 0,
+          history_truncated: truncated,
           sessions: [],
         });
       }
@@ -229,16 +306,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         sessionMap.set(s.id, s);
       }
 
-      // 4. Obtener TODOS los mensajes de message_logs
-      const { data: logMessages } = await supabase
-        .from('message_logs')
-        .select('original_id, session_id, role, content, model, character, created_at, deleted_from_chat, is_admin_inject')
-        .eq('user_id', profile.id)
-        .in('session_id', uniqueSessionIds)
-        .order('created_at', { ascending: true })
-        .limit(1000);
-
-      // 5. Agrupar por sesión
+      // 4. Agrupar por sesión usando el historial completo recuperado
       const messagesBySession = new Map<string, any[]>();
       for (const msg of (logMessages || [])) {
         const list = messagesBySession.get(msg.session_id) || [];
@@ -254,7 +322,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         messagesBySession.set(msg.session_id, list);
       }
 
-      // 6. Construir respuesta
+      // 5. Construir respuesta y ordenar por actividad reciente
       const result = uniqueSessionIds.map(sid => {
         const session = sessionMap.get(sid);
         const msgs = messagesBySession.get(sid) || [];
@@ -267,7 +335,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           deleted: !session,  // la sesión fue borrada
           messages: msgs,
         };
-      });
+      }).sort((a, b) => String(b.updated_at || '').localeCompare(String(a.updated_at || '')));
 
       return res.status(200).json({
         found: true,
@@ -277,10 +345,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           plan: profile.plan,
           messages_used: profile.messages_used,
           registered: profile.created_at,
+          last_seen: profile.last_seen,
           plan_expires_at: profile.plan_expires_at,
           has_active_premium: hasActivePremiumAccess(profile.plan, profile.plan_expires_at, new Date()),
           mp_subscription_id: profile.mp_subscription_id,
+          ...latestContext,
         },
+        total_sessions: result.length,
+        total_messages: logMessages.length,
+        history_truncated: truncated,
         sessions: result,
       });
     } catch (err) {
@@ -399,7 +472,39 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const onlineCount = activeUsersList.filter(u => u.is_online).length;
 
-    // ── 4. Mensajes recientes ──
+    // ── 4.5. Usuarios para exploración admin ──
+    const { data: usersRaw } = await supabase
+      .from('profiles')
+      .select('id, email, plan, plan_expires_at, messages_used, images_today, created_at, last_seen')
+      .order('last_seen', { ascending: false, nullsFirst: false })
+      .order('created_at', { ascending: false })
+      .limit(200);
+
+    const userContextMap = await fetchLatestContextMap((usersRaw || []).map((u: any) => u.id));
+    const users = (usersRaw || []).map((u: any) => {
+      const context = userContextMap.get(u.id) || {};
+      const lastActive = u.last_seen || context.last_event_at || u.created_at;
+      const isOnline = lastActive
+        ? (Date.now() - new Date(lastActive).getTime()) < 15 * 60 * 1000
+        : false;
+
+      return {
+        id: u.id,
+        email: u.email || 'Sin email',
+        plan: u.plan || 'free',
+        plan_expires_at: u.plan_expires_at || null,
+        has_active_premium: hasActivePremiumAccess(u.plan, u.plan_expires_at, now),
+        messages_used: u.messages_used || 0,
+        images_today: u.images_today || 0,
+        registered: u.created_at,
+        last_seen: u.last_seen || null,
+        last_active: lastActive,
+        is_online: isOnline,
+        ...context,
+      };
+    });
+
+    // ── 5. Mensajes recientes ──
     // Leemos desde message_logs para conservar mensajes aunque el chat se borre.
     const { data: recentMessages } = await supabase
       .from('message_logs')
@@ -452,7 +557,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .slice(0, 20)
       .map(([word, count]) => ({ word, count }));
 
-    // ── 5. Planes breakdown ──
+    // ── 6. Planes breakdown ──
     const { data: planBreakdown } = await supabase
       .from('profiles')
       .select('plan')
@@ -463,7 +568,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       planCounts[p.plan] = (planCounts[p.plan] || 0) + 1;
     }
 
-    // ── 6. Imágenes hoy ──
+    // ── 7. Imágenes hoy ──
     const { data: imgUsers } = await supabase
       .from('profiles')
       .select('images_today, images_date')
@@ -538,6 +643,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         activeToday:    activeToday || 0,
         imagesToday:    totalImagestoday,
       },
+      users,
       revenue: {
         total:          Math.round(totalRevenue * 100) / 100,
         thisMonth:      Math.round(monthRevenue * 100) / 100,

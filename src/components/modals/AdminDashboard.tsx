@@ -38,6 +38,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
   const [watchLoading, setWatchLoading] = useState(false);
   const liveFeedRef = useRef<any[]>([]);
   const realtimeChannelRef = useRef<any>(null);
+  const watchlistRef = useRef<any[]>([]);
 
   const fetchData = async () => {
     setLoading(true); setError('');
@@ -65,14 +66,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
   useEffect(() => { if (isOpen) fetchData(); }, [isOpen]);
 
   // NEW v3: Buscar chat logs por email
-  const fetchChatLogs = async () => {
-    if (!searchEmail.trim()) return;
+  const fetchChatLogs = async (emailOverride?: string) => {
+    const targetEmail = (emailOverride ?? searchEmail).trim().toLowerCase();
+    if (!targetEmail) return;
+    setSearchEmail(targetEmail);
     setChatLogsLoading(true); setChatLogsError(''); setChatLogs(null); setExpandedSession(null);
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.access_token) { setChatLogsError('Sesión expirada.'); setChatLogsLoading(false); return; }
 
-      const res = await fetch(`/api/admin?action=chat_logs&email=${encodeURIComponent(searchEmail.trim())}`, {
+      const res = await fetch(`/api/admin?action=chat_logs&email=${encodeURIComponent(targetEmail)}`, {
         headers: { Authorization: `Bearer ${session.access_token}` },
       });
 
@@ -87,6 +90,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
       setChatLogsError('Error de conexión.');
     }
     setChatLogsLoading(false);
+  };
+
+  const openUserHistory = (email: string) => {
+    if (!email?.trim()) return;
+    setTab('chat_logs');
+    void fetchChatLogs(email);
   };
 
   // NEW v4: Inyectar mensaje como AIdark
@@ -145,6 +154,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
       }
     } catch { /* silenciar */ }
   }, []);
+
+  useEffect(() => {
+    watchlistRef.current = watchlist;
+  }, [watchlist]);
 
   const addToWatchlist = async (email: string) => {
     setWatchLoading(true);
@@ -223,7 +236,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
 
           // Browser notification si es un user de la watchlist
           if (msg.role === 'user' && 'Notification' in window && Notification.permission === 'granted') {
-            const isWatched = watchlist.some(w => w.user_id === msg.user_id);
+            const isWatched = watchlistRef.current.some(w => w.user_id === msg.user_id);
             if (isWatched) {
               new Notification(`👁️ ${email}`, {
                 body: msg.content?.slice(0, 100),
@@ -256,6 +269,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
   const o = data?.overview || {};
   const r = data?.revenue || {};
   const funnel = data?.funnel || {};
+  const users = data?.users || [];
+
+  const formatLocation = (item: any) => {
+    const parts = [item?.city, item?.region, item?.country].filter(Boolean);
+    return parts.length > 0 ? parts.join(', ') : 'Ubicación no disponible';
+  };
+
+  const trimText = (value: string | null | undefined, max = 120) => {
+    if (!value) return '';
+    return value.length > max ? `${value.slice(0, max)}...` : value;
+  };
 
   const StatCard = ({ icon, label, value, color = 'var(--txt-pri)', sub }: any) => (
     <div style={{
@@ -451,20 +475,23 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
               <div style={{ fontSize: 10, color: '#ffffff55', textTransform: 'uppercase' }}>
-                Usuarios activos hoy · {(data.activeUsers || []).length} total · {(data.activeUsers || []).filter((u: any) => u.is_online).length} online
+                Usuarios recientes y activos · {users.length} mostrados · {users.filter((u: any) => u.is_online).length} online
               </div>
             </div>
-            {(data.activeUsers || []).length === 0 && (
-              <div style={{ fontSize: 11, color: '#ffffff33', padding: 16, textAlign: 'center' }}>Sin usuarios activos hoy</div>
+            {users.length === 0 && (
+              <div style={{ fontSize: 11, color: '#ffffff33', padding: 16, textAlign: 'center' }}>Sin usuarios para mostrar</div>
             )}
             <div style={{ maxHeight: 400, overflowY: 'auto' }}>
-              {(data.activeUsers || []).map((u: any, i: number) => (
+              {users.map((u: any, i: number) => (
                 <div key={i} style={{
                   display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                   padding: '10px 0',
-                  borderBottom: i < data.activeUsers.length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none',
+                  borderBottom: i < users.length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none',
                 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 }}>
+                  <div
+                    onClick={() => openUserHistory(u.email)}
+                    style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0, cursor: 'pointer' }}
+                  >
                     <div style={{
                       width: 8, height: 8, borderRadius: '50%', flexShrink: 0,
                       background: u.is_online ? '#4ade80' : '#555',
@@ -479,9 +506,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
                         {u.email}
                       </div>
                       <div style={{ fontSize: 9, color: '#ffffff44', marginTop: 2 }}>
-                        {u.is_online ? '🟢 Online ahora' : `Último acceso: ${new Date(u.last_active).toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' })}`}
+                        {u.is_online ? '🟢 Online ahora' : `Último acceso: ${u.last_active ? new Date(u.last_active).toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' }) : 'N/D'}`}
                         {' · '}{u.messages_used} msgs
                         {u.images_today > 0 && ` · ${u.images_today} imgs`}
+                      </div>
+                      <div style={{ fontSize: 9, color: '#ffffff38', marginTop: 2 }}>
+                        {formatLocation(u)}
+                        {u.last_path ? ` · ${u.last_path}` : ''}
                       </div>
                     </div>
                   </div>
@@ -499,7 +530,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
                       <Eye size={10} />
                     </button>
                     <button
-                      onClick={(e) => { e.stopPropagation(); setSearchEmail(u.email); setTab('chat_logs'); fetchChatLogs(); }}
+                      onClick={(e) => { e.stopPropagation(); openUserHistory(u.email); }}
                       title="Ver chat logs"
                       style={{
                         width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -585,7 +616,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
                     </div>
                     <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
                       <button
-                        onClick={() => { setSearchEmail(w.email); setTab('chat_logs'); }}
+                        onClick={() => openUserHistory(w.email)}
                         style={{
                           padding: '4px 8px', borderRadius: 4, border: 'none',
                           background: 'rgba(139,115,85,0.2)', color: '#d4c5b0', fontSize: 9, cursor: 'pointer', fontFamily: 'inherit',
@@ -691,7 +722,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
                   outline: 'none',
                 }}
               />
-              <button onClick={fetchChatLogs} disabled={chatLogsLoading || !searchEmail.trim()} style={{
+              <button onClick={() => { void fetchChatLogs(); }} disabled={chatLogsLoading || !searchEmail.trim()} style={{
                 padding: '8px 16px', borderRadius: 8, border: 'none',
                 background: 'rgba(139,115,85,0.3)', color: '#d4c5b0', fontSize: 11, fontWeight: 600,
                 cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 6,
@@ -721,6 +752,25 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
                 <div style={{ fontSize: 10, color: '#ffffff55', marginTop: 4 }}>
                   Plan: {chatLogs.user.plan} · Mensajes: {chatLogs.user.messages_used} · Registro: {new Date(chatLogs.user.registered).toLocaleDateString('es')}
                 </div>
+                <div style={{ fontSize: 10, color: '#ffffff55', marginTop: 4 }}>
+                  Sesiones: {chatLogs.total_sessions || 0} · Historial: {chatLogs.total_messages || 0} mensajes
+                  {chatLogs.history_truncated ? ' · Historial muy grande, mostrando últimos registros' : ''}
+                </div>
+                <div style={{ fontSize: 10, color: '#ffffff55', marginTop: 4 }}>
+                  Ubicación: {formatLocation(chatLogs.user)}
+                  {chatLogs.user.locale ? ` · Idioma: ${chatLogs.user.locale}` : ''}
+                  {chatLogs.user.timezone ? ` · TZ: ${chatLogs.user.timezone}` : ''}
+                </div>
+                <div style={{ fontSize: 10, color: '#ffffff44', marginTop: 4, lineHeight: 1.5 }}>
+                  {chatLogs.user.ip ? `IP: ${chatLogs.user.ip}` : 'IP: no disponible'}
+                  {chatLogs.user.last_path ? ` · Ruta: ${chatLogs.user.last_path}` : ''}
+                  {chatLogs.user.last_event_name ? ` · Evento: ${chatLogs.user.last_event_name}` : ''}
+                </div>
+                {chatLogs.user.user_agent && (
+                  <div style={{ fontSize: 9, color: '#ffffff33', marginTop: 4, lineHeight: 1.5 }}>
+                    {trimText(chatLogs.user.user_agent, 180)}
+                  </div>
+                )}
               </div>
             )}
 
@@ -892,10 +942,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
                   {msg.session_id && <span>Sesión: {msg.session_id}</span>}
                   {msg.email && msg.email !== 'Sin email' && (
                     <button
-                      onClick={() => {
-                        setSearchEmail(msg.email);
-                        setTab('chat_logs');
-                      }}
+                      onClick={() => openUserHistory(msg.email)}
                       style={{
                         padding: '2px 8px', borderRadius: 4, border: 'none',
                         background: 'rgba(139,115,85,0.2)', color: '#d4c5b0', fontSize: 9,
