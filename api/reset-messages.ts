@@ -42,8 +42,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const now = new Date().toISOString();
-    console.log(`[Reset] ✅ Mensajes reseteados — ${now}`);
-    return res.status(200).json({ success: true, reset_at: now });
+    const { data: expiredProfiles, error: expireError } = await supabase
+      .from('profiles')
+      .update({
+        plan: 'free',
+        updated_at: now,
+      })
+      .neq('plan', 'free')
+      .lt('plan_expires_at', now)
+      .select('id');
+
+    if (expireError) {
+      console.error('[Reset] Error expirando suscripciones:', expireError);
+      return res.status(500).json({ error: expireError.message });
+    }
+
+    console.log(`[Reset] ✅ Mensajes reseteados y ${expiredProfiles?.length || 0} planes vencidos bajados — ${now}`);
+    return res.status(200).json({
+      success: true,
+      reset_at: now,
+      expired_downgraded: expiredProfiles?.length || 0,
+    });
 
   } catch (err: any) {
     console.error('[Reset] Error inesperado:', err);
