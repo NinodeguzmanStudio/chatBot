@@ -15,6 +15,12 @@ const SUPABASE_URL         = process.env.VITE_SUPABASE_URL || process.env.SUPABA
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
+function hasActivePremiumAccess(plan: string | null | undefined, planExpiresAt: string | null | undefined, now: Date): boolean {
+  if (!plan || plan === 'free') return false;
+  if (!planExpiresAt) return false;
+  return new Date(planExpiresAt) > now;
+}
+
 const ADMIN_EMAILS = new Set(
   (process.env.ADMIN_EMAILS || process.env.VITE_ADMIN_EMAILS || 'ninodeguzmanstudio@gmail.com')
     .split(',')
@@ -176,7 +182,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // 1. Buscar usuario por email
       const { data: profile, error: profileErr } = await supabase
         .from('profiles')
-        .select('id, email, plan, messages_used, created_at')
+        .select('id, email, plan, messages_used, created_at, plan_expires_at, mp_subscription_id')
         .eq('email', email)
         .single();
 
@@ -198,7 +204,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (uniqueSessionIds.length === 0) {
         return res.status(200).json({
           found: true,
-          user: { id: profile.id, email: profile.email, plan: profile.plan, messages_used: profile.messages_used, registered: profile.created_at },
+          user: {
+            id: profile.id,
+            email: profile.email,
+            plan: profile.plan,
+            messages_used: profile.messages_used,
+            registered: profile.created_at,
+            plan_expires_at: profile.plan_expires_at,
+            has_active_premium: hasActivePremiumAccess(profile.plan, profile.plan_expires_at, new Date()),
+            mp_subscription_id: profile.mp_subscription_id,
+          },
           sessions: [],
         });
       }
@@ -256,7 +271,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       return res.status(200).json({
         found: true,
-        user: { id: profile.id, email: profile.email, plan: profile.plan, messages_used: profile.messages_used, registered: profile.created_at },
+        user: {
+          id: profile.id,
+          email: profile.email,
+          plan: profile.plan,
+          messages_used: profile.messages_used,
+          registered: profile.created_at,
+          plan_expires_at: profile.plan_expires_at,
+          has_active_premium: hasActivePremiumAccess(profile.plan, profile.plan_expires_at, new Date()),
+          mp_subscription_id: profile.mp_subscription_id,
+        },
         sessions: result,
       });
     } catch (err) {
@@ -277,15 +301,30 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .from('profiles')
       .select('*', { count: 'exact', head: true });
 
+    const nowIso = now.toISOString();
+
     const { count: premiumUsers } = await supabase
       .from('profiles')
       .select('*', { count: 'exact', head: true })
-      .neq('plan', 'free');
+      .neq('plan', 'free')
+      .gt('plan_expires_at', nowIso);
 
     const { count: freeUsers } = await supabase
       .from('profiles')
       .select('*', { count: 'exact', head: true })
       .eq('plan', 'free');
+
+    const { count: expiredPremiumUsers } = await supabase
+      .from('profiles')
+      .select('*', { count: 'exact', head: true })
+      .neq('plan', 'free')
+      .lt('plan_expires_at', nowIso);
+
+    const { count: premiumWithoutExpiry } = await supabase
+      .from('profiles')
+      .select('*', { count: 'exact', head: true })
+      .neq('plan', 'free')
+      .is('plan_expires_at', null);
 
     const { count: newUsersWeek } = await supabase
       .from('profiles')
@@ -337,12 +376,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (activeUserIds.length > 0) {
       const { data: activeProfiles } = await supabase
         .from('profiles')
-        .select('id, email, plan, messages_used, images_today, created_at')
+        .select('id, email, plan, plan_expires_at, messages_used, images_today, created_at')
         .in('id', activeUserIds);
 
       activeUsersList = (activeProfiles || []).map(p => ({
         email: p.email,
         plan: p.plan,
+        plan_expires_at: p.plan_expires_at || null,
+        has_active_premium: hasActivePremiumAccess(p.plan, p.plan_expires_at, now),
         messages_used: p.messages_used || 0,
         images_today: p.images_today || 0,
         last_active: uniqueActiveMap.get(p.id) || null,
@@ -377,13 +418,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (recentMessageUserIds.length > 0) {
       const { data: profilesForMessages } = await supabase
         .from('profiles')
-        .select('id, email, plan')
+        .select('id, email, plan, plan_expires_at')
         .in('id', recentMessageUserIds);
 
       for (const profile of (profilesForMessages || [])) {
         recentMessageProfiles.set(profile.id, {
           email: profile.email || null,
           plan: profile.plan || null,
+          plan_expires_at: profile.plan_expires_at || null,
         });
       }
     }
@@ -485,6 +527,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         totalUsers:     totalUsers || 0,
         premiumUsers:   premiumUsers || 0,
         freeUsers:      freeUsers || 0,
+        expiredPremiumUsers: expiredPremiumUsers || 0,
+        premiumWithoutExpiry: premiumWithoutExpiry || 0,
         newUsersWeek:   newUsersWeek || 0,
         onlineNow:      onlineCount,
         activeToday:    activeToday || 0,
@@ -510,6 +554,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           user_id: m.user_id,
           email: profile?.email || 'Sin email',
           plan: profile?.plan || 'free',
+          plan_expires_at: profile?.plan_expires_at || null,
+          has_active_premium: hasActivePremiumAccess(profile?.plan, profile?.plan_expires_at, now),
           character: m.character || 'default',
           deleted: Boolean(m.deleted_from_chat),
         };

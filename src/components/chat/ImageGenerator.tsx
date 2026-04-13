@@ -12,6 +12,7 @@ import { Sparkles, Download, X, ChevronDown, AlertTriangle, HelpCircle } from 'l
 import { useAuthStore } from '@/lib/store';
 import { supabase } from '@/lib/supabase';
 import { useIsMobile } from '@/hooks/useIsMobile';
+import { hasActivePremiumAccess } from '@/types';
 
 // FIX: agregados ultra_annual y pro_quarterly
 const ANIME_PLANS = new Set([
@@ -363,8 +364,9 @@ export const ImageGenerator: React.FC<{ onOpenPricing: () => void }> = ({ onOpen
   const isMobile = useIsMobile();
 
   const plan       = (user as any)?.plan || 'free';
-  const isPremium  = plan !== 'free';
-  const canAnime   = ANIME_PLANS.has(plan);
+  const planExpiresAt = (user as any)?.plan_expires_at || null;
+  const isPremium  = hasActivePremiumAccess(plan, planExpiresAt);
+  const canAnime   = isPremium && ANIME_PLANS.has(plan);
   const dailyLimit = DAILY_LIMITS[plan] || 2;
 
   const [showBanner, setShowBanner] = useState(true);

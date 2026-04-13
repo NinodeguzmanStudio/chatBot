@@ -11,6 +11,10 @@
     {
       "path": "/api/reset-messages",
       "schedule": "0 0 * * *"
+    },
+    {
+      "path": "/api/expire-subscriptions",
+      "schedule": "*/15 * * * *"
     }
   ],
   "headers": [

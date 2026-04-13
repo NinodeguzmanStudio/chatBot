@@ -91,6 +91,12 @@ export function isPremiumPlan(plan: string | null | undefined): boolean {
   return premiumPlans.has(plan);
 }
 
+export function hasActivePremiumAccess(plan: string | null | undefined, planExpiresAt?: string | null): boolean {
+  if (!isPremiumPlan(plan)) return false;
+  if (!planExpiresAt) return false;
+  return new Date(planExpiresAt) > new Date();
+}
+
 export interface UserProfile {
   id: string;
   email: string;

@@ -151,18 +151,40 @@ export const PromoModal: React.FC<PromoModalProps> = ({ isOpen, onClose, onOpenP
         setLoading(null);
         return;
       }
-      const res = await fetch('/api/create-payment', {
+      const payload = JSON.stringify({ planId, userEmail: user.email, userId: user.id });
+
+      let res = await fetch('/api/create-subscription', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${session.access_token}`,
         },
-        body: JSON.stringify({ planId, userEmail: user.email, userId: user.id }),
+        body: payload,
       });
-      const data = await res.json();
-      if (!res.ok) { setError(data.error || 'Error al crear el pago.'); setLoading(null); return; }
-      if (data.init_point) window.location.href = data.init_point;
-      else setError(data.error || 'Error al crear pago.');
+      let data = await res.json().catch(() => ({}));
+      if (res.ok && data.init_point) {
+        window.location.href = data.init_point;
+        return;
+      }
+
+      if (data?.fallback || !res.ok) {
+        res = await fetch('/api/create-payment', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.access_token}`,
+          },
+          body: payload,
+        });
+        data = await res.json().catch(() => ({}));
+        if (!res.ok) { setError(data.error || 'Error al crear el pago.'); setLoading(null); return; }
+        if (data.init_point) {
+          window.location.href = data.init_point;
+          return;
+        }
+      }
+
+      setError(data.error || 'Error al crear pago.');
     } catch {
       setError('Error de conexión. Intenta de nuevo.');
     }

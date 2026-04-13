@@ -11,7 +11,7 @@
 
 import { create } from 'zustand';
 import type { Message, ModelId, CharacterId, ChatSession, UserProfile } from '@/types';
-import { isPremiumPlan } from '@/types';
+import { hasActivePremiumAccess } from '@/types';
 import {
   getDeviceMessagesUsed, incrementDeviceMessages,
   wasBonusGiven, giveBonusMessages, getBonusMessagesUsed, incrementBonusMessages,
@@ -298,7 +298,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   // FIX v3 [1]: BLOQUEAR si perfil es temporal
   canSendMessage: () => {
     const { user } = get();
-    if (isPremiumPlan(user?.plan)) return true;
+    if (hasActivePremiumAccess(user?.plan, user?.plan_expires_at)) return true;
 
     if (user) {
       if ((user as any)._temporary) {
@@ -316,7 +316,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   // FIX v3 [2]: Retornar 0 si perfil temporal
   getRemainingMessages: () => {
     const { user } = get();
-    if (isPremiumPlan(user?.plan)) return 999;
+    if (hasActivePremiumAccess(user?.plan, user?.plan_expires_at)) return 999;
 
     if (user) {
       if ((user as any)._temporary) return 0;
@@ -333,7 +333,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   shouldShowBonus: () => {
     const { user } = get();
-    if (isPremiumPlan(user?.plan)) return false;
+    if (hasActivePremiumAccess(user?.plan, user?.plan_expires_at)) return false;
     if (user) {
       if ((user as any)._temporary) return false;
       return (user.messages_used || 0) >= getUserFreeLimit(user) && !wasBonusGiven();

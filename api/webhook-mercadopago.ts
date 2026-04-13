@@ -24,6 +24,15 @@ const PLAN_PRICES_USD: Record<string, number> = { premium_monthly: 12.00, premiu
 const PLAN_PROMO_PRICES_USD: Record<string, number> = { premium_monthly: 6.00, premium_quarterly: 15.00, premium_annual: 50.00 };
 const PLAN_NAMES: Record<string, string> = { premium_monthly: 'Mensual', premium_quarterly: 'Trimestral', premium_annual: 'Anual' };
 
+function addMonthsFromCurrentExpiry(currentExpiry: string | null | undefined, months: number): Date {
+  const now = new Date();
+  const base = currentExpiry && new Date(currentExpiry) > now
+    ? new Date(currentExpiry)
+    : now;
+  base.setMonth(base.getMonth() + months);
+  return base;
+}
+
 // ── Push ──
 async function sendPush(userId: string, title: string, body: string): Promise<void> {
   try {
@@ -172,10 +181,15 @@ async function handlePayment(paymentId: any, res: VercelResponse) {
     return res.status(200).json({ received: true, error: 'suspicious_amount' });
   }
 
+  const { data: currentProfile } = await supabase
+    .from('profiles')
+    .select('plan_expires_at')
+    .eq('id', userId)
+    .single();
+
   const months = PLAN_MONTHS[planId];
   const now = new Date();
-  const expiresAt = new Date(now);
-  expiresAt.setMonth(expiresAt.getMonth() + months);
+  const expiresAt = addMonthsFromCurrentExpiry(currentProfile?.plan_expires_at, months);
 
   await supabase.from('profiles').update({
     plan: planId, plan_id: planId,
@@ -254,22 +268,50 @@ async function handleSubscriptionPayment(paymentId: any, res: VercelResponse) {
 
   const subId = payment.metadata?.preapproval_id || '';
   let userId: string | null = null, planId = 'premium_monthly';
+  let currentExpiry: string | null = null;
 
   if (subId) {
-    const { data: profile } = await supabase.from('profiles').select('id, plan_id').eq('mp_subscription_id', String(subId)).single();
-    if (profile) { userId = profile.id; planId = profile.plan_id || planId; }
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('id, plan_id, plan_expires_at')
+      .eq('mp_subscription_id', String(subId))
+      .single();
+    if (profile) {
+      userId = profile.id;
+      planId = profile.plan_id || planId;
+      currentExpiry = profile.plan_expires_at || null;
+    }
   }
   if (!userId && payment.payer?.email) {
-    const { data: profile } = await supabase.from('profiles').select('id, plan_id').eq('email', payment.payer.email).single();
-    if (profile) { userId = profile.id; planId = profile.plan_id || planId; }
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('id, plan_id, plan_expires_at')
+      .eq('email', payment.payer.email)
+      .single();
+    if (profile) {
+      userId = profile.id;
+      planId = profile.plan_id || planId;
+      currentExpiry = profile.plan_expires_at || null;
+    }
   }
   if (!userId) return res.status(200).json({ received: true, error: 'no_user' });
 
   const months = PLAN_MONTHS[planId] || 1;
-  const expiresAt = new Date();
-  expiresAt.setMonth(expiresAt.getMonth() + months);
+  const expiresAt = addMonthsFromCurrentExpiry(currentExpiry, months);
+  const profileUpdate: Record<string, string> = {
+    plan: planId,
+    plan_id: planId,
+    plan_expires_at: expiresAt.toISOString(),
+    plan_activated_at: new Date().toISOString(),
+    mp_payment_id: paymentKey,
+    updated_at: new Date().toISOString(),
+  };
 
-  await supabase.from('profiles').update({ plan_expires_at: expiresAt.toISOString(), mp_payment_id: paymentKey, updated_at: new Date().toISOString() }).eq('id', userId);
+  if (subId) {
+    profileUpdate.mp_subscription_id = String(subId);
+  }
+
+  await supabase.from('profiles').update(profileUpdate).eq('id', userId);
 
   await supabase.from('payments').insert({
     user_id: userId, email: payment.payer?.email || null, plan_id: planId,

@@ -15,6 +15,7 @@ import { supabase } from '@/lib/supabase';
 import { APP_CONFIG } from '@/lib/constants';
 import { useLanguage } from '@/hooks/useLanguage';
 import { LANG_OPTIONS } from '@/lib/i18n';
+import { hasActivePremiumAccess } from '@/types';
 
 type Tab = 'general' | 'plan' | 'memoria' | 'instructions';
 
@@ -70,11 +71,11 @@ export const SettingsModal: React.FC<{ isOpen: boolean; onClose: () => void; onO
   if (!isOpen) return null;
 
   const plan        = user?.plan || 'free';
-  const isPremium   = plan !== 'free';
   const freeLimit   = user?.messages_limit && user.messages_limit > 0
     ? user.messages_limit
     : APP_CONFIG.freeMessageLimit;
   const expiresAt   = (user as any)?.plan_expires_at || null;
+  const isPremium   = hasActivePremiumAccess(plan, expiresAt);
   const daysLeft    = getDaysRemaining(expiresAt);
   const isExpiringSoon = daysLeft !== null && daysLeft <= 7 && daysLeft > 0;
   const isExpired      = daysLeft === 0;

@@ -485,7 +485,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (new Date(profile.plan_expires_at) < new Date()) {
       await supabase
         .from('profiles')
-        .update({ plan: 'free', plan_id: null, updated_at: new Date().toISOString() })
+        .update({ plan: 'free', updated_at: new Date().toISOString() })
         .eq('id', user.id);
       return res.status(403).json({ error: 'Tu plan premium ha expirado.', code: 'PLAN_EXPIRED' });
     }

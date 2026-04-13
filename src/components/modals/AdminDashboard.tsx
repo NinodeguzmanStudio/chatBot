@@ -365,6 +365,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
               <StatCard icon={<TrendingUp size={13} color="#4ade80" />} label="Premium" value={o.premiumUsers} color="#f59e0b" sub={`${o.totalUsers ? Math.round(o.premiumUsers / o.totalUsers * 100) : 0}% conversión`} />
               <StatCard icon={<Users size={13} color="#666" />} label="Free" value={o.freeUsers} color="#666" />
               <StatCard icon={<TrendingUp size={13} color="#4ade80" />} label="Nuevos (7d)" value={o.newUsersWeek} color="#4ade80" />
+              <StatCard icon={<Clock size={13} color="#ef4444" />} label="Premium vencidos" value={o.expiredPremiumUsers || 0} color="#ef4444" sub="Siguen marcados hasta que expire el barrido" />
+              <StatCard icon={<EyeOff size={13} color="#f59e0b" />} label="Sin vencimiento" value={o.premiumWithoutExpiry || 0} color="#f59e0b" sub="Planes viejos a revisar" />
             </div>
 
             {/* Revenue */}
