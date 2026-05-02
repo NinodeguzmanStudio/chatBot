@@ -362,6 +362,100 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
   }
 
+  // ═══════════════════════════════════════
+  // GET: ?action=all_chat_logs
+  // Lista las conversaciones recientes de todos los usuarios.
+  // Útil para que el admin no tenga que buscar email por email.
+  // ═══════════════════════════════════════
+  if (action === 'all_chat_logs') {
+    const limit = Math.min(Math.max(Number(req.query.limit) || 1000, 100), 3000);
+
+    try {
+      const { data: logMessages, error: logsErr } = await supabase
+        .from('message_logs')
+        .select('original_id, session_id, user_id, role, content, model, character, created_at, deleted_from_chat, is_admin_inject')
+        .order('created_at', { ascending: false })
+        .limit(limit);
+
+      if (logsErr) throw logsErr;
+
+      const rows = logMessages || [];
+      const userIds = [...new Set(rows.map((m: any) => m.user_id).filter(Boolean))];
+      const sessionIds = [...new Set(rows.map((m: any) => m.session_id).filter(Boolean))];
+
+      const profilesMap = new Map<string, any>();
+      if (userIds.length > 0) {
+        const { data: profiles } = await supabase
+          .from('profiles')
+          .select('id, email, plan, messages_used, last_seen, plan_expires_at')
+          .in('id', userIds);
+
+        for (const profile of (profiles || [])) profilesMap.set(profile.id, profile);
+      }
+
+      const sessionsMap = new Map<string, any>();
+      if (sessionIds.length > 0) {
+        const { data: sessions } = await supabase
+          .from('chat_sessions')
+          .select('id, title, model, created_at, updated_at')
+          .in('id', sessionIds);
+
+        for (const session of (sessions || [])) sessionsMap.set(session.id, session);
+      }
+
+      const grouped = new Map<string, any>();
+      for (const msg of rows.slice().reverse()) {
+        const key = `${msg.user_id || 'unknown'}:${msg.session_id || 'no-session'}`;
+        const profile = msg.user_id ? profilesMap.get(msg.user_id) : null;
+        const session = msg.session_id ? sessionsMap.get(msg.session_id) : null;
+
+        if (!grouped.has(key)) {
+          grouped.set(key, {
+            id: key,
+            user_id: msg.user_id,
+            email: profile?.email || 'Sin email',
+            plan: profile?.plan || 'free',
+            messages_used: profile?.messages_used || 0,
+            last_seen: profile?.last_seen || null,
+            plan_expires_at: profile?.plan_expires_at || null,
+            session_id: msg.session_id,
+            title: session?.title || (msg.session_id ? 'Sesión eliminada' : 'Sin sesión'),
+            model: session?.model || msg.model || 'unknown',
+            created_at: session?.created_at || msg.created_at,
+            updated_at: session?.updated_at || msg.created_at,
+            deleted: Boolean(msg.session_id && !session),
+            messages: [],
+          });
+        }
+
+        const item = grouped.get(key);
+        item.updated_at = msg.created_at > item.updated_at ? msg.created_at : item.updated_at;
+        item.messages.push({
+          role: msg.role,
+          content: msg.content,
+          model: msg.model,
+          character: msg.character,
+          created_at: msg.created_at,
+          deleted: msg.deleted_from_chat,
+          admin_inject: msg.is_admin_inject,
+        });
+      }
+
+      const conversations = Array.from(grouped.values())
+        .sort((a, b) => String(b.updated_at || '').localeCompare(String(a.updated_at || '')));
+
+      return res.status(200).json({
+        conversations,
+        total_conversations: conversations.length,
+        total_messages: rows.length,
+        limit,
+      });
+    } catch (err) {
+      console.error('[Admin] Error all_chat_logs:', err);
+      return res.status(500).json({ error: 'Error obteniendo conversaciones globales.' });
+    }
+  }
+
   try {
     const now = new Date();
     const today     = now.toISOString().slice(0, 10);

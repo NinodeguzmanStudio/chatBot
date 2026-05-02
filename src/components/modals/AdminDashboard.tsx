@@ -27,6 +27,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
   const [chatLogsLoading, setChatLogsLoading] = useState(false);
   const [chatLogsError, setChatLogsError] = useState('');
   const [expandedSession, setExpandedSession] = useState<string | null>(null);
+  const [allChatLogs, setAllChatLogs] = useState<any>(null);
+  const [allChatLogsLoading, setAllChatLogsLoading] = useState(false);
+  const [allChatLogsError, setAllChatLogsError] = useState('');
   // Reply as AIdark
   const [replyText, setReplyText] = useState('');
   const [sendingReply, setSendingReply] = useState(false);
@@ -96,6 +99,35 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
     if (!email?.trim()) return;
     setTab('chat_logs');
     void fetchChatLogs(email);
+  };
+
+  const fetchAllChatLogs = async () => {
+    setAllChatLogsLoading(true);
+    setAllChatLogsError('');
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        setAllChatLogsError('Sesión expirada.');
+        setAllChatLogsLoading(false);
+        return;
+      }
+
+      const res = await fetch('/api/admin?action=all_chat_logs&limit=1500', {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        setAllChatLogsError(err.error || `Error ${res.status}`);
+        setAllChatLogsLoading(false);
+        return;
+      }
+
+      setAllChatLogs(await res.json());
+    } catch {
+      setAllChatLogsError('Error de conexión.');
+    }
+    setAllChatLogsLoading(false);
   };
 
   // NEW v4: Inyectar mensaje como AIdark
@@ -730,6 +762,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
               }}>
                 <Search size={12} /> Buscar
               </button>
+              <button onClick={() => { void fetchAllChatLogs(); }} disabled={allChatLogsLoading} style={{
+                padding: '8px 16px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.1)',
+                background: 'rgba(59,130,246,0.14)', color: '#93c5fd', fontSize: 11, fontWeight: 600,
+                cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 6,
+                opacity: allChatLogsLoading ? 0.5 : 1,
+              }}>
+                <MessageSquare size={12} /> {allChatLogsLoading ? 'Cargando...' : 'Ver todas'}
+              </button>
             </div>
 
             {chatLogsError && (
@@ -738,8 +778,75 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
               </div>
             )}
 
+            {allChatLogsError && (
+              <div style={{ padding: '8px 12px', marginBottom: 12, borderRadius: 8, background: 'rgba(200,60,60,0.15)', color: '#ff6b6b', fontSize: 11 }}>
+                {allChatLogsError}
+              </div>
+            )}
+
             {chatLogsLoading && (
               <div style={{ textAlign: 'center', padding: 20, color: '#ffffff44', fontSize: 11 }}>Buscando...</div>
+            )}
+
+            {allChatLogs?.conversations?.length > 0 && (
+              <div style={{ marginBottom: 14 }}>
+                <div style={{ fontSize: 10, color: '#93c5fd', textTransform: 'uppercase', marginBottom: 8 }}>
+                  Últimas conversaciones completas · {allChatLogs.total_conversations} sesiones · {allChatLogs.total_messages} mensajes
+                </div>
+                <div style={{ maxHeight: 420, overflowY: 'auto', border: '1px solid rgba(59,130,246,0.18)', borderRadius: 8 }}>
+                  {allChatLogs.conversations.map((conversation: any) => (
+                    <div key={conversation.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                      <div
+                        onClick={() => setExpandedSession(expandedSession === conversation.id ? null : conversation.id)}
+                        style={{
+                          padding: '10px 12px', cursor: 'pointer',
+                          background: expandedSession === conversation.id ? 'rgba(59,130,246,0.12)' : 'rgba(255,255,255,0.02)',
+                          display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12,
+                        }}
+                      >
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontSize: 12, color: '#ffffffcc', fontWeight: 600 }}>
+                            {conversation.email} · {conversation.title}
+                          </div>
+                          <div style={{ fontSize: 9, color: '#ffffff44', marginTop: 3 }}>
+                            {new Date(conversation.updated_at).toLocaleString('es')} · {conversation.messages.length} msgs · {conversation.plan}
+                            {conversation.deleted ? ' · sesión borrada' : ''}
+                          </div>
+                        </div>
+                        <span style={{ fontSize: 10, color: '#ffffff44' }}>
+                          {expandedSession === conversation.id ? '▼' : '▶'}
+                        </span>
+                      </div>
+
+                      {expandedSession === conversation.id && (
+                        <div style={{ padding: 10, background: 'rgba(0,0,0,0.2)' }}>
+                          {conversation.messages.map((msg: any, i: number) => (
+                            <div key={i} style={{
+                              padding: '8px 10px', marginBottom: 6, borderRadius: 6,
+                              background: msg.role === 'user' ? 'rgba(59,130,246,0.1)' : 'rgba(139,115,85,0.1)',
+                              borderLeft: `3px solid ${msg.role === 'user' ? '#3b82f6' : '#8b7355'}`,
+                              opacity: msg.deleted ? 0.55 : 1,
+                            }}>
+                              <div style={{
+                                fontSize: 9, fontWeight: 600, marginBottom: 4, textTransform: 'uppercase',
+                                color: msg.role === 'user' ? '#60a5fa' : '#d4c5b0',
+                              }}>
+                                {msg.role === 'user' ? 'Usuario' : msg.admin_inject ? 'Admin' : 'AIdark'} · {new Date(msg.created_at).toLocaleString('es')}
+                              </div>
+                              <div style={{
+                                fontSize: 11, color: '#ffffffbb', lineHeight: 1.5, wordBreak: 'break-word',
+                                whiteSpace: 'pre-wrap', maxHeight: 240, overflowY: 'auto',
+                              }}>
+                                {msg.content}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
             )}
 
             {/* User info */}
