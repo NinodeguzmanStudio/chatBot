@@ -116,6 +116,21 @@ export async function saveMessage(
   userId: string,
   message: Message
 ): Promise<boolean> {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (session?.access_token) {
+    const response = await fetch('/api/save-message', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${session.access_token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ session_id: sessionId, message }),
+    });
+
+    if (response.ok) return true;
+    console.warn('[Chat] Server message save failed, trying direct insert');
+  }
+
   const { error } = await supabase
     .from('messages')
     .insert({

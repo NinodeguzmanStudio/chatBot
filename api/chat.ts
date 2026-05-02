@@ -505,14 +505,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     : FREE_LIMIT;
 
   // ── Verificar expiración ──
-  if (isPremium && profile.plan_expires_at) {
-    if (new Date(profile.plan_expires_at) < new Date()) {
-      await supabase
-        .from('profiles')
-        .update({ plan: 'free', updated_at: new Date().toISOString() })
-        .eq('id', user.id);
-      return res.status(403).json({ error: 'Tu plan premium ha expirado.', code: 'PLAN_EXPIRED' });
-    }
+  if (isPremium && (!profile.plan_expires_at || new Date(profile.plan_expires_at) < new Date())) {
+    await supabase
+      .from('profiles')
+      .update({ plan: 'free', updated_at: new Date().toISOString() })
+      .eq('id', user.id);
+    return res.status(403).json({ error: 'Tu plan premium ha expirado.', code: 'PLAN_EXPIRED' });
   }
 
   // ── Límite mensajes gratis ──

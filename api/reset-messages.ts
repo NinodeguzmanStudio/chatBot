@@ -49,7 +49,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         updated_at: now,
       })
       .neq('plan', 'free')
-      .lt('plan_expires_at', now)
+      .or(`plan_expires_at.lt.${now},plan_expires_at.is.null`)
       .select('id');
 
     if (expireError) {

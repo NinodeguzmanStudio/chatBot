@@ -330,7 +330,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
   const tabs = [
     { id: 'overview',  label: 'General' },
     { id: 'users',     label: 'Usuarios' },
-    { id: 'live',      label: '🔴 Live' },
     { id: 'chat_logs', label: 'Chat Logs' },
     { id: 'messages',  label: 'Mensajes' },
     { id: 'topics',    label: 'Tendencias' },
