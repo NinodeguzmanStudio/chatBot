@@ -377,18 +377,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const model = category === 'anime' ? 'lustify-sdxl' : 'venice-sd35';
 
-  // Log para debug (puedes quitar en producción)
-  console.log(`[Image API] Original: "${prompt.trim().slice(0, 100)}"`);
-  console.log(`[Image API] Enhanced: "${safePrompt.slice(0, 200)}"`);
+  console.log(`[Image API] Generating ${category} image for ${plan} plan`);
 
   const newCount = usedToday + 1;
-  const { error: updateError } = await supabase
+  let counterQuery = supabase
     .from('profiles')
     .update({ images_today: newCount, images_date: new Date().toISOString(), updated_at: new Date().toISOString() })
-    .eq('id', user.id)
-    .eq('images_today', usedToday);
+    .eq('id', user.id);
 
-  if (updateError) {
+  if (lastDate === today) {
+    counterQuery = usedToday === 0
+      ? counterQuery.or('images_today.eq.0,images_today.is.null')
+      : counterQuery.eq('images_today', usedToday);
+  }
+
+  const { data: counterUpdate, error: updateError } = await counterQuery
+    .select('images_today')
+    .maybeSingle();
+
+  if (updateError || !counterUpdate) {
     return res.status(429).json({ error: 'Demasiadas solicitudes simultáneas.', code: 'CONCURRENT_REQUEST' });
   }
 

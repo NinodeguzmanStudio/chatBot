@@ -439,9 +439,32 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
     doSend(trimmed.slice(0, -1), trimmed[trimmed.length - 1]?.content || '');
   };
 
+  const applyInputValue = (value: string, cursorPosition?: number) => {
+    const nextValue = value.slice(0, charLimit);
+    setInput(nextValue);
+    setKeystrokes((k) => k + 1);
+
+    if (typeof cursorPosition === 'number') {
+      const nextCursor = Math.min(cursorPosition, nextValue.length);
+      requestAnimationFrame(() => {
+        textareaRef.current?.setSelectionRange(nextCursor, nextCursor);
+      });
+    }
+  };
+
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const val = e.target.value;
-    if (val.length <= charLimit) { setInput(val); setKeystrokes((k) => k + 1); }
+    applyInputValue(e.target.value, e.target.selectionStart);
+  };
+
+  const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const pastedText = e.clipboardData.getData('text');
+    if (!pastedText) return;
+
+    e.preventDefault();
+    const start = e.currentTarget.selectionStart ?? input.length;
+    const end = e.currentTarget.selectionEnd ?? input.length;
+    const nextValue = `${input.slice(0, start)}${pastedText}${input.slice(end)}`;
+    applyInputValue(nextValue, start + pastedText.length);
   };
 
   const tabStyle = (active: boolean): React.CSSProperties => ({
@@ -579,7 +602,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
                   ref={textareaRef}
                   value={input}
                   onChange={handleInputChange}
-                  onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
+                  onPaste={handlePaste}
                   placeholder={isProfileLoading ? 'Cargando perfil...' : `${t('chat.write_to')} ${character.name}...`}
                   rows={1}
                   style={{ width: '100%', background: 'transparent', border: 'none', resize: 'none', fontFamily: 'inherit', fontSize: 14, color: 'var(--txt-pri)', lineHeight: 1.6, minHeight: 24, maxHeight: 160, overflowY: 'auto', overflowX: 'hidden', wordWrap: 'break-word', whiteSpace: 'pre-wrap', caretColor: 'var(--accent)' }}
