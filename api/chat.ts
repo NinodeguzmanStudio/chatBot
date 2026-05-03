@@ -533,6 +533,30 @@ async function saveChatMessage(req: VercelRequest, res: VercelResponse, userId: 
   return res.status(200).json({ success: true });
 }
 
+function textFromContent(content: any): string {
+  if (typeof content === 'string') return content;
+  if (Array.isArray(content)) {
+    return content
+      .map((part) => typeof part?.text === 'string' ? part.text : '')
+      .join(' ');
+  }
+  return '';
+}
+
+function isCriticalAbuseRequest(messages: any[]): boolean {
+  const lastUser = [...messages].reverse().find((m) => m?.role === 'user');
+  const text = textFromContent(lastUser?.content)
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+
+  const hasMinor = /(menor|menores|adolescen|nina|nino|colegial|teen|underage|minor)/i.test(text);
+  const hasSexual = /(sexo|sexual|calentar|desnud|penetr|viol|erotic|porn|intimidad)/i.test(text);
+  const hasCoercion = /(droga|sedant|baje la guardia|sin consentimiento|forzar|obligar|incapacit|abusar)/i.test(text);
+
+  return (hasMinor && hasSexual) || (hasCoercion && hasSexual);
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
@@ -654,6 +678,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const userMessages = sanitizeMessages(messages, pdfCharLimit);
   if (userMessages.length === 0) {
     return res.status(400).json({ error: 'No se recibieron mensajes válidos.' });
+  }
+  if (isCriticalAbuseRequest(userMessages)) {
+    return res.status(400).json({
+      error: 'No puedo ayudar con solicitudes sexuales que involucren menores, coerción o falta de consentimiento.',
+      code: 'SAFETY_BLOCKED',
+    });
   }
 
   // FIX v5: Si hay PDF, agregar instrucción de análisis al system prompt
