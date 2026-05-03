@@ -469,6 +469,70 @@ async function tryProvider(
   }
 }
 
+function titleFrom(content: string): string {
+  const text = content.replace(/\s+/g, ' ').trim();
+  return text.slice(0, 40) + (text.length > 40 ? '...' : '') || 'Nuevo chat';
+}
+
+async function saveChatMessage(req: VercelRequest, res: VercelResponse, userId: string) {
+  const { session_id, message } = req.body || {};
+  if (!session_id || !message?.id || !message?.role) {
+    return res.status(400).json({ error: 'Mensaje inválido.' });
+  }
+
+  const content = String(message.content || '').slice(0, 60000);
+  const now = new Date().toISOString();
+
+  const { data: chatSession, error: sessionError } = await supabase
+    .from('chat_sessions')
+    .select('id, user_id, title')
+    .eq('id', session_id)
+    .maybeSingle();
+
+  if (sessionError) return res.status(500).json({ error: 'Error verificando sesión.' });
+  if (chatSession && chatSession.user_id !== userId) {
+    return res.status(403).json({ error: 'Sesión no pertenece al usuario.' });
+  }
+
+  if (!chatSession) {
+    const initialTitle = message.role === 'user' ? titleFrom(content) : 'Nuevo chat';
+    const { error: createError } = await supabase
+      .from('chat_sessions')
+      .insert({
+        id: session_id,
+        user_id: userId,
+        title: initialTitle,
+        model: message.model || 'venice',
+        created_at: now,
+        updated_at: now,
+      });
+
+    if (createError) return res.status(500).json({ error: 'Error creando sesión.' });
+  } else {
+    const updatePayload: Record<string, string> = { updated_at: now };
+    if (message.role === 'user' && (!chatSession.title || chatSession.title === 'Nuevo chat')) {
+      updatePayload.title = titleFrom(content);
+    }
+    await supabase.from('chat_sessions').update(updatePayload).eq('id', session_id);
+  }
+
+  const { error: messageError } = await supabase
+    .from('messages')
+    .upsert({
+      id: message.id,
+      session_id,
+      user_id: userId,
+      role: message.role,
+      content,
+      model: message.model || null,
+      character: message.character || null,
+      created_at: message.timestamp ? new Date(message.timestamp).toISOString() : now,
+    }, { onConflict: 'id' });
+
+  if (messageError) return res.status(500).json({ error: 'Error guardando mensaje.' });
+  return res.status(200).json({ success: true });
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
@@ -496,6 +560,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     .single();
   if (profileError || !profile) {
     return res.status(403).json({ error: 'Perfil no encontrado.' });
+  }
+
+  if (req.body?.action === 'save_message') {
+    return saveChatMessage(req, res, user.id);
   }
 
   const plan = typeof profile.plan === 'string' ? profile.plan : 'free';

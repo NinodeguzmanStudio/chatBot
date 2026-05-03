@@ -118,13 +118,13 @@ export async function saveMessage(
 ): Promise<boolean> {
   const { data: { session } } = await supabase.auth.getSession();
   if (session?.access_token) {
-    const response = await fetch('/api/save-message', {
+    const response = await fetch('/api/chat', {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${session.access_token}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ session_id: sessionId, message }),
+      body: JSON.stringify({ action: 'save_message', session_id: sessionId, message }),
     });
 
     if (response.ok) return true;
