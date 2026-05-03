@@ -21,6 +21,8 @@ const COLORS_USER: number[][] = [
   [255, 70,  30],   // rojo cálido
   [200, 20,  5],    // rojo oscuro intenso
   [255, 110, 20],   // naranja fuego
+  [255, 12,  72],   // rojo neon
+  [60,  210, 255],  // cian HUD
 ];
 
 // Durante streaming — mismos colores pero aún más brillantes
@@ -30,10 +32,12 @@ const COLORS_STREAM: number[][] = [
   [230, 60,  10],
   [255, 90,  40],
   [210, 25,  5],
+  [255, 0,   90],
+  [120, 230, 255],
 ];
 
-const MAX_PARTICLES   = 35;
-const SPAWN_THROTTLE  = 100; // ms entre spawns
+const MAX_PARTICLES   = 95;
+const SPAWN_THROTTLE  = 35; // ms entre spawns
 
 function drawGlyph(ctx: CanvasRenderingContext2D, idx: number, s: number) {
   const h = s * 0.45;
@@ -101,16 +105,15 @@ export const TypingParticles: React.FC<TypingParticlesProps> = ({ trigger, strea
     const palette = isStream ? COLORS_STREAM : COLORS_USER;
     const colorArr = palette[Math.floor(Math.random() * palette.length)];
 
-    // Durante streaming spawn 2 partículas para más efecto visual
-    const count = isStream ? 2 : 1;
+    const count = isStream ? 3 : 4;
     for (let i = 0; i < count; i++) {
       const p: Particle = {
-        x:          colWidth * ((col + i) % NUM_COLUMNS) + colWidth * 0.5 + (Math.random() - 0.5) * colWidth * 0.4,
-        y:          h * 0.1 + Math.random() * h * 0.75,
-        vy:         -(0.15 + Math.random() * 0.35),
+        x:          colWidth * ((col + i) % NUM_COLUMNS) + colWidth * 0.5 + (Math.random() - 0.5) * colWidth * 0.7,
+        y:          h * 0.02 + Math.random() * h * 0.12,
+        vy:         2.1 + Math.random() * 2.4,
         life:       1.0,
-        maxLife:    400 + Math.random() * 600,
-        size:       16 + Math.random() * 16,
+        maxLife:    1800 + Math.random() * 1100,
+        size:       18 + Math.random() * 24,
         glyphIndex: Math.floor(Math.random() * 24),
         color:      colorArr,
         rotation:   (Math.floor(Math.random() * 8) * Math.PI) / 4,
@@ -143,9 +146,8 @@ export const TypingParticles: React.FC<TypingParticlesProps> = ({ trigger, strea
       p.y += p.vy;
 
       const fadeIn  = p.life > 0.88 ? (1 - p.life) / 0.12 : 1;
-      const fadeOut = p.life < 0.35 ? p.life / 0.35 : 1;
-      // FIX: opacidad subida de 0.22 → 0.52 para que se vean
-      const opacity = fadeIn * fadeOut * 0.52;
+      const fadeOut = p.life < 0.18 ? p.life / 0.18 : 1;
+      const opacity = fadeIn * fadeOut * 0.78;
 
       if (opacity <= 0.005) return true;
 
@@ -154,13 +156,19 @@ export const TypingParticles: React.FC<TypingParticlesProps> = ({ trigger, strea
       ctx.rotate(p.rotation);
       ctx.globalAlpha = opacity;
 
-      // Glow rojo fosforescente
-      ctx.shadowColor  = `rgba(${p.color[0]},${p.color[1]},${p.color[2]},0.8)`;
-      ctx.shadowBlur   = 8;
+      // Glow tipo HUD depredador
+      ctx.shadowColor  = `rgba(${p.color[0]},${p.color[1]},${p.color[2]},0.95)`;
+      ctx.shadowBlur   = 14;
       ctx.strokeStyle  = `rgba(${p.color[0]},${p.color[1]},${p.color[2]},1)`;
       ctx.fillStyle    = `rgba(${p.color[0]},${p.color[1]},${p.color[2]},1)`;
 
       drawGlyph(ctx, p.glyphIndex, p.size);
+
+      ctx.globalAlpha = opacity * 0.22;
+      ctx.beginPath();
+      ctx.moveTo(0, -p.size * 0.2);
+      ctx.lineTo(0, -p.size * 1.45);
+      ctx.stroke();
       ctx.restore();
       return true;
     });

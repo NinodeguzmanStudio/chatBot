@@ -48,27 +48,27 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
   // Estilo de botón de acción
   const actionBtn = (active = false, danger = false): React.CSSProperties => ({
     display: 'flex', alignItems: 'center', gap: 4,
-    padding: '4px 8px', borderRadius: 6, border: 'none',
+    padding: '5px 9px', borderRadius: 7, border: '1px solid transparent',
     background: active
       ? danger ? 'rgba(180,80,80,0.15)' : 'rgba(100,180,100,0.12)'
       : 'transparent',
     color: active
       ? (danger ? '#c66' : '#6b8')
       : 'var(--txt-mut)',
-    fontSize: 11, fontWeight: 500, cursor: 'pointer',
+    fontSize: 11, fontWeight: 600, cursor: 'pointer',
     transition: 'all 0.15s',
   });
 
   return (
     <div
-      style={{ marginBottom: 28, animation: 'fadeUp 0.35s ease both', animationDelay: `${Math.min(index * 0.04, 0.3)}s` }}
+      style={{ marginBottom: isMobile ? 24 : 32, animation: 'fadeUp 0.35s ease both', animationDelay: `${Math.min(index * 0.04, 0.3)}s` }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
       {/* ── Header: avatar + nombre + hora ── */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 10 }}>
         <div style={{
-          width: 26, height: 26, borderRadius: '50%',
+          width: isMobile ? 28 : 30, height: isMobile ? 28 : 30, borderRadius: '50%',
           background: isUser ? 'var(--bg-hover)' : 'var(--bg-el)',
           border: `1.5px solid ${isUser ? 'var(--border-def)' : character.color + '55'}`,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -78,14 +78,17 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
         }}>
           {isUser ? 'T' : character.avatar}
         </div>
-        <span style={{ fontSize: 13, fontWeight: 600, color: isUser ? 'var(--txt-sec)' : character.color }}>
+        <span style={{ fontSize: 13.5, fontWeight: 700, color: isUser ? 'var(--txt-sec)' : character.color }}>
           {isUser ? t('chat.you') : character.name}
         </span>
         <span style={{ fontSize: 11, color: 'var(--txt-mut)' }}>{formatTime(message.timestamp)}</span>
       </div>
 
       {/* ── Contenido ── */}
-      <div style={{ paddingLeft: isMobile ? 0 : 34 }}>
+      <div style={{
+        paddingLeft: isMobile ? 0 : 39,
+        maxWidth: isUser ? 760 : 820,
+      }}>
 
         {/* Attachment */}
         {message.attachment && (
@@ -104,11 +107,11 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
             {message.attachment.type === 'pdf' && (
               <div style={{
                 display: 'inline-flex', alignItems: 'center', gap: 8,
-                padding: '8px 14px', borderRadius: 8,
-                background: 'rgba(201,148,74,0.08)', border: '1px solid rgba(201,148,74,0.2)',
+                padding: '10px 14px', borderRadius: 9,
+                background: 'rgba(201,148,74,0.1)', border: '1px solid rgba(201,148,74,0.24)',
               }}>
                 <FileText size={16} style={{ color: '#c9944a' }} />
-                <span style={{ fontSize: 12, color: 'var(--txt-sec)' }}>{message.attachment.name}</span>
+                <span style={{ fontSize: 13, color: 'var(--txt-sec)', fontWeight: 600 }}>{message.attachment.name}</span>
               </div>
             )}
           </div>
@@ -116,11 +119,28 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
 
         {/* Texto */}
         {isUser ? (
-          <p style={{ fontSize: isMobile ? 13 : 14, lineHeight: 1.8, color: 'var(--txt-sec)', whiteSpace: 'pre-wrap', wordBreak: 'break-word', margin: 0 }}>
+          <p style={{
+            fontSize: isMobile ? 15 : 15.5,
+            lineHeight: 1.78,
+            color: 'var(--txt-sec)',
+            whiteSpace: 'pre-wrap',
+            wordBreak: 'break-word',
+            margin: 0,
+            padding: isMobile ? '0 0 0 2px' : '0 0 0 1px',
+          }}>
             {message.content}
           </p>
         ) : (
-          <div className="markdown-content" style={{ fontSize: isMobile ? 13 : 14, lineHeight: 1.8, color: 'var(--txt-pri)', wordBreak: 'break-word' }}>
+          <div
+            className="markdown-content"
+            style={{
+              fontSize: isMobile ? 15 : 16,
+              lineHeight: 1.82,
+              color: 'var(--txt-pri)',
+              wordBreak: 'break-word',
+              letterSpacing: 0,
+            }}
+          >
             <ReactMarkdown
               components={{
                 code({ node, className, children, ...props }: any) {
@@ -131,7 +151,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                   if (isInline) {
                     return (
                       <code style={{
-                        background: 'rgba(255,255,255,0.07)', padding: '2px 6px',
+                        background: 'rgba(255,255,255,0.08)', padding: '2px 6px',
                         borderRadius: 4, fontSize: '0.9em', fontFamily: 'monospace',
                         color: 'var(--accent)',
                       }} {...props}>
@@ -165,12 +185,12 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                       <pre
                         style={{
                           margin: 0,
-                          padding: '14px 16px',
+                          padding: '15px 17px',
                           borderRadius: '0 0 8px 8px',
                           border: '1px solid rgba(255,255,255,0.08)',
                           background: '#121218',
                           color: '#f4f1ea',
-                          fontSize: 12,
+                          fontSize: 13,
                           lineHeight: 1.7,
                           overflowX: 'auto',
                         }}

@@ -42,6 +42,50 @@ const PDF_PAGE_LIMITS: Record<string, number> = {
 const LIMIT_CODES    = new Set(['FREE_LIMIT_REACHED', 'PLAN_EXPIRED', 'PREMIUM_REQUIRED']);
 const LIMIT_KEYWORDS = ['límite', 'limite', 'limit', 'plan', 'upgrade', 'actualiza', 'gratuito'];
 
+const PREVIEW_MESSAGES: Message[] = [
+  {
+    id: 'preview-user-1',
+    role: 'user',
+    content: 'Analiza este PDF y dame un resumen claro, con puntos importantes, riesgos y una conclusion accionable. Quiero ver si AIDARK puede leer textos largos sin que se vea apretado.',
+    timestamp: Date.now() - 1000 * 60 * 7,
+    attachment: {
+      type: 'pdf',
+      name: 'contrato-ejemplo.pdf',
+      mimeType: 'application/pdf',
+      data: '[PDF de ejemplo para vista previa]',
+    },
+  },
+  {
+    id: 'preview-ai-1',
+    role: 'assistant',
+    content: 'Claro. En esta vista previa puedes revisar como se vera una respuesta extensa dentro del nuevo diseno.\n\n### Resumen ejecutivo\nEl documento plantea una relacion contractual con obligaciones claras, pero tiene zonas que conviene revisar antes de firmar. La lectura ahora usa mayor tamano de texto, mas espacio entre lineas y un ancho mas comodo para respuestas largas.\n\n### Puntos importantes\n- Las clausulas principales deben quedar visibles sin que el texto se sienta comprimido.\n- Los adjuntos aparecen como piezas claras arriba del mensaje.\n- La respuesta de AIDARK debe sentirse mas editorial, menos como una caja pequena de demo.\n\n### Riesgos\n1. Si una respuesta es larga, el usuario necesita escanearla rapido.\n2. Si hay PDF o imagen, el estado del archivo debe ser obvio.\n3. Si el usuario paga, la interfaz tiene que sentirse mas cuidada desde el primer mensaje.\n\nMi recomendacion: este camino visual es mejor para monetizar porque reduce cansancio de lectura y hace que la herramienta se sienta mas seria.',
+    timestamp: Date.now() - 1000 * 60 * 6,
+    model: 'venice',
+    character: 'default',
+  },
+  {
+    id: 'preview-user-2',
+    role: 'user',
+    content: 'Tambien quiero adjuntar una foto y que la respuesta se vea profesional, no pequena.',
+    timestamp: Date.now() - 1000 * 60 * 4,
+    attachment: {
+      type: 'image',
+      name: 'imagen-demo.jpg',
+      mimeType: 'image/jpeg',
+      data: '',
+      preview: '/icon-512.png',
+    },
+  },
+  {
+    id: 'preview-ai-2',
+    role: 'assistant',
+    content: 'La imagen queda como adjunto visual y la respuesta mantiene el mismo ritmo de lectura. Para una experiencia premium, lo siguiente seria mejorar la cabecera del chat, hacer mas visible el estado del plan y separar claramente las funciones de pago: PDF avanzado, imagen, historial largo y personajes premium.',
+    timestamp: Date.now() - 1000 * 60 * 3,
+    model: 'venice',
+    character: 'default',
+  },
+];
+
 function isLimitError(err: unknown): boolean {
   if (err instanceof ApiError) return LIMIT_CODES.has(err.code);
   if (err instanceof Error) return LIMIT_KEYWORDS.some(k => err.message.toLowerCase().includes(k));
@@ -166,7 +210,10 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
   const isMobile      = useIsMobile();
 
   const activeSession = sessions.find((s) => s.id === activeSessionId);
-  const messages      = activeSession?.messages || [];
+  const isPreviewChat = import.meta.env.DEV && window.location.search.includes('previewChat=1');
+  const messages      = isPreviewChat && !activeSession?.messages?.length
+    ? PREVIEW_MESSAGES
+    : activeSession?.messages || [];
   const charLimit     = APP_CONFIG.freeCharLimit;
   const remaining     = getRemainingMessages();
   const freeLimit     = user?.messages_limit && user.messages_limit > 0 ? user.messages_limit : FREE_LIMIT;
@@ -476,7 +523,20 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
   });
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, height: '100%', position: 'relative', overflow: 'hidden' }}>
+    <div style={{
+      display: 'flex',
+      flexDirection: 'column',
+      flex: 1,
+      height: '100%',
+      position: 'relative',
+      overflow: 'hidden',
+      backgroundImage: `
+        linear-gradient(rgba(255,45,28,0.035) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(120,220,255,0.026) 1px, transparent 1px),
+        linear-gradient(180deg, rgba(255,35,15,0.055), transparent 28%, rgba(0,0,0,0) 70%)
+      `,
+      backgroundSize: '44px 44px, 44px 44px, 100% 100%',
+    }}>
       <TypingParticles trigger={keystrokeCount} streamTrigger={streamChunkCount} />
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: isMobile ? '10px 14px 0' : '12px 20px 0', flexShrink: 0 }}>
@@ -534,7 +594,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
                 )}
               </div>
             ) : (
-              <div style={{ maxWidth: writerMode ? 900 : 720, width: '100%', margin: '0 auto', padding: isMobile ? '16px 14px' : '24px 20px', flex: 1 }}>
+              <div style={{ maxWidth: writerMode ? 980 : 840, width: '100%', margin: '0 auto', padding: isMobile ? '18px 16px' : '30px 28px', flex: 1 }}>
                 {messages.map((msg, idx) => {
                   const isLastMsg = idx === messages.length - 1;
                   const isLastAI  = isLastMsg && msg.role === 'assistant';
@@ -572,20 +632,28 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
               : undefined,
             display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0, position: 'relative', zIndex: 2,
           }}>
-            <div style={{ maxWidth: writerMode ? 900 : 720, width: '100%' }}>
+            <div style={{ maxWidth: writerMode ? 980 : 840, width: '100%' }}>
 
               {attachment && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', marginBottom: 6, background: 'var(--bg-el)', borderRadius: 10, border: '1px solid var(--border-sub)' }}>
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: 12,
+                  padding: isMobile ? '10px 12px' : '11px 14px',
+                  marginBottom: 8,
+                  background: 'rgba(255,255,255,0.045)',
+                  borderRadius: 10,
+                  border: '1px solid rgba(255,255,255,0.09)',
+                  boxShadow: '0 10px 28px rgba(0,0,0,0.18)',
+                }}>
                   {attachment.type === 'image' && attachment.preview ? (
-                    <img src={attachment.preview} alt={attachment.name} style={{ width: 40, height: 40, borderRadius: 6, objectFit: 'cover' }} />
+                    <img src={attachment.preview} alt={attachment.name} style={{ width: 46, height: 46, borderRadius: 7, objectFit: 'cover' }} />
                   ) : (
-                    <div style={{ width: 40, height: 40, borderRadius: 6, background: 'rgba(160,81,59,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <FileText size={18} style={{ color: 'var(--danger)' }} />
+                    <div style={{ width: 46, height: 46, borderRadius: 7, background: 'rgba(201,148,74,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <FileText size={19} style={{ color: '#c9944a' }} />
                     </div>
                   )}
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 11, color: 'var(--txt-pri)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{attachment.name}</div>
-                    <div style={{ fontSize: 9, color: 'var(--txt-mut)' }}>{attachment.type === 'image' ? 'Imagen' : 'PDF'}</div>
+                    <div style={{ fontSize: 13, color: 'var(--txt-pri)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontWeight: 650 }}>{attachment.name}</div>
+                    <div style={{ fontSize: 10, color: 'var(--txt-mut)', marginTop: 2 }}>{attachment.type === 'image' ? 'Imagen lista para analizar' : 'PDF extraido para analizar'}</div>
                   </div>
                   <button onClick={() => setAttachment(null)} style={{ width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'none', border: 'none', color: 'var(--txt-mut)', cursor: 'pointer', borderRadius: 4 }}>
                     <X size={14} />
@@ -594,7 +662,14 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
               )}
 
               <div
-                style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-sub)', borderRadius: isMobile ? 12 : 14, padding: isMobile ? '10px 12px 8px' : '12px 16px 8px', transition: 'border-color 0.2s' }}
+                style={{
+                  background: 'rgba(14,14,19,0.96)',
+                  border: '1px solid rgba(255,255,255,0.1)',
+                  borderRadius: isMobile ? 14 : 16,
+                  padding: isMobile ? '12px 13px 9px' : '15px 17px 10px',
+                  transition: 'border-color 0.2s, box-shadow 0.2s',
+                  boxShadow: '0 18px 48px rgba(0,0,0,0.28)',
+                }}
                 onFocus={e => e.currentTarget.style.borderColor = 'var(--border-def)'}
                 onBlur={e => e.currentTarget.style.borderColor = 'var(--border-sub)'}
               >
@@ -605,15 +680,15 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
                   onPaste={handlePaste}
                   placeholder={isProfileLoading ? 'Cargando perfil...' : `${t('chat.write_to')} ${character.name}...`}
                   rows={1}
-                  style={{ width: '100%', background: 'transparent', border: 'none', resize: 'none', fontFamily: 'inherit', fontSize: 14, color: 'var(--txt-pri)', lineHeight: 1.6, minHeight: 24, maxHeight: 160, overflowY: 'auto', overflowX: 'hidden', wordWrap: 'break-word', whiteSpace: 'pre-wrap', caretColor: 'var(--accent)' }}
+                  style={{ width: '100%', background: 'transparent', border: 'none', resize: 'none', fontFamily: 'inherit', fontSize: isMobile ? 15 : 16, color: 'var(--txt-pri)', lineHeight: 1.7, minHeight: 30, maxHeight: 190, overflowY: 'auto', overflowX: 'hidden', wordWrap: 'break-word', whiteSpace: 'pre-wrap', caretColor: 'var(--accent)', outline: 'none' }}
                 />
 
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 8, gap: 6 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 10, gap: 8 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                     <div style={{ position: 'relative' }} ref={attachMenuRef}>
                       <button
                         onClick={() => { if (!canAttach) { onOpenPricing(); return; } setAttachMenu(!showAttachMenu); }}
-                        style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 30, height: 30, borderRadius: 8, background: showAttachMenu ? 'var(--bg-hover)' : 'transparent', border: '1px solid var(--border-sub)', color: canAttach ? 'var(--txt-sec)' : 'var(--txt-ghost)', cursor: 'pointer', transition: 'all 0.15s' }}
+                        style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 34, height: 34, borderRadius: 9, background: showAttachMenu ? 'var(--bg-hover)' : 'transparent', border: '1px solid var(--border-sub)', color: canAttach ? 'var(--txt-sec)' : 'var(--txt-ghost)', cursor: 'pointer', transition: 'all 0.15s' }}
                       >
                         <Plus size={15} />
                       </button>
@@ -657,7 +732,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onOpenPricing }) => {
                         <Square size={12} fill="#fff" color="#fff" />
                       </button>
                     ) : (
-                      <button onClick={handleSend} disabled={(!input.trim() && !attachment) || isTyping || isProfileLoading} style={{ width: 34, height: 34, display: 'flex', alignItems: 'center', justifyContent: 'center', background: (input.trim() || attachment) ? 'var(--border-str)' : 'var(--bg-el)', border: 'none', borderRadius: 8, color: (input.trim() || attachment) ? 'var(--txt-pri)' : 'var(--txt-mut)', cursor: (input.trim() || attachment) ? 'pointer' : 'default', transition: 'all 0.2s', animation: (input.trim() || attachment) ? 'glow 2s ease-in-out infinite' : 'none' }}>
+                      <button onClick={handleSend} disabled={(!input.trim() && !attachment) || isTyping || isProfileLoading} style={{ width: 38, height: 38, display: 'flex', alignItems: 'center', justifyContent: 'center', background: (input.trim() || attachment) ? 'var(--border-str)' : 'var(--bg-el)', border: 'none', borderRadius: 10, color: (input.trim() || attachment) ? 'var(--txt-pri)' : 'var(--txt-mut)', cursor: (input.trim() || attachment) ? 'pointer' : 'default', transition: 'all 0.2s', animation: (input.trim() || attachment) ? 'glow 2s ease-in-out infinite' : 'none', boxShadow: (input.trim() || attachment) ? '0 8px 24px rgba(139,115,85,0.18)' : 'none' }}>
                         <Send size={15} />
                       </button>
                     )}

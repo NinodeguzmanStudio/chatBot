@@ -284,6 +284,7 @@ const App: React.FC = () => {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const cachedUserId = useAuthStore((s) => s.user?.id || null);
   const { loadFromSupabase } = useChatStore();
+  const isPreviewChat = import.meta.env.DEV && window.location.search.includes('previewChat=1');
 
   // Fix: si el usuario ya se autenticó antes, mostrar app inmediatamente
   // mientras el perfil carga en background (evita spinner en usuarios recurrentes)
@@ -434,7 +435,7 @@ const App: React.FC = () => {
   // Mostrar spinner si:
   // 1. Auth no está completo (usuario nuevo cargando)
   // 2. wasAuth=true pero sesión aún no verificada (evita flash de Landing)
-  if (!authComplete || (wasAuth && !sessionChecked)) {
+  if (!isPreviewChat && (!authComplete || (wasAuth && !sessionChecked))) {
     return (
       <div style={{ minHeight: '100dvh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#000', flexDirection: 'column', gap: 20 }}>
         <img src="/icon-192.png" alt="AIdark" style={{ width: 80, height: 80, borderRadius: 20, animation: 'fadeIn 0.6s ease, pulse 2s ease-in-out infinite' }} />
@@ -457,7 +458,9 @@ const App: React.FC = () => {
         <Route path="/legal" element={<LegalPages />} />
 
         <Route path="*" element={
-          !isAuthenticated && !showAuth
+          isPreviewChat
+            ? <ChatLayout />
+            : !isAuthenticated && !showAuth
             ? <Landing onStart={openAuth} />
             : !isAuthenticated
               ? <AuthModal onSuccess={() => {
