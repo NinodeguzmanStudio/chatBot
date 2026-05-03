@@ -90,7 +90,7 @@ async function notifyAdminIfWatched(userId: string, userEmail: string, firstMsgP
     // 4. Enviar push notification al admin
     const webpush = require('web-push');
     webpush.setVapidDetails(
-      'mailto:soporte@aidark.app',
+      'mailto:ninodeguzmanstudio@gmail.com',
       process.env.VAPID_PUBLIC_KEY!,
       process.env.VAPID_PRIVATE_KEY!
     );

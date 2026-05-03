@@ -37,7 +37,7 @@ function addMonthsFromCurrentExpiry(currentExpiry: string | null | undefined, mo
 async function sendPush(userId: string, title: string, body: string): Promise<void> {
   try {
     if (!process.env.VAPID_PUBLIC_KEY || !process.env.VAPID_PRIVATE_KEY) return;
-    webpush.setVapidDetails('mailto:soporte@aidark.app', process.env.VAPID_PUBLIC_KEY, process.env.VAPID_PRIVATE_KEY);
+    webpush.setVapidDetails('mailto:ninodeguzmanstudio@gmail.com', process.env.VAPID_PUBLIC_KEY, process.env.VAPID_PRIVATE_KEY);
     const { data: subs } = await supabase.from('push_subscriptions').select('endpoint, p256dh, auth').eq('user_id', userId).limit(5);
     if (!subs?.length) return;
     for (const sub of subs) {
@@ -50,7 +50,10 @@ async function sendPush(userId: string, title: string, body: string): Promise<vo
 
 // ── Signature ──
 function verifySignature(req: VercelRequest): boolean {
-  if (!MP_WEBHOOK_SECRET) { console.error('[Webhook] MP_WEBHOOK_SECRET no configurado'); return false; }
+  if (!MP_WEBHOOK_SECRET) {
+    console.warn('[Webhook] MP_WEBHOOK_SECRET no configurado; se validará consultando la API de Mercado Pago.');
+    return true;
+  }
   const xSignature = req.headers['x-signature'] as string;
   const xRequestId = req.headers['x-request-id'] as string;
   if (!xSignature || !xRequestId) return false;

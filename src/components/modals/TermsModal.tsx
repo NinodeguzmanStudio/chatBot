@@ -14,7 +14,7 @@ const content = {
       { h: '6. Planes y pagos', p: 'Los planes gratuitos tienen límite de mensajes diarios. Los planes premium se facturan según el periodo elegido. Puedes cancelar en cualquier momento.' },
       { h: '7. Privacidad', p: 'Los chats se eliminan automáticamente después de 7 días. Consulta nuestra Política de Privacidad para más detalles.' },
       { h: '8. Cambios', p: 'Podemos modificar estos términos. Te notificaremos de cambios significativos.' },
-      { h: '9. Contacto', p: 'contacto@aidark.app' },
+      { h: '9. Contacto', p: 'ninodeguzmanstudio@gmail.com' },
     ],
   },
   pt: {
@@ -28,7 +28,7 @@ const content = {
       { h: '6. Planos e pagamentos', p: 'Planos gratuitos têm limite de mensagens diárias. Planos premium são cobrados conforme o período escolhido. Você pode cancelar a qualquer momento.' },
       { h: '7. Privacidade', p: 'Os chats são excluídos automaticamente após 7 dias. Consulte nossa Política de Privacidade para mais detalhes.' },
       { h: '8. Alterações', p: 'Podemos modificar estes termos. Notificaremos sobre mudanças significativas.' },
-      { h: '9. Contato', p: 'contacto@aidark.app' },
+      { h: '9. Contato', p: 'ninodeguzmanstudio@gmail.com' },
     ],
   },
   en: {
@@ -42,7 +42,7 @@ const content = {
       { h: '6. Plans and payments', p: 'Free plans have daily message limits. Premium plans are billed per chosen period. You can cancel anytime.' },
       { h: '7. Privacy', p: 'Chats are automatically deleted after 7 days. See our Privacy Policy for details.' },
       { h: '8. Changes', p: 'We may modify these terms. We will notify you of significant changes.' },
-      { h: '9. Contact', p: 'contacto@aidark.app' },
+      { h: '9. Contact', p: 'ninodeguzmanstudio@gmail.com' },
     ],
   },
 };

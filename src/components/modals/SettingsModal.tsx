@@ -232,6 +232,22 @@ export const SettingsModal: React.FC<{ isOpen: boolean; onClose: () => void; onO
                 </div>
               </div>
 
+              <div style={{
+                borderTop: '1px solid var(--border-sub)',
+                paddingTop: 16,
+                marginBottom: 16,
+              }}>
+                <div style={{ fontSize: 12, color: 'var(--txt-sec)', fontWeight: 600, marginBottom: 6 }}>
+                  Soporte de pagos
+                </div>
+                <p style={{ fontSize: 11, color: 'var(--txt-mut)', lineHeight: 1.6, margin: 0 }}>
+                  Si tu pago no procede, fue rechazado por tu banco o necesitas ayuda para activar tu plan, escríbenos a{' '}
+                  <a href="mailto:ninodeguzmanstudio@gmail.com" style={{ color: 'var(--accent)', textDecoration: 'none', fontWeight: 700 }}>
+                    ninodeguzmanstudio@gmail.com
+                  </a>.
+                </p>
+              </div>
+
               {/* Actions */}
               <div style={{ borderTop: '1px solid var(--border-sub)', paddingTop: 16, display: 'flex', flexDirection: 'column', gap: 8 }}>
                 <button onClick={handleClearChats} style={{

@@ -45,7 +45,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   // Configurar VAPID
   webpush.setVapidDetails(
-    'mailto:soporte@aidark.app',
+    'mailto:ninodeguzmanstudio@gmail.com',
     process.env.VAPID_PUBLIC_KEY!,
     process.env.VAPID_PRIVATE_KEY!
   );
