@@ -96,9 +96,10 @@ interface PromoModalProps {
   isOpen: boolean;
   onClose: () => void;
   onOpenPricing: () => void;
+  variant?: 'entry' | 'limit';
 }
 
-export const PromoModal: React.FC<PromoModalProps> = ({ isOpen, onClose, onOpenPricing }) => {
+export const PromoModal: React.FC<PromoModalProps> = ({ isOpen, onClose, onOpenPricing, variant = 'limit' }) => {
   const { user } = useAuthStore();
   const [countdown, setCountdown] = useState(getPromoRemaining());
   const [loading, setLoading]     = useState<string | null>(null);
@@ -112,7 +113,7 @@ export const PromoModal: React.FC<PromoModalProps> = ({ isOpen, onClose, onOpenP
   useEffect(() => {
     if (!isOpen) return;
     let cancelled = false;
-    void trackEvent('promo_opened', { source: 'paywall_modal' });
+    void trackEvent('promo_opened', { source: variant === 'entry' ? 'entry_modal' : 'paywall_modal' });
     const fetchCurrency = async () => {
       try {
         const country = detectUserCountry();
@@ -143,7 +144,7 @@ export const PromoModal: React.FC<PromoModalProps> = ({ isOpen, onClose, onOpenP
     if (!user) { setError('Necesitas una cuenta.'); return; }
     setLoading(planId);
     setError('');
-    void trackEvent('promo_checkout_started', { plan_id: planId, source: 'paywall_modal' });
+    void trackEvent('promo_checkout_started', { plan_id: planId, source: variant === 'entry' ? 'entry_modal' : 'paywall_modal' });
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.access_token) {
@@ -226,13 +227,15 @@ export const PromoModal: React.FC<PromoModalProps> = ({ isOpen, onClose, onOpenP
 
           <div style={{ marginBottom: 20 }}>
             <div style={{ fontSize: 11, color: '#8b7355', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 8 }}>
-              Mensajes agotados
+              {variant === 'entry' ? 'Promoción por única vez' : 'Mensajes agotados'}
             </div>
             <h2 style={{ fontSize: isMobile ? 20 : 24, fontWeight: 800, color: '#fff', margin: '0 0 8px', letterSpacing: -0.5 }}>
-              Continuá sin límites
+              {variant === 'entry' ? 'Prueba AIdark Premium' : 'Continuá sin límites'}
             </h2>
             <p style={{ fontSize: 12, color: '#666', margin: 0, lineHeight: 1.6 }}>
-              Usaste todos tus mensajes gratuitos de hoy. Con Premium, chateás sin parar y generás imágenes sin censura.
+              {variant === 'entry'
+                ? 'Oferta especial disponible al entrar. Con Premium, chateas sin límites, analizas archivos y generas imágenes con más potencia.'
+                : 'Usaste todos tus mensajes gratuitos de hoy. Con Premium, chateás sin parar y generás imágenes sin censura.'}
             </p>
           </div>
 

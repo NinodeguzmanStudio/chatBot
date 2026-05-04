@@ -31,6 +31,7 @@ import { APP_CONFIG } from '@/lib/constants';
 import { trackEvent, trackOnce } from '@/lib/analytics';
 
 const AUTH_INTENT_KEY = 'aidark_auth_intent';
+const ENTRY_PROMO_SESSION_KEY = 'aidark_entry_promo_seen';
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
@@ -126,12 +127,36 @@ const SplashMessage: React.FC<{ wasAuth: boolean }> = ({ wasAuth }) => {
 
 const ChatLayout: React.FC = () => {
   const { sidebarOpen } = useChatStore();
+  const user = useAuthStore((s) => s.user);
   const [pricingOpen, setPricingOpen]   = useState(false);
   const [promoOpen, setPromoOpen]       = useState(false);
+  const [promoVariant, setPromoVariant] = useState<'entry' | 'limit'>('limit');
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [privacyOpen, setPrivacyOpen]   = useState(false);
   const [adminOpen, setAdminOpen]       = useState(false);
   const isMobile = useIsMobile();
+
+  const openLimitPromo = () => {
+    setPromoVariant('limit');
+    setPromoOpen(true);
+  };
+
+  useEffect(() => {
+    if (!user || (user as any)._temporary) return;
+    const plan = user.plan || 'free';
+    const expiresAt = (user as any).plan_expires_at || null;
+    const hasActivePremium = plan !== 'free' && expiresAt && new Date(expiresAt) > new Date();
+    if (hasActivePremium) return;
+    if (sessionStorage.getItem(ENTRY_PROMO_SESSION_KEY) === 'true') return;
+
+    const timer = window.setTimeout(() => {
+      sessionStorage.setItem(ENTRY_PROMO_SESSION_KEY, 'true');
+      setPromoVariant('entry');
+      setPromoOpen(true);
+    }, 1400);
+
+    return () => window.clearTimeout(timer);
+  }, [user?.id, user?.plan, (user as any)?.plan_expires_at]);
 
   return (
     <div style={{ height: '100dvh', display: 'flex', background: 'var(--bg-primary)', overflow: 'hidden' }}>
@@ -150,13 +175,14 @@ const ChatLayout: React.FC = () => {
       )}
       <main style={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100dvh', minWidth: 0 }}>
         <Header onOpenPricing={() => setPricingOpen(true)} />
-        <ChatArea onOpenPricing={() => setPromoOpen(true)} />
+        <ChatArea onOpenPricing={openLimitPromo} />
       </main>
       <PricingModal isOpen={pricingOpen} onClose={() => setPricingOpen(false)} />
       <PromoModal
         isOpen={promoOpen}
         onClose={() => setPromoOpen(false)}
         onOpenPricing={() => { setPromoOpen(false); setPricingOpen(true); }}
+        variant={promoVariant}
       />
       <SettingsModal
         isOpen={settingsOpen}
